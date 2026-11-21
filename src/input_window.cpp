@@ -42,7 +42,7 @@ static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
     Str::input_action_hotkey_enable, Str::input_action_hotkey_menu, Str::input_action_hotkey_quick_menu,
     Str::input_action_hotkey_save_state, Str::input_action_hotkey_load_state, Str::input_action_hotkey_fast_forward,
     Str::input_action_hotkey_grab_mouse, Str::input_action_hotkey_ports, Str::input_action_hotkey_pause,
-    Str::input_action_hotkey_dvr,
+    Str::input_action_hotkey_dvr, Str::input_action_hotkey_remap,
 };
 
 static const char* with_id(char* buffer, size_t size, const char* text, const char* id)
@@ -1305,7 +1305,7 @@ void input_window_draw(InputWindow* window, const InputWindowContext* context, I
             if (begin_tab(window, piccolo_text(strings, Str::input_section_hotkeys), "hotkeys", 2, target))
             {
                 window->tab = 2;
-                draw_bindings(window, context, InputAction::hotkey_enable, InputAction::hotkey_dvr,
+                draw_bindings(window, context, InputAction::hotkey_enable, InputAction::hotkey_remap,
                               Str::input_column_action, label_width);
                 ImGui::EndTabItem();
             }

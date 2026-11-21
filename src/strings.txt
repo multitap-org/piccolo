@@ -987,3 +987,6 @@ dvr_hud_from = ◀◀ PLAYING FROM
 dvr_hud_nothing = REWIND: NOTHING RECORDED YET
 dvr_hud_unsupported = REWIND: THIS CORE HAS NO SAVESTATES
 dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)
+
+# Widgets
+input_action_hotkey_remap = REMAP (HOLD)

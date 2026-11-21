@@ -3793,3 +3793,7 @@ msgstr "REBOBINAR: ESTE CORE NO TIENE SAVESTATES"
 msgctxt "dvr_hud_off"
 msgid "REWIND IS OFF (SETTINGS > GENERAL)"
 msgstr "EL REBOBINADO ESTÁ APAGADO (AJUSTES > GENERAL)"
+
+msgctxt "input_action_hotkey_remap"
+msgid "REMAP (HOLD)"
+msgstr "REMAPEAR (MANTENER)"
