@@ -3797,3 +3797,15 @@ msgstr "EL REBOBINADO ESTÁ APAGADO (AJUSTES > GENERAL)"
 msgctxt "input_action_hotkey_remap"
 msgid "REMAP (HOLD)"
 msgstr "REMAPEAR (MANTENER)"
+
+msgctxt "remap_card_port"
+msgid "PORT %u"
+msgstr "PUERTO %u"
+
+msgctxt "remap_card_hold"
+msgid "HOLD"
+msgstr "MANTÉN"
+
+msgctxt "remap_card_to_remap"
+msgid "TO REMAP"
+msgstr "PARA REMAPEAR"
