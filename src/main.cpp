@@ -1760,16 +1760,19 @@ static void app_open_quick_menu(App* app)
 
 static void app_open_widget(App* app, UiWidget widget)
 {
-    if (ui_enter_widget(&app->ui, widget))
+    // The widget opens first and the mode changes only if it did: a refusal
+    // (the DVR with rewind off, no savestates or no history yet: its HUD says
+    // why) leaves what was up, the QUICK MENU included.
+    if (widget == UiWidget::dvr)
     {
-        if (widget == UiWidget::ports)
+        if (!game_running(app) || !dvr_widget_open(&app->dvr, &app->strings, SDL_GetTicks()))
         {
-            ports_widget_open(&app->ports_widget, &app->input);
+            return;
         }
-        else if (widget == UiWidget::dvr)
-        {
-            dvr_widget_open(&app->dvr, &app->strings, SDL_GetTicks());   // closed at once if there's no history yet
-        }
+    }
+    if (ui_enter_widget(&app->ui, widget) && widget == UiWidget::ports)
+    {
+        ports_widget_open(&app->ports_widget, &app->input);
     }
     ui_follow_changes(app);
 }
