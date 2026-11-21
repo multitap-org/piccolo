@@ -213,7 +213,6 @@ set(PICCOLO_SOURCES
     src/cores_window.cpp
     src/share_window.cpp
     src/safe_start_window.cpp
-    src/shader_check.cpp
     src/shader_check_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
@@ -454,13 +453,6 @@ if(MULTITAP_BUILD_TESTS)
     add_test(NAME piccolo_strings COMMAND piccolo_strings_check "${CMAKE_CURRENT_SOURCE_DIR}/lang" es)
     set_tests_properties(piccolo_strings PROPERTIES
         FAIL_REGULAR_EXPRESSION "some keys are unknown|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
-
-    add_executable(piccolo_shader_check_test tools/shader_check_test.cpp src/shader_check.cpp)
-    target_include_directories(piccolo_shader_check_test PRIVATE src)
-    multitap_set_project_flags(piccolo_shader_check_test)
-    add_test(NAME piccolo_shader_check COMMAND piccolo_shader_check_test)
-    set_tests_properties(piccolo_shader_check PROPERTIES
-        FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     # The OpenGL ES presets (shaders/gl/: pass 0 and the scale presets, and
     # deps/piccolo-shaders-legacy when checked out) compile and run (needs a
