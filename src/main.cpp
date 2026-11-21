@@ -4889,6 +4889,7 @@ int main(int argc, char** argv)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "piccolo's settings table is broken (see above)");
     }
+    piccolo_settings_check_ui_keys(&app->settings);
     if (!localization_init(&app->strings, piccolo_strings_table(), text_id(Str::count)))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "piccolo's strings table is broken (see above)");

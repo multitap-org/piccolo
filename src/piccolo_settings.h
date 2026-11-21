@@ -261,6 +261,11 @@ bool piccolo_themes_save(const Settings* settings, const char* name, const char*
 bool piccolo_settings_ui_palette_is(const Settings* settings, const RetroUiPalette* palette);
 bool piccolo_settings_apply_ui_palette(Settings* settings, const RetroUiPalette* palette);
 
+// The interface's colors and switches are settings under retroui's keys
+// (retro_ui_theme.h); true if this table has every one of them (each
+// missing one is logged).
+bool piccolo_settings_check_ui_keys(const Settings* settings);
+
 // After loading: when the global settings set some interface colors but not
 // others (a settings file from before those were added), the missing ones
 // come from the theme the saved ones match best, so a new theme color

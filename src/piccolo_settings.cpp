@@ -2,6 +2,7 @@
 
 #include "host_fs.h"
 #include "piccolo_text.h"
+#include "retro_ui_theme.h"
 
 #include <algorithm>
 #include <cctype>
@@ -800,133 +801,26 @@ uint32_t piccolo_settings_language(const Settings* settings)
 // Interface
 // ---------------------------------------------------------------------------
 
-// The color settings, in RetroUiPalette's order (palette_color below).
-static const char* const UI_COLOR_KEYS[] = {
-    PICCOLO_UI_COLOR_BACKGROUND,
-    PICCOLO_UI_COLOR_BAR,
-    PICCOLO_UI_COLOR_BAR_CENTER,
-    PICCOLO_UI_COLOR_BAR_LIGHT,
-    PICCOLO_UI_COLOR_BAR_DARK,
-    PICCOLO_UI_COLOR_MENU_BOX,
-    PICCOLO_UI_COLOR_MENU_BOX_LIGHT,
-    PICCOLO_UI_COLOR_MENU_BOX_DARK,
-    PICCOLO_UI_COLOR_MENU,
-    PICCOLO_UI_COLOR_WINDOW,
-    PICCOLO_UI_COLOR_WINDOW_LIGHT,
-    PICCOLO_UI_COLOR_WINDOW_DARK,
-    PICCOLO_UI_COLOR_FIELD,
-    PICCOLO_UI_COLOR_FIELD_HOVER,
-    PICCOLO_UI_COLOR_HIGHLIGHT,
-    PICCOLO_UI_COLOR_TEXT,
-    PICCOLO_UI_COLOR_TEXT_HIGHLIGHT,
-    PICCOLO_UI_COLOR_TEXT_DISABLED,
-    PICCOLO_UI_COLOR_TEXT_SHADOW,
-    PICCOLO_UI_COLOR_TITLE,
-    PICCOLO_UI_COLOR_TITLE_BOTTOM,
-    PICCOLO_UI_COLOR_CHECK,
-    PICCOLO_UI_COLOR_SECTION,
-    PICCOLO_UI_COLOR_BUTTON,
-    PICCOLO_UI_COLOR_BUTTON_BOTTOM,
-    PICCOLO_UI_COLOR_BUTTON_LIGHT,
-    PICCOLO_UI_COLOR_BUTTON_DARK,
-    PICCOLO_UI_COLOR_BUTTON_TEXT,
-    PICCOLO_UI_COLOR_FIELD_TEXT,
-    PICCOLO_UI_COLOR_CURSOR,
-    PICCOLO_UI_COLOR_CURSOR_EDGE,
-};
-constexpr uint32_t UI_COLOR_COUNT = sizeof(UI_COLOR_KEYS) / sizeof(UI_COLOR_KEYS[0]);
-
-// The palette's color number `index`, in UI_COLOR_KEYS's order.
-static uint32_t* palette_color(RetroUiPalette* palette, uint32_t index)
-{
-    switch (index)
-    {
-    case 0:
-        return &palette->background;
-    case 1:
-        return &palette->bar_face;
-    case 2:
-        return &palette->bar_center;
-    case 3:
-        return &palette->bar_light;
-    case 4:
-        return &palette->bar_dark;
-    case 5:
-        return &palette->menu_box_face;
-    case 6:
-        return &palette->menu_box_light;
-    case 7:
-        return &palette->menu_box_dark;
-    case 8:
-        return &palette->menu_face;
-    case 9:
-        return &palette->panel_face;
-    case 10:
-        return &palette->panel_light;
-    case 11:
-        return &palette->panel_dark;
-    case 12:
-        return &palette->field_face;
-    case 13:
-        return &palette->field_hover;
-    case 14:
-        return &palette->highlight;
-    case 15:
-        return &palette->text;
-    case 16:
-        return &palette->text_highlight;
-    case 17:
-        return &palette->text_disabled;
-    case 18:
-        return &palette->text_shadow;
-    case 19:
-        return &palette->title_top;
-    case 20:
-        return &palette->title_bottom;
-    case 21:
-        return &palette->check;
-    case 22:
-        return &palette->section;
-    case 23:
-        return &palette->button_face;
-    case 24:
-        return &palette->button_bottom;
-    case 25:
-        return &palette->button_light;
-    case 26:
-        return &palette->button_dark;
-    case 27:
-        return &palette->button_text;
-    case 28:
-        return &palette->field_text;
-    case 29:
-        return &palette->cursor;
-    case 30:
-        return &palette->cursor_edge;
-    default:
-        return &palette->text;
-    }
-}
-
 uint32_t piccolo_settings_ui_color_count()
 {
-    return UI_COLOR_COUNT;
+    return retro_ui_palette_color_count();
 }
 
 const char* piccolo_settings_ui_color_key(uint32_t index)
 {
-    return index < UI_COLOR_COUNT ? UI_COLOR_KEYS[index] : UI_COLOR_KEYS[0];
+    return retro_ui_palette_color_key(index);   // (the PICCOLO_UI_COLOR_* keys: the same strings)
 }
 
 void piccolo_settings_palette(const Settings* settings, RetroUiPalette* palette)
 {
     *palette = *retro_ui_theme_palette(RetroUiTheme::blue);
-    palette->menu_boxes = settings_get_bool(settings, PICCOLO_UI_MENU_BOXES);
-    palette->shadows = settings_get_bool(settings, PICCOLO_UI_SHADOWS);
-    palette->theme_cursor = settings_get_bool(settings, PICCOLO_UI_THEME_CURSOR);
-    for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
     {
-        *palette_color(palette, i) = settings_get_color(settings, UI_COLOR_KEYS[i]);
+        *retro_ui_palette_flag(palette, i) = settings_get_bool(settings, retro_ui_palette_flag_key(i));
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        *retro_ui_palette_color(palette, i) = settings_get_color(settings, retro_ui_palette_color_key(i));
     }
 }
 
@@ -950,16 +844,9 @@ Str piccolo_settings_ui_theme_name(RetroUiTheme theme)
 
 bool piccolo_settings_ui_palette_is(const Settings* settings, const RetroUiPalette* palette)
 {
-    RetroUiPalette wanted = *palette;   // palette_color() takes a non-const palette
     RetroUiPalette current = {};
     piccolo_settings_palette(settings, &current);
-    bool same = palette->menu_boxes == current.menu_boxes && palette->shadows == current.shadows &&
-                palette->theme_cursor == current.theme_cursor;
-    for (uint32_t i = 0; same && i < UI_COLOR_COUNT; i++)
-    {
-        same = (*palette_color(&wanted, i) | 0xFF000000u) == (*palette_color(&current, i) | 0xFF000000u);
-    }
-    return same;
+    return retro_ui_palette_equal(palette, &current);
 }
 
 RetroUiTheme piccolo_settings_ui_theme(const Settings* settings)
@@ -976,13 +863,16 @@ RetroUiTheme piccolo_settings_ui_theme(const Settings* settings)
 
 bool piccolo_settings_apply_ui_palette(Settings* settings, const RetroUiPalette* palette)
 {
-    RetroUiPalette colors = *palette;   // palette_color() takes a non-const palette
-    bool ok = settings_set_bool(settings, SettingLayer::global, PICCOLO_UI_MENU_BOXES, palette->menu_boxes);
-    ok = settings_set_bool(settings, SettingLayer::global, PICCOLO_UI_SHADOWS, palette->shadows) && ok;
-    ok = settings_set_bool(settings, SettingLayer::global, PICCOLO_UI_THEME_CURSOR, palette->theme_cursor) && ok;
-    for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
+    bool ok = true;
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
     {
-        ok = settings_set_color(settings, SettingLayer::global, UI_COLOR_KEYS[i], *palette_color(&colors, i)) && ok;
+        ok = settings_set_bool(settings, SettingLayer::global, retro_ui_palette_flag_key(i),
+                               retro_ui_palette_flag_value(palette, i)) && ok;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        ok = settings_set_color(settings, SettingLayer::global, retro_ui_palette_color_key(i),
+                                retro_ui_palette_color_value(palette, i)) && ok;
     }
     return ok;
 }
@@ -994,26 +884,6 @@ bool piccolo_settings_apply_ui_theme(Settings* settings, RetroUiTheme theme)
         return false;
     }
     return piccolo_settings_apply_ui_palette(settings, retro_ui_theme_palette(theme));
-}
-
-// A theme file's true/false value; anything else keeps `fallback`.
-static bool theme_file_bool(const SettingsFile* file, const char* key, bool fallback)
-{
-    const char* value = settings_file_get(file, "", key);
-    if (value == nullptr)
-    {
-        return fallback;
-    }
-    if (std::strcmp(value, "true") == 0)
-    {
-        return true;
-    }
-    if (std::strcmp(value, "false") == 0)
-    {
-        return false;
-    }
-    SDL_Log("Theme: %s = %s is not true or false", key, value);
-    return fallback;
 }
 
 static bool theme_name_before(const PiccoloThemeFile& a, const PiccoloThemeFile& b)
@@ -1066,24 +936,7 @@ void piccolo_themes_load_directory(std::vector<PiccoloThemeFile>* themes, const 
                 theme.name[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(theme.name[i])));
             }
         }
-        theme.palette.menu_boxes = theme_file_bool(&file, PICCOLO_UI_MENU_BOXES, theme.palette.menu_boxes);
-        theme.palette.shadows = theme_file_bool(&file, PICCOLO_UI_SHADOWS, theme.palette.shadows);
-        theme.palette.theme_cursor = theme_file_bool(&file, PICCOLO_UI_THEME_CURSOR, theme.palette.theme_cursor);
-        for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
-        {
-            const char* value = settings_file_get(&file, "", UI_COLOR_KEYS[i]);
-            uint32_t color = 0;
-            if (value == nullptr)
-            {
-                continue;
-            }
-            if (!settings_color_from_text(value, &color))
-            {
-                SDL_Log("Theme %s: %s = %s is not a #RRGGBB color", path.c_str(), UI_COLOR_KEYS[i], value);
-                continue;
-            }
-            *palette_color(&theme.palette, i) = color | 0xFF000000u;
-        }
+        retro_ui_palette_read(&theme.palette, &file, path.c_str());
 
         add_theme(themes, &theme);
         SDL_Log("Theme %s from %s", theme.name.c_str(), path.c_str());
@@ -1144,15 +997,7 @@ bool piccolo_themes_save(const Settings* settings, const char* name, const char*
 
     SettingsFile file = {};
     bool ok = settings_file_set(&file, "", "name", theme.name.c_str());
-    ok = settings_file_set(&file, "", PICCOLO_UI_MENU_BOXES, theme.palette.menu_boxes ? "true" : "false") && ok;
-    ok = settings_file_set(&file, "", PICCOLO_UI_SHADOWS, theme.palette.shadows ? "true" : "false") && ok;
-    ok = settings_file_set(&file, "", PICCOLO_UI_THEME_CURSOR, theme.palette.theme_cursor ? "true" : "false") && ok;
-    for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
-    {
-        char color[16] = {};
-        std::snprintf(color, sizeof(color), "#%06X", *palette_color(&theme.palette, i) & 0xFFFFFFu);
-        ok = settings_file_set(&file, "", UI_COLOR_KEYS[i], color) && ok;
-    }
+    ok = retro_ui_palette_write(&theme.palette, &file) && ok;
     if (!ok || !host_fs_make_directories(directory) ||
         !settings_file_save(&file, theme.path.c_str(), "piccolo interface theme, saved from SETTINGS > INTERFACE.\n"
                                                          "The keys are explained in themes/example.cfg next to piccolo."))
@@ -1166,21 +1011,26 @@ bool piccolo_themes_save(const Settings* settings, const char* name, const char*
     return true;
 }
 
-// The interface switches, as the palette has them.
-static const char* const UI_BOOL_KEYS[] = {PICCOLO_UI_MENU_BOXES, PICCOLO_UI_SHADOWS, PICCOLO_UI_THEME_CURSOR};
-constexpr uint32_t UI_BOOL_COUNT = static_cast<uint32_t>(sizeof(UI_BOOL_KEYS) / sizeof(UI_BOOL_KEYS[0]));
-
-static bool palette_bool(const RetroUiPalette* palette, uint32_t index)
+bool piccolo_settings_check_ui_keys(const Settings* settings)
 {
-    switch (index)
+    bool ok = true;
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
     {
-    case 0:
-        return palette->menu_boxes;
-    case 1:
-        return palette->shadows;
-    default:
-        return palette->theme_cursor;
+        if (settings_find(settings, retro_ui_palette_color_key(i)) == nullptr)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Settings: no %s (retroui's palette)", retro_ui_palette_color_key(i));
+            ok = false;
+        }
     }
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
+    {
+        if (settings_find(settings, retro_ui_palette_flag_key(i)) == nullptr)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Settings: no %s (retroui's palette)", retro_ui_palette_flag_key(i));
+            ok = false;
+        }
+    }
+    return ok;
 }
 
 bool piccolo_settings_complete_ui_theme(Settings* settings)
@@ -1191,25 +1041,26 @@ bool piccolo_settings_complete_ui_theme(Settings* settings)
     RetroUiTheme best = RetroUiTheme::blue;
     for (uint32_t t = 0; t < static_cast<uint32_t>(RetroUiTheme::count); t++)
     {
-        RetroUiPalette theme = *retro_ui_theme_palette(static_cast<RetroUiTheme>(t));
+        const RetroUiPalette* theme = retro_ui_theme_palette(static_cast<RetroUiTheme>(t));
         uint32_t score = 0;
         saved = 0;
-        for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
+        for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
         {
-            const char* value = settings_get_layer(settings, SettingLayer::global, UI_COLOR_KEYS[i]);
+            const char* value = settings_get_layer(settings, SettingLayer::global, retro_ui_palette_color_key(i));
             uint32_t color = 0;
             if (value != nullptr && settings_color_from_text(value, &color))
             {
                 saved++;
-                score += (color | 0xFF000000u) == (*palette_color(&theme, i) | 0xFF000000u) ? 1u : 0u;
+                score += (color | 0xFF000000u) == (retro_ui_palette_color_value(theme, i) | 0xFF000000u) ? 1u : 0u;
             }
         }
-        for (uint32_t i = 0; i < UI_BOOL_COUNT; i++)
+        for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
         {
-            if (settings_get_layer(settings, SettingLayer::global, UI_BOOL_KEYS[i]) != nullptr)
+            const char* key = retro_ui_palette_flag_key(i);
+            if (settings_get_layer(settings, SettingLayer::global, key) != nullptr)
             {
                 saved++;
-                score += settings_get_bool(settings, UI_BOOL_KEYS[i]) == palette_bool(&theme, i) ? 1u : 0u;
+                score += settings_get_bool(settings, key) == retro_ui_palette_flag_value(theme, i) ? 1u : 0u;
             }
         }
         if (score > best_score)
@@ -1222,21 +1073,23 @@ bool piccolo_settings_complete_ui_theme(Settings* settings)
     {
         return false;
     }
-    RetroUiPalette palette = *retro_ui_theme_palette(best);
+    const RetroUiPalette* palette = retro_ui_theme_palette(best);
     bool changed = false;
-    for (uint32_t i = 0; i < UI_COLOR_COUNT; i++)
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
     {
-        if (settings_get_layer(settings, SettingLayer::global, UI_COLOR_KEYS[i]) == nullptr)
+        const char* key = retro_ui_palette_color_key(i);
+        if (settings_get_layer(settings, SettingLayer::global, key) == nullptr)
         {
-            changed = settings_set_color(settings, SettingLayer::global, UI_COLOR_KEYS[i], *palette_color(&palette, i)) ||
+            changed = settings_set_color(settings, SettingLayer::global, key, retro_ui_palette_color_value(palette, i)) ||
                       changed;
         }
     }
-    for (uint32_t i = 0; i < UI_BOOL_COUNT; i++)
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
     {
-        if (settings_get_layer(settings, SettingLayer::global, UI_BOOL_KEYS[i]) == nullptr)
+        const char* key = retro_ui_palette_flag_key(i);
+        if (settings_get_layer(settings, SettingLayer::global, key) == nullptr)
         {
-            changed = settings_set_bool(settings, SettingLayer::global, UI_BOOL_KEYS[i], palette_bool(&palette, i)) || changed;
+            changed = settings_set_bool(settings, SettingLayer::global, key, retro_ui_palette_flag_value(palette, i)) || changed;
         }
     }
     return changed;
