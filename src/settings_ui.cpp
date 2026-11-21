@@ -15,12 +15,6 @@
 constexpr uint32_t MARKER_CORE = 0xFFF0C040u;   // amber
 constexpr uint32_t MARKER_GAME = 0xFF60E080u;   // green
 
-static ImVec4 color_of(uint32_t argb)
-{
-    return ImVec4(static_cast<float>((argb >> 16) & 0xFFu) / 255.0f, static_cast<float>((argb >> 8) & 0xFFu) / 255.0f,
-                  static_cast<float>(argb & 0xFFu) / 255.0f, static_cast<float>(argb >> 24) / 255.0f);
-}
-
 const char* settings_ui_scope_name(const Localization* strings, SettingLayer scope)
 {
     switch (scope)
@@ -63,7 +57,7 @@ void settings_ui_marker(const SettingsUiContext* context, const char* key)
         return;
     }
     bool core = source == SettingLayer::core;
-    ImGui::TextColored(color_of(core ? MARKER_CORE : MARKER_GAME), "%s", core ? "C" : "G");
+    ImGui::TextColored(retro_ui_color_vec4(core ? MARKER_CORE : MARKER_GAME), "%s", core ? "C" : "G");
     retro_ui_item_tooltip(piccolo_text(context->strings, core ? Str::marker_core_help : Str::marker_game_help));
 }
 
@@ -192,8 +186,8 @@ static uint32_t settings_get_color_at(const SettingsUiContext* context, const ch
 static bool color_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor)
 {
     uint32_t argb = settings_get_color_at(context, descriptor->key);
-    float rgb[3] = {static_cast<float>((argb >> 16) & 0xFFu) / 255.0f, static_cast<float>((argb >> 8) & 0xFFu) / 255.0f,
-                    static_cast<float>(argb & 0xFFu) / 255.0f};
+    ImVec4 color = retro_ui_color_vec4(argb);
+    float rgb[3] = {color.x, color.y, color.z};
     bool changed = false;
     if (ImGui::ColorEdit3("##value", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
                                              ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoAlpha))

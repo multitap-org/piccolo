@@ -15,12 +15,6 @@ constexpr uint32_t MARKER_CORE   = 0xFFF0C040u;   // amber
 constexpr uint32_t MARKER_FOLDER = 0xFF60B0F0u;   // light blue
 constexpr uint32_t MARKER_GAME   = 0xFF60E080u;   // green
 
-static ImVec4 color_of(uint32_t argb)
-{
-    return ImVec4(static_cast<float>((argb >> 16) & 0xFFu) / 255.0f, static_cast<float>((argb >> 8) & 0xFFu) / 255.0f,
-                  static_cast<float>(argb & 0xFFu) / 255.0f, static_cast<float>(argb >> 24) / 255.0f);
-}
-
 static bool running(const CoreOptionsUiContext* context)
 {
     return context->running_core[0] != '\0' && context->session != nullptr;
@@ -183,7 +177,7 @@ static void draw_marker(const CoreOptionsUiContext* context, const char* key)
     Str help = source == CoreOptionLayer::game ? Str::core_options_marker_game_help
                : (source == CoreOptionLayer::directory ? Str::core_options_marker_folder_help
                                                        : Str::core_options_marker_core_help);
-    ImGui::TextColored(color_of(color), "%s", letter);
+    ImGui::TextColored(retro_ui_color_vec4(color), "%s", letter);
     retro_ui_item_tooltip(piccolo_text(context->strings, help));
 }
 

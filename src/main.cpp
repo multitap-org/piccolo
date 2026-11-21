@@ -4327,9 +4327,8 @@ static bool app_frame(App* app)
     retro_ui_set_palette(&palette);
     // BACKGROUND behind the menu; while a game runs, black around its picture.
     uint32_t back = game_running(app) ? 0xFF000000u : palette.background;
-    ClearColor background = {static_cast<float>((back >> 16) & 0xFFu) / 255.0f,
-                             static_cast<float>((back >> 8) & 0xFFu) / 255.0f,
-                             static_cast<float>(back & 0xFFu) / 255.0f, 1.0f};
+    ImVec4 back_color = retro_ui_color_vec4(back);
+    ClearColor background = {back_color.x, back_color.y, back_color.z, 1.0f};
     app_shell_set_frames_in_flight(&app->shell, piccolo_settings_frames_in_flight(&app->settings));
     // RUN-AHEAD: the setting, or a streaming device's tuning (in memory
     // only) when it isn't "host's".

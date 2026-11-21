@@ -23,12 +23,6 @@ constexpr uint32_t THUMBNAIL_CAPACITY = 1024;
 // The used slots' button color (0xAARRGGBB), so they stand out from empty ones.
 constexpr uint32_t USED_SLOT = 0xFF3A6EA5u;
 
-static ImVec4 color_of(uint32_t argb)
-{
-    return ImVec4(static_cast<float>((argb >> 16) & 0xFFu) / 255.0f, static_cast<float>((argb >> 8) & 0xFFu) / 255.0f,
-                  static_cast<float>(argb & 0xFFu) / 255.0f, static_cast<float>(argb >> 24) / 255.0f);
-}
-
 void quick_menu_open_controls(QuickMenu* menu, uint32_t slot)
 {
     quick_menu_open(menu, slot);
@@ -151,7 +145,7 @@ static void draw_slots(QuickMenu* menu, float block, bool appearing)
         bool selected = slot == menu->slot;
         if (used)
         {
-            ImGui::PushStyleColor(ImGuiCol_Button, color_of(USED_SLOT));
+            ImGui::PushStyleColor(ImGuiCol_Button, retro_ui_color_vec4(USED_SLOT));
         }
         if (selected)
         {
@@ -2203,12 +2197,7 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
     size.x = size.x < io.DisplaySize.x ? size.x : io.DisplaySize.x;
     size = ImVec2(static_cast<float>(static_cast<int>(size.x)), static_cast<float>(static_cast<int>(size.y)));
     // Sliding in: an ease-out over QUICK_MENU_SLIDE_MS from the right edge.
-    float slide = 1.0f;
-    if (context->now_ms >= menu->slide_start_ms && context->now_ms - menu->slide_start_ms < QUICK_MENU_SLIDE_MS)
-    {
-        float t = static_cast<float>(context->now_ms - menu->slide_start_ms) / static_cast<float>(QUICK_MENU_SLIDE_MS);
-        slide = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
-    }
+    float slide = retro_ui_ease_out(context->now_ms, menu->slide_start_ms, QUICK_MENU_SLIDE_MS);
     float x = io.DisplaySize.x - size.x * slide;
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(static_cast<int>(x)), 0.0f), ImGuiCond_Always);
