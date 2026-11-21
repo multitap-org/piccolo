@@ -131,7 +131,15 @@ ctest --test-dir build --output-on-failure
 
 piccolo loads `librashader.dll` at run time from its own folder. Without it
 the picture is drawn without shader presets. Only its C API with the Vulkan
-runtime is built:
+runtime is built.
+
+`deps/librashader` is pinned to upstream commit `9d0116f8` (0.12.1 plus one
+fix, 2026-11-19), not to a release tag: 0.12.1 leaks Vulkan objects
+(pipeline layouts, descriptor pools and sets) every time a preset is loaded,
+and the validation layer reports them when piccolo quits. It goes back to a
+release tag once one includes that fix. Build the DLL from the submodule as it
+is checked out; a `librashader.dll` built from 0.12.1 still works, but it
+leaks.
 
 ```sh
 RUSTFLAGS="-C target-feature=+crt-static" CARGO_TARGET_DIR=build-librashader \
