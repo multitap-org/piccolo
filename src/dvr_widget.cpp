@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "imgui.h"
+
 #include "core_session.h"
 #include "input_bindings.h"
 #include "piccolo_settings.h"
@@ -21,6 +23,10 @@ constexpr uint64_t STEP_MS    = 50;
 constexpr uint64_t FAST_MS    = 1500;
 constexpr int32_t  FAST_STEPS = 4;
 constexpr uint64_t NO_FRAME   = ~static_cast<uint64_t>(0);
+// A thumbnail that took longer than this waits THUMB_SPACING times its cost
+// before the next one (at most a quarter of the time on thumbnails).
+constexpr uint64_t THUMB_SLOW_NS = 5000000;
+constexpr uint64_t THUMB_SPACING = 3;
 
 static double fps_of(const DvrWidget* widget)
 {
@@ -254,7 +260,20 @@ void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, const Localiz
         play_from_here(widget, strings, now_ms);
         return;
     }
-    if (pressed(frame, InputAction::ui_open_menu))   // RetroPad Y
+    // Which the hints name: the keyboard if a key did something, else the pads.
+    for (uint32_t a = static_cast<uint32_t>(InputAction::ui_up); a <= static_cast<uint32_t>(InputAction::ui_open_menu); a++)
+    {
+        if (frame->keyboard_pressed[a])
+        {
+            widget->keyboard = true;
+        }
+        else if (frame->pressed[a])
+        {
+            widget->keyboard = false;
+        }
+    }
+    // RetroPad Y (the keyboard's open-menu key, F1, isn't WATCH: Space is, in dvr_widget_draw).
+    if (pressed(frame, InputAction::ui_open_menu) && !frame->keyboard_pressed[static_cast<uint32_t>(InputAction::ui_open_menu)])
     {
         core_rewind_dvr_set_playing(&widget->rewind, !widget->rewind.playing);
     }
@@ -377,7 +396,13 @@ void dvr_widget_upload(DvrWidget* widget, CoreSession* session, AppShell* shell)
     {
         return;
     }
+    uint64_t now_ms = SDL_GetTicks();
+    if (now_ms < widget->next_thumb_ms)
+    {
+        return;
+    }
     // Its picture: the core goes there and comes back to the cursor.
+    uint64_t started = SDL_GetTicksNS();
     uint64_t frame = widget->previews[first + static_cast<uint32_t>(want)];
     if (core_rewind_dvr_seek(&widget->rewind, frame) &&
         core_session_copy_picture(session, shell, &widget->thumbs[slot]))
@@ -386,6 +411,8 @@ void dvr_widget_upload(DvrWidget* widget, CoreSession* session, AppShell* shell)
         widget->thumb_frame[slot] = frame;
     }
     core_rewind_dvr_seek(&widget->rewind, position.cursor);
+    uint64_t cost = SDL_GetTicksNS() - started;
+    widget->next_thumb_ms = cost > THUMB_SLOW_NS ? now_ms + cost * THUMB_SPACING / 1000000 : 0;
 }
 
 float dvr_widget_strip_height(const DvrWidget* widget, int32_t scale)
@@ -462,13 +489,16 @@ static void build_view(DvrWidget* widget, const Localization* strings, bool touc
                             false, DvrViewAction::none};
         if (scrub)
         {
-            view->hints[n++] = {"L R", piccolo_text(strings, Str::dvr_hint_jump), false, DvrViewAction::none};
+            view->hints[n++] = {widget->keyboard ? "PG UP DN" : "L R", piccolo_text(strings, Str::dvr_hint_jump), false,
+                                DvrViewAction::none};
         }
     }
-    view->hints[n++] = {"B", piccolo_text(strings, Str::dvr_play_here), touch, DvrViewAction::play_here};
-    view->hints[n++] = {"Y", piccolo_text(strings, widget->rewind.playing ? Str::dvr_pause : Str::dvr_watch),
+    // The keys' names: the RetroPad's, or the keyboard's when it was used last.
+    bool keys = widget->keyboard && !touch;
+    view->hints[n++] = {keys ? "ENTER" : "B", piccolo_text(strings, Str::dvr_play_here), touch, DvrViewAction::play_here};
+    view->hints[n++] = {keys ? "SPACE" : "Y", piccolo_text(strings, widget->rewind.playing ? Str::dvr_pause : Str::dvr_watch),
                         widget->rewind.playing, DvrViewAction::watch};
-    view->hints[n++] = {"A", piccolo_text(strings, Str::dvr_back_to_now), false, DvrViewAction::back_to_now};
+    view->hints[n++] = {keys ? "ESC" : "A", piccolo_text(strings, Str::dvr_back_to_now), false, DvrViewAction::back_to_now};
     if (touch)
     {
         view->hints[n++] = {"", "\xE2\x96\xB6", false, DvrViewAction::forward};   // ▶
@@ -492,6 +522,13 @@ void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const
     text.readout = widget->readout;
     DvrViewInput input = {};
     dvr_view_draw(&widget->view, pixel_font, scale, &text, &input);
+    // WATCH on the keyboard: Space (not an interface action of the router).
+    if (input.action == DvrViewAction::none && !ImGui::GetIO().WantTextInput &&
+        ImGui::IsKeyPressed(ImGuiKey_Space, false))
+    {
+        input.action = DvrViewAction::watch;
+        widget->keyboard = true;
+    }
 
     // A click / tap: as the buttons do.
     if (input.clicked >= 0)

@@ -14,8 +14,9 @@
 //       LEFT / RIGHT   a frame (SCRUB) or a snapshot; held, faster
 //       L / R          5 s (SCRUB)
 //       B (accept)     PLAY FROM HERE: play on from the cursor
-//       Y              WATCH: the recording plays / pauses
+//       Y              WATCH: the recording plays / pauses (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
+//     The hints name the keyboard's keys when it was used last.
 //   - A HUD indicator (no input, never pauses): "PLAYING FROM -0:27.8" after
 //     PLAY FROM HERE, or why the DVR didn't open.
 //
@@ -53,6 +54,13 @@ struct DvrWidget
     int32_t  held_direction = 0;
     uint64_t held_since_ms  = 0;
     uint64_t next_step_ms   = 0;
+
+    // The keyboard was used last (the hints show its keys, Space is WATCH).
+    bool keyboard = false;
+
+    // Thumbnails cost a load and a frame, twice: with slow loads (bsnes,
+    // 20 ms) they're spaced out so stepping stays smooth.
+    uint64_t next_thumb_ms = 0;
 
     // The HUD indicator.
     char     hud[96] = {};
