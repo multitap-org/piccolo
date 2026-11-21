@@ -61,6 +61,7 @@ struct OnscreenPad
     bool         below = false;
     float        picture_height = 0.0f;
     PadLayoutId  layout = PadLayoutId::remote_overlay_landscape;   // the one shown
+    PadPlacement placement;     // retroui's pad_layouts_place: the layout, its frame, the picture's room
 };
 
 // Loads the layouts (`settings_dir` "" = nothing saved) and opens the vibrator.

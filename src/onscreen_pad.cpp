@@ -9,10 +9,7 @@
 #include "retro_ui.h"
 #include "touch_ui.h"
 
-// Upright, the pad goes under the picture only if it's still this big
-// (retro pixels per dp; piccoletto's REMOTE PLAY uses the same).
-constexpr float MIN_BELOW_SCALE = 0.3f;
-constexpr float BELOW_GAP = 4.0f;   // retro pixels between the picture and the pad
+constexpr float BELOW_GAP = 4.0f;   // retro pixels between the picture and the pad (pad_layouts_place)
 
 void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir)
 {
@@ -21,10 +18,7 @@ void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir)
     {
         pad->path = std::string(settings_dir) + "/touch_layouts.cfg";
         settings_file_load(&pad->file, pad->path.c_str());   // (none yet: the defaults)
-        for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
-        {
-            pad_layout_load(&pad->layouts.layouts[i], &pad->file);
-        }
+        pad_layouts_load_file(&pad->layouts, &pad->file);
     }
     haptics_open(&pad->haptics);
     // A touch screen (AUTO): asked once here (SDL allocates the list); a
@@ -46,10 +40,7 @@ static void save_layouts(OnscreenPad* pad)
     {
         return;
     }
-    for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
-    {
-        pad_layout_save(&pad->layouts.layouts[i], &pad->file);
-    }
+    pad_layouts_save_file(&pad->layouts, &pad->file);
     settings_file_save(&pad->file, pad->path.c_str(), "piccolo's on-screen gamepad layouts (EDIT LAYOUT)");
 }
 
@@ -154,29 +145,13 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
 void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float width, float height)
 {
     pad->shown = pad->editor.active || (pad->plugged && playing && !pad->hidden);
-    pad->below = false;
-    pad->picture_height = height;
-    if (width >= height)
-    {
-        pad->layout = PadLayoutId::remote_overlay_landscape;
-        return;
-    }
-    // Upright: the picture across the top; does the pad still fit under it?
-    float picture = aspect > 0.0f ? width / aspect : width;
-    picture = picture > height ? height : picture;
-    int32_t scale = touch_ui_scale_for(width, height);
-    float block = static_cast<float>(scale);
-    const PadLayout* below = pad_layouts_get(&pad->layouts, PadLayoutId::remote_below);
-    float room = (height - picture) / block - BELOW_GAP;
-    PadFrame frame = pad_frame_fit_into(below->width, below->height, 0.0f, 0.0f, width / block, room > 0.0f ? room : 0.0f);
-    if (frame.dp_scale >= MIN_BELOW_SCALE)
-    {
-        pad->layout = PadLayoutId::remote_below;
-        pad->below = pad->shown;
-        pad->picture_height = pad->shown ? picture : height;
-        return;
-    }
-    pad->layout = PadLayoutId::remote_overlay_portrait;   // a tall picture: over its lower part
+    // Landscape over the picture; upright under it if it fits, else over a
+    // tall picture (retroui decides, the same as piccoletto's REMOTE PLAY).
+    float block = static_cast<float>(touch_ui_scale_for(width, height));
+    pad->placement = pad_layouts_place(&pad->layouts, width / block, height / block, aspect, BELOW_GAP);
+    pad->layout = pad->placement.id;
+    pad->below = pad->shown && pad->placement.below;
+    pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
 }
 
 void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, float opacity, bool vibrate)
@@ -197,18 +172,13 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     ui.pad = &pad->pad;
     for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
     {
-        PadLayout* each = &pad->layouts.layouts[i];
-        each->default_alpha = opacity;
-        if (!each->alpha_set)
-        {
-            each->alpha = opacity;   // (a layout's own, from EDIT LAYOUT, wins)
-        }
+        pad_layout_set_default_alpha(&pad->layouts.layouts[i], opacity);   // (a layout's own, from EDIT LAYOUT, wins)
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
     layout->action_label = menu_label;   // retroui's action button: the QUICK MENU
     float width = touch_ui_width(&ui);
     float height = touch_ui_height(&ui);
-    PadFrame frame;
+    PadFrame frame = pad->placement.frame;
     // The overlay window takes the taps meanwhile (nothing under it reacts).
     touch_ui_begin_overlay(&ui, "##onscreen_pad");
     if (pad->editor.active)
@@ -217,17 +187,8 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     }
     if (pad->below)
     {
-        float top = pad->picture_height / static_cast<float>(ui.scale) + BELOW_GAP;
-        touch_ui_rect(&ui, 0.0f, top - BELOW_GAP, width, height - top + BELOW_GAP, ui.palette.button_face);   // the pad's body
-        frame = pad_frame_fit_into(layout->width, layout->height, 0.0f, top, width, height - top);
-    }
-    else if (pad->layout == PadLayoutId::remote_overlay_landscape)
-    {
-        frame = pad_frame_fit_bottom(&ui, layout->width, layout->height);
-    }
-    else
-    {
-        frame = pad_frame_fit(&ui, layout->width, layout->height);
+        float top = pad->placement.picture_height;
+        touch_ui_rect(&ui, 0.0f, top, width, height - top, ui.palette.button_face);   // the pad's body
     }
     if (pad->editor.active)
     {
