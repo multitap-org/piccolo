@@ -42,6 +42,7 @@ enum class QuickMenuAction
     load,         // load `slot`
     reset,
     close_game,
+    pause,        // PAUSE / RESUME: the player's own pause (main.cpp toggles it)
 };
 
 struct QuickMenu
@@ -49,6 +50,7 @@ struct QuickMenu
     bool          open = false;
     int           tab = 0;              // 0 SAVESTATES, 1 CORE OPTIONS, 2 CONTROLS, 3 SHADER (for PAGE LEFT / RIGHT)
     int           open_on_tab = 0;      // the tab it opens on
+    uint64_t      slide_start_ms = 0;   // when it began sliding in from the right
 
     // CONTROLS can show the remap of one port's controller for the running
     // core and that port's device: its controls by the game's names, SET,
@@ -128,6 +130,7 @@ struct QuickMenuContext
     const char*          core_name = "";         // SHADER: the scope selector's names
     const char*          game_name = "";
     bool                 shaders_available = false;   // librashader was found
+    bool                 user_paused = false;         // the player paused: PAUSE reads RESUME
 };
 
 // Opens on `slot` (the session's current slot), on the tab it was last closed on.

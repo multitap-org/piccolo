@@ -43,6 +43,7 @@
 #include "shader_check.h"
 #include "shader_check_window.h"
 #include "text_input_window.h"
+#include "ui_mode.h"
 #include "settings_window.h"
 #include "archive.h"
 #include "host_fs.h"
@@ -97,13 +98,6 @@ struct App
     std::vector<PiccoloThemeFile> themes;   // interface themes from files (themes/*.cfg)
     std::vector<uint32_t> map_offered;   // joysticks offered MAP CONTROLLER this session
 
-    // HOLD START TO REMAP: a controller plays a core's device it hasn't
-    // played before (no decided InputCoreProfile).
-    bool     remap_prompt = false;
-    uint32_t remap_prompt_controller = 0;
-    uint32_t remap_prompt_port = 0;
-    uint64_t remap_prompt_started_ms = 0;
-    uint64_t remap_prompt_start_held_ms = 0;   // when START began being held (0 = not held)   // OPEN MENU pressed: the menu bar opens its first menu this frame
     bool     running = false;
     bool     show_debug_window = false;
     bool     show_imgui_demo = false;
@@ -154,13 +148,11 @@ struct App
     uint32_t   net_load_id = 0;
     NetRemote  net_remote = {};          // settings and actions from devices (net_remote.h)
     bool       net_remote_ready = false;
-    bool       net_paused = false;       // PAUSE from a device
     // PAUSE WHEN CONTROLLERS DISCONNECT: what played last, and the pause it set.
-    bool       played_with_gamepad = false;   // the last game input came from a gamepad (not the keyboard)
-    bool       disconnect_paused = false;     // START, a controller joining, or closing the menu resumes
+    bool       played_with_gamepad = false;   // the last game input came from a local gamepad (CONTROLLERS cause)
+    bool       android_background = false;    // the app is in the background (BACKGROUND cause)
+    bool       menus_built_paused = false;    // GAME > PAUSE read RESUME when the menus were built
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
-    bool       menu_was_open = false;         // last loop: for "closing the menu resumes"
-    uint32_t   net_paused_by = NET_NO_PEER;   // which: its leaving (or another game) resumes
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
     NetRemoteGame net_actions_sent;      // what the action lists last said (sent again when it changes)
@@ -179,7 +171,12 @@ struct App
     FilePicker  picker  = {};
     FilePicker  shader_picker = {};   // QUICK MENU > SHADER > CHOOSE
     SettingLayer shader_picker_scope = SettingLayer::global;   // where its pick goes
-    bool        menu_visible = true;   // only hideable while a game runs
+    // What has the screen and the input (ui_mode.h): GAME, QUICK MENU, a
+    // window widget or MAIN MENU, and what follows from it this loop.
+    UiState     ui;
+    uint32_t    ui_changes_seen = 0;               // ui.changes already followed (ui_follow_changes)
+    UiWidget    ui_widget_applied = UiWidget::none; // the widget the windows were last set up for
+    UiDerived   ui_derived;
 
     // What the LOAD GAME window picked, started at the top of the NEXT loop:
     // starting stops the old core, which destroys the texture this frame's
@@ -493,13 +490,19 @@ static void build_menus(App* app)
     app->menu_texts.clear();
     app->menu_items.clear();
     app->menus.clear();
+    app->menus_built_paused = app->ui.user_paused;
     // The labels first: the items point into them (push_back may move them).
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
         app->menu_texts.push_back(piccolo_text(&app->strings, menus_label(menu)));
         for (int32_t item = 0; item < menus_item_count(menu); item++)
         {
-            app->menu_texts.push_back(piccolo_text(&app->strings, menus_item_label(menu, item)));
+            Str label = menus_item_label(menu, item);
+            if (menus_item_action(menu, item) == MenuAction::pause && app->ui.user_paused)
+            {
+                label = Str::menu_resume;   // GAME > PAUSE reads RESUME while the player paused
+            }
+            app->menu_texts.push_back(piccolo_text(&app->strings, label));
         }
     }
     // The items, every menu's back to back (the menus point into them).
@@ -582,26 +585,28 @@ static void set_status(App* app, const char* text)
     std::snprintf(app->status, sizeof(app->status), "%s", text);
 }
 
-// The game pauses while the menu or the LOAD GAME window is up, and its
+// The USER pause cause (the PAUSE hotkey, QUICK MENU's PAUSE, GAME > PAUSE):
+// only the player lifts it. Paused, the status line says so by itself.
+static void toggle_user_pause(App* app)
+{
+    if (!game_running(app))
+    {
+        return;
+    }
+    app->ui.user_paused = !app->ui.user_paused;
+    set_status(app, app->ui.user_paused ? "" : piccolo_text(&app->strings, Str::status_resumed));
+}
+
+// (UI modes, further down.)
+static UiDerived app_derive(const App* app);
+static void ui_follow_changes(App* app);
+
+// The game pauses for the causes ui_derive() finds (ui_mode.h), and its
 // queued audio is dropped so resuming doesn't play stale sound.
 static void update_pause(App* app)
 {
-    bool menu_open = app->menu_visible || app->picker.open || app->shader_picker.open || app->settings_window.open ||
-                     app->settings_window.image_open || app->quick_menu.open || app->core_options_manager ||
-                     app->input_window.open || map_window_open_now(&app->map_window) || app->ports_widget.open ||
-                     app->onscreen_pad.editor.active;
-    // The text box always pauses (the core's text isn't typed into a running game).
-    bool pause_for_menu = (menu_open && settings_get_bool(&app->settings, PICCOLO_PAUSE_IN_MENU)) || app->remap_prompt ||
-                          text_input_pending(app);
-    if (app->headless.on)
-    {
-        pause_for_menu = text_input_pending(app);   // nobody sees the menus here; the core's text box still waits
-    }
-    // Not while a device streams: whoever plays is looking at the phone, not
-    // at this window.
-    bool pause_for_focus = !app->window_focused && !app->net_streaming &&
-                           settings_get_bool(&app->settings, PICCOLO_PAUSE_ON_FOCUS_LOSS);
-    bool pause = game_running(app) && (pause_for_menu || pause_for_focus || app->net_paused || app->disconnect_paused);
+    app->ui_derived = app_derive(app);
+    bool pause = game_running(app) && app->ui_derived.pause != 0;
     if (pause && !app->session.paused)
     {
         audio_output_clear(&app->session.audio);
@@ -809,7 +814,9 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     if (started)
     {
         app->crashed_core.clear();   // answered (or not this core's turn): it runs again
-        app->menu_visible = false;   // straight into the game
+        app->played_with_gamepad = false;   // what plays this game is seen again
+        ui_game_started(&app->ui);   // straight into the game, everything closed
+        ui_follow_changes(app);
         std::snprintf(app->last_core, sizeof(app->last_core), "%s", choice->core_path);
         if (choice->content_path[0] != '\0')
         {
@@ -1089,47 +1096,11 @@ static void share_update(App* app, ShareTransferLine* line)
     }
 }
 
-// GAME > RESUME: back to the game whatever is up. Also the way out when
-// something holds the input: every window closes, a SET or a macro recording
-// is cancelled and the router runs again (both suspend it).
-static void resume_game(App* app)
-{
-    if (!game_running(app))
-    {
-        return;
-    }
-    if (app->quick_menu.macro_record != 0)
-    {
-        app->quick_menu.macro_record = 0;
-    }
-    if (map_window_open_now(&app->map_window))
-    {
-        map_window_close(&app->map_window, &app->input);
-    }
-    input_capture_cancel(&app->input);
-    app->input.suspended = false;
-    app->input_window.capturing = false;
-    app->quick_menu.capturing = false;
-    if (app->onscreen_pad.editor.active)
-    {
-        onscreen_pad_edit_end(&app->onscreen_pad);
-    }
-    if (app->ports_widget.open)
-    {
-        ports_widget_close(&app->ports_widget, &app->input);
-    }
-    app->picker.open = false;
-    app->shader_picker.open = false;
-    app->settings_window.open = false;
-    app->settings_window.image_open = false;
-    app->quick_menu.open = false;
-    app->core_options_manager = false;
-    app->cores_window.open = false;
-    app->share_window.open = false;
-    app->input_window.open = false;
-    app->show_debug_window = false;
-    app->menu_visible = false;
-}
+// (UI modes, further down.)
+static void resume_game(App* app);
+static void app_enter_game(App* app);
+static void app_leave_main_menu(App* app);
+static void net_answer_load(App* app, NetContentStatus status);
 
 static void handle_menu_action(App* app, MenuAction action)
 {
@@ -1145,7 +1116,11 @@ static void handle_menu_action(App* app, MenuAction action)
             file_picker_open(&app->picker, &app->catalog, app->last_folder, app->last_core, &game_folders);
             break;
         }
-        case MenuAction::resume:
+        case MenuAction::pause:
+            // PAUSE: the player's pause, back to the (paused) game; RESUME
+            // lifts it. Either way everything closes and any input grab is
+            // cancelled: the way out when something holds the input.
+            toggle_user_pause(app);
             resume_game(app);
             break;
         case MenuAction::reset:
@@ -1153,20 +1128,20 @@ static void handle_menu_action(App* app, MenuAction action)
             {
                 libretro_host_reset(app->session.host);
                 set_status(app, piccolo_text(&app->strings, Str::status_reset));
-                app->menu_visible = false;
+                app_leave_main_menu(app);
             }
             break;
         case MenuAction::save_state:
             if (save_state_with_thumbnail(app))
             {
-                app->menu_visible = false;
+                app_leave_main_menu(app);
             }
             set_status(app, app->session.message);
             break;
         case MenuAction::load_state:
             if (core_session_load_state(&app->session))
             {
-                app->menu_visible = false;
+                app_leave_main_menu(app);
             }
             set_status(app, app->session.message);
             break;
@@ -1312,7 +1287,7 @@ static void stream_frame_delay(App* app)
     if (app->stream_tuning.delay == NetStreamDelay::automatic)
     {
         // The player is on the phone: focus doesn't matter here, the menu does.
-        if (app->menu_visible || app->picker.open || app->settings_window.open || app->settings_window.image_open)
+        if (app->ui_derived.frame_delay_interrupt)
         {
             auto_frame_delay_interrupt(&app->stream_auto_delay);
         }
@@ -1356,9 +1331,7 @@ static void frame_delay(App* app)
     uint32_t use = static_cast<uint32_t>(manual_ms > 0 ? manual_ms : 0);
     if (automatic)
     {
-        bool menu_open = app->menu_visible || app->picker.open || app->settings_window.open ||
-                         app->settings_window.image_open;
-        if (menu_open || !app->window_focused)
+        if (app->ui_derived.frame_delay_interrupt || !app->window_focused)
         {
             auto_frame_delay_interrupt(&app->auto_delay);
         }
@@ -1511,150 +1484,6 @@ static void measure_shader_check(App* app)
     }
 }
 
-// A window is open over the menu bar (or the game).
-static bool any_window_open(const App* app)
-{
-    return app->picker.open || app->shader_picker.open || shader_check_asking(app) || app->settings_window.open ||
-           app->settings_window.image_open ||
-           app->quick_menu.open || app->core_options_manager || app->cores_window.open || app->share_window.open ||
-           app->safe_start_open ||
-           app->show_debug_window || app->input_window.open ||
-           map_window_open_now(&app->map_window) || text_input_pending(app) || app->ports_widget.open ||
-           app->onscreen_pad.editor.active;
-}
-
-// A menu or a dialog is up: the controllers drive it, not the game.
-static bool ui_is_up(const App* app)
-{
-    return app->menu_visible || !game_running(app) || any_window_open(app) || app->remap_prompt;
-}
-
-// The game has the keyboard: its keys go to the core (and are the RetroPad).
-static bool game_has_keyboard(const App* app)
-{
-    return !ui_is_up(app);
-}
-
-// Escape / BACK: close the topmost window first (IMAGE SETTINGS, SETTINGS,
-// LOAD GAME...); otherwise show/hide the menu (it stays up when nothing runs).
-static void close_topmost_or_toggle_menu(App* app)
-{
-    {
-        if (app->onscreen_pad.editor.active)
-        {
-            onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: Escape is DONE
-        }
-        else if (app->ports_widget.open)
-        {
-            ports_widget_close(&app->ports_widget, &app->input);   // DEVICES covers everything
-        }
-        else if (text_input_pending(app))
-        {
-            libretro_host_text_input_answer(app->session.host, nullptr);   // the core's box is on top: cancelled
-        }
-        else if (shader_check_asking(app))
-        {
-            shader_check_answer(app, ShaderCheckChoice::revert);   // on top of everything: Esc reverts
-        }
-        else if (map_window_open_now(&app->map_window))
-        {
-            map_window_close(&app->map_window, &app->input);
-        }
-        else if (app->shader_picker.open)   // opened from the QUICK MENU: closes before it
-        {
-            app->shader_picker.open = false;
-        }
-        else if (app->quick_menu.open)
-        {
-            app->quick_menu.open = false;
-        }
-        else if (app->core_options_manager)
-        {
-            app->core_options_manager = false;
-        }
-        else if (app->cores_window.open)
-        {
-            app->cores_window.open = false;
-        }
-        else if (app->share_window.open)
-        {
-            if (app->share_window.conflicts.empty())   // otherwise its REPLACE? question takes Escape
-            {
-                app->share_window.open = false;
-            }
-        }
-        else if (app->input_window.open)
-        {
-            if (!app->input_window.capturing)   // Escape cancels a SET instead
-            {
-                app->input_window.open = false;
-            }
-        }
-        else if (app->picker.open && app->picker.mode == FilePickerMode::folder)
-        {
-            app->picker.open = false;   // CHOOSE FOLDER sits on top of SETTINGS: it goes first
-        }
-        else if (app->settings_window.image_open)
-        {
-            app->settings_window.image_open = false;
-        }
-        else if (app->settings_window.open)
-        {
-            app->settings_window.open = false;
-        }
-        else if (app->picker.open)
-        {
-            app->picker.open = false;
-        }
-        else if (game_running(app))
-        {
-            app->menu_visible = !app->menu_visible;
-        }
-    }
-}
-
-// The hotkeys of this frame (input_bindings: keyboard F1 / F2 / F4 / Escape,
-// or HOTKEY ENABLE + a button on a gamepad).
-static void app_handle_hotkeys(App* app, const InputFrame* frame)
-{
-    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_menu)])
-    {
-        close_topmost_or_toggle_menu(app);
-    }
-    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_quick_menu)])
-    {
-        if (app->quick_menu.open)
-        {
-            app->quick_menu.open = false;
-        }
-        else if (game_running(app))
-        {
-            quick_menu_open(&app->quick_menu, app->session.state_slot);
-            app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
-        }
-    }
-    // DEVICES: in a game with nothing else up; the same hotkey closes it.
-    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_ports)])
-    {
-        if (app->ports_widget.open)
-        {
-            ports_widget_close(&app->ports_widget, &app->input);
-        }
-        else if (game_running(app) && !ui_is_up(app) && app->ports_widget.port_count > 0)
-        {
-            ports_widget_open(&app->ports_widget, &app->input);
-        }
-    }
-    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_save_state)])
-    {
-        handle_menu_action(app, MenuAction::save_state);
-    }
-    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_load_state)])
-    {
-        handle_menu_action(app, MenuAction::load_state);
-    }
-}
-
 // Gamepads drive the menus and dialogs as the keyboard does: their
 // interface actions become ImGui's arrow keys and Space (activate); BACK
 // closes an open list or popup, otherwise the topmost window (as Escape).
@@ -1672,6 +1501,488 @@ static const UiKey UI_KEYS[] = {
     {InputAction::ui_accept, ImGuiKey_Space},
 };
 constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
+
+// ---------------------------------------------------------------------------
+// UI modes (ui_mode.h): what has the screen and the input
+// ---------------------------------------------------------------------------
+//
+// app->ui is the truth. The windows keep their own open flags (their
+// modules close themselves: an X, a choice); ui_sync_windows() keeps MAIN
+// MENU's stack in step with them, once per loop. Every mode change goes
+// through ui_follow_changes(): held keys are let go, input grabs cancelled,
+// and whatever the old mode had open closes.
+
+// A MAIN MENU window's own open flag, in its module.
+static bool window_flag(const App* app, UiWindow window)
+{
+    switch (window)
+    {
+        case UiWindow::load_game:
+            return app->picker.open && app->picker.mode != FilePickerMode::folder;
+        case UiWindow::choose_folder:
+            return app->picker.open && app->picker.mode == FilePickerMode::folder;
+        case UiWindow::settings:
+            return app->settings_window.open;
+        case UiWindow::image_settings:
+            return app->settings_window.image_open;
+        case UiWindow::core_options:
+            return app->core_options_manager;
+        case UiWindow::cores:
+            return app->cores_window.open;
+        case UiWindow::share:
+            return app->share_window.open;
+        case UiWindow::input:
+            return app->input_window.open;
+        case UiWindow::map_controller:
+            return map_window_open_now(&app->map_window);
+        case UiWindow::safe_start:
+            return app->safe_start_open;
+        case UiWindow::debug:
+            return app->show_debug_window;
+        case UiWindow::pad_editor:
+            return app->onscreen_pad.editor.active;
+        case UiWindow::none:
+        case UiWindow::count:
+            break;
+    }
+    return false;
+}
+
+// Closes a MAIN MENU window through its module.
+static void window_close(App* app, UiWindow window)
+{
+    switch (window)
+    {
+        case UiWindow::load_game:
+        case UiWindow::choose_folder:
+            app->picker.open = false;
+            break;
+        case UiWindow::settings:
+            app->settings_window.open = false;
+            break;
+        case UiWindow::image_settings:
+            app->settings_window.image_open = false;
+            break;
+        case UiWindow::core_options:
+            app->core_options_manager = false;
+            break;
+        case UiWindow::cores:
+            app->cores_window.open = false;
+            break;
+        case UiWindow::share:
+            app->share_window.open = false;
+            break;
+        case UiWindow::input:
+            app->input_window.open = false;
+            break;
+        case UiWindow::map_controller:
+            map_window_close(&app->map_window, &app->input);
+            break;
+        case UiWindow::safe_start:
+            app->safe_start_open = false;   // no answer: the game doesn't start
+            if (app->net_load_waiting && !app->has_pending_start)
+            {
+                net_answer_load(app, NetContentStatus::failed);
+            }
+            break;
+        case UiWindow::debug:
+            app->show_debug_window = false;
+            break;
+        case UiWindow::pad_editor:
+            onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
+            break;
+        case UiWindow::none:
+        case UiWindow::count:
+            break;
+    }
+}
+
+// What grabs the input now, from the modules' own state.
+static UiGrab grab_now(const App* app)
+{
+    if (app->quick_menu.macro_record != 0)
+    {
+        return UiGrab::macro;
+    }
+    if (app->input.suspended)
+    {
+        return UiGrab::mapping;
+    }
+    if (app->input.capture.active)
+    {
+        return UiGrab::capture;
+    }
+    return UiGrab::none;
+}
+
+// Every input grab ends: a SET waiting for a key, MAP CONTROLLER (it
+// closes: it can't go on without the router suspended), the macro
+// recorder. The router runs again.
+static void cancel_grabs(App* app)
+{
+    if (app->quick_menu.macro_record != 0)
+    {
+        app->quick_menu.macro_record = 0;
+    }
+    if (map_window_open_now(&app->map_window) && app->input.suspended)
+    {
+        map_window_close(&app->map_window, &app->input);
+    }
+    input_capture_cancel(&app->input);
+    app->input.suspended = false;
+    app->input_window.capturing = false;
+    app->quick_menu.capturing = false;
+    ui_grab_end(&app->ui);
+}
+
+// What changed hands: nothing held acts in the new mode (the key that did
+// it included), on the router's side and ImGui's.
+static void release_input(App* app)
+{
+    input_hold_until_released(&app->input);
+    cancel_grabs(app);
+    ImGuiIO& io = ImGui::GetIO();
+    for (size_t i = 0; i < UI_KEY_COUNT; i++)
+    {
+        if (app->ui_keys_down[i])
+        {
+            io.AddKeyEvent(UI_KEYS[i].key, false);
+            app->ui_keys_down[i] = false;
+        }
+    }
+    io.ClearInputKeys();
+    app->ui_back_since_ms = 0;
+    app->ui_back_done = false;
+}
+
+// The widget that just stopped being the mode gets its own back: the core's
+// text box is cancelled (the core waits for an answer), KEEP / REVERT reverts.
+static void widget_left(App* app, UiWidget widget)
+{
+    switch (widget)
+    {
+        case UiWidget::ports:
+            if (app->ports_widget.open)
+            {
+                ports_widget_close(&app->ports_widget);
+            }
+            break;
+        case UiWidget::text_input:
+            if (text_input_pending(app))
+            {
+                libretro_host_text_input_answer(app->session.host, nullptr);
+            }
+            break;
+        case UiWidget::shader_check:
+            if (shader_check_asking(app))
+            {
+                shader_check_answer(app, ShaderCheckChoice::revert);
+            }
+            break;
+        case UiWidget::dvr:
+        case UiWidget::none:
+            break;
+    }
+}
+
+// After a transition: if the mode changed, input is released and what the
+// old mode had open closes.
+static void ui_follow_changes(App* app)
+{
+    if (app->ui.changes == app->ui_changes_seen)
+    {
+        return;
+    }
+    app->ui_changes_seen = app->ui.changes;
+    release_input(app);
+    for (uint32_t w = 1; w < UI_WINDOW_MAX; w++)
+    {
+        UiWindow window = static_cast<UiWindow>(w);
+        if (window_flag(app, window) && !ui_window_open(&app->ui, window))
+        {
+            window_close(app, window);
+        }
+    }
+    if (app->ui.mode != UiMode::quick_menu)
+    {
+        app->quick_menu.open = false;
+        app->shader_picker.open = false;   // QUICK MENU > SHADER > CHOOSE
+    }
+    UiWidget widget = app->ui.mode == UiMode::widget ? app->ui.widget : UiWidget::none;
+    if (app->ui_widget_applied != widget)
+    {
+        widget_left(app, app->ui_widget_applied);
+        app->ui_widget_applied = widget;
+    }
+}
+
+static void app_enter_game(App* app)
+{
+    ui_enter_game(&app->ui);
+    ui_follow_changes(app);
+}
+
+// A menu bar action done (RESET, SAVE STATE...): back to the game. From a
+// hotkey in QUICK MENU or a widget, what's up stays.
+static void app_leave_main_menu(App* app)
+{
+    if (app->ui.mode == UiMode::main_menu)
+    {
+        app_enter_game(app);
+    }
+}
+
+static void app_enter_main_menu(App* app)
+{
+    ui_enter_main_menu(&app->ui);
+    ui_follow_changes(app);
+}
+
+static void app_open_quick_menu(App* app)
+{
+    if (ui_enter_quick_menu(&app->ui))
+    {
+        quick_menu_open(&app->quick_menu, app->session.state_slot);
+        app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
+    }
+    ui_follow_changes(app);
+}
+
+static void app_open_widget(App* app, UiWidget widget)
+{
+    if (ui_enter_widget(&app->ui, widget) && widget == UiWidget::ports)
+    {
+        ports_widget_open(&app->ports_widget, &app->input);
+    }
+    ui_follow_changes(app);
+}
+
+// MAIN MENU's stack follows the windows' own flags: one opened by its
+// module (SETTINGS' CHOOSE FOLDER, INPUT's MAP CONTROLLER, a MAP CONTROLLER
+// offer during play) is pushed, entering MAIN MENU; one that closed itself
+// leaves the stack.
+static void ui_sync_windows(App* app)
+{
+    for (uint32_t w = 1; w < UI_WINDOW_MAX; w++)
+    {
+        UiWindow window = static_cast<UiWindow>(w);
+        bool open = window_flag(app, window);
+        bool listed = ui_window_open(&app->ui, window);
+        if (open && !listed)
+        {
+            ui_push_window(&app->ui, window);
+        }
+        else if (!open && listed)
+        {
+            ui_remove_window(&app->ui, window);
+        }
+    }
+    ui_follow_changes(app);
+}
+
+// QUICK MENU and widgets that closed themselves go back to the game; the
+// windows the game asks for (a core's text box, KEEP / REVERT) open from
+// GAME or QUICK MENU. In MAIN MENU they wait until it's closed: they don't
+// take over what the player is doing there.
+static void ui_follow_widgets(App* app)
+{
+    if (app->ui.mode == UiMode::quick_menu && !app->quick_menu.open)
+    {
+        app_enter_game(app);
+    }
+    if (app->ui.mode == UiMode::widget)
+    {
+        bool up = true;
+        switch (app->ui.widget)
+        {
+            case UiWidget::ports:
+                up = app->ports_widget.open;
+                break;
+            case UiWidget::text_input:
+                up = text_input_pending(app);
+                break;
+            case UiWidget::shader_check:
+                up = shader_check_asking(app);
+                break;
+            case UiWidget::dvr:
+            case UiWidget::none:
+                break;
+        }
+        if (!up)
+        {
+            app->ui_widget_applied = UiWidget::none;   // answered: nothing more to do for it
+            app_enter_game(app);
+        }
+    }
+    if (app->ui.mode == UiMode::game || app->ui.mode == UiMode::quick_menu)
+    {
+        if (text_input_pending(app))
+        {
+            app_open_widget(app, UiWidget::text_input);
+        }
+        else if (shader_check_asking(app))
+        {
+            app_open_widget(app, UiWidget::shader_check);
+        }
+    }
+}
+
+// A grab's start and end, as the modules report them; a grab whose owner
+// is gone (its window closed some way that didn't end it) is cancelled.
+static void ui_follow_grabs(App* app)
+{
+    UiGrab now = grab_now(app);
+    if (now != UiGrab::none && app->ui.grab == UiGrab::none)
+    {
+        ui_grab_begin(&app->ui, now);
+    }
+    else if (now == UiGrab::none && app->ui.grab != UiGrab::none)
+    {
+        ui_grab_end(&app->ui);
+    }
+    if (ui_grab_orphaned(&app->ui))
+    {
+        SDL_Log("Input grab left behind by its window: cancelled");
+        cancel_grabs(app);
+    }
+}
+
+static bool gamepad_on_a_port(const App* app);   // (input, further down)
+
+// The facts ui_derive() needs, and what it says for this loop.
+static UiDerived app_derive(const App* app)
+{
+    UiFacts facts = {};
+    facts.pause_in_menu = settings_get_bool(&app->settings, PICCOLO_PAUSE_IN_MENU);
+    facts.pause_on_focus_loss = settings_get_bool(&app->settings, PICCOLO_PAUSE_ON_FOCUS_LOSS);
+    facts.focused = app->window_focused;
+    facts.streaming = app->net_streaming;
+    facts.headless = app->headless.on;
+    facts.pause_on_disconnect = settings_get_bool(&app->settings, PICCOLO_PAUSE_ON_DISCONNECT);
+    facts.played_with_gamepad = app->played_with_gamepad;
+    facts.gamepad_on_port = gamepad_on_a_port(app);
+    facts.background = app->android_background;
+    return ui_derive(&app->ui, &facts);
+}
+
+// The game has the keyboard and the controllers (GAME mode): its keys go
+// to the core. Anything else up (QUICK MENU, a window widget, MAIN MENU)
+// stops the core's input; HUD widgets don't.
+static bool game_has_keyboard(const App* app)
+{
+    return game_running(app) && app->ui.mode == UiMode::game;
+}
+
+static bool ui_is_up(const App* app)
+{
+    return !game_has_keyboard(app);
+}
+
+// Escape / B: back, the same in every mode (ui_back): a grab is cancelled,
+// QUICK MENU's view or MAIN MENU's top window closes, then the game.
+static void ui_do_back(App* app)
+{
+    bool sub_view = app->shader_picker.open || (app->quick_menu.remap && !app->quick_menu.capturing);
+    switch (ui_back(&app->ui, sub_view))
+    {
+        case UiBack::none:
+            break;
+        case UiBack::cancel_grab:
+            cancel_grabs(app);
+            break;
+        case UiBack::close_sub_view:
+            if (app->shader_picker.open)
+            {
+                app->shader_picker.open = false;
+            }
+            else
+            {
+                app->quick_menu.remap = false;
+            }
+            break;
+        case UiBack::close_widget:
+        case UiBack::to_game:
+            app_enter_game(app);   // (a widget's own back runs as it stops being the mode)
+            break;
+        case UiBack::close_window:
+        {
+            UiWindow top = ui_top_window(&app->ui);
+            if (top == UiWindow::share && !app->share_window.conflicts.empty())
+            {
+                break;   // its REPLACE? question takes Escape
+            }
+            window_close(app, top);
+            ui_remove_window(&app->ui, top);
+            break;
+        }
+    }
+}
+
+// GAME > RESUME: back to the game whatever is up, every grab cancelled
+// (the way out when something holds the input).
+static void resume_game(App* app)
+{
+    if (!game_running(app))
+    {
+        return;
+    }
+    cancel_grabs(app);
+    app_enter_game(app);
+}
+
+// The hotkeys of this frame (input_bindings: the keyboard's F1 / F2 / F3 /
+// F4 / Escape, or HOTKEY ENABLE + a button on a gamepad; the keyboard's
+// without Shift in MAIN MENU).
+static void app_handle_hotkeys(App* app, const InputFrame* frame)
+{
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_menu)])
+    {
+        if (app->ui.mode == UiMode::main_menu)
+        {
+            ui_do_back(app);   // its top window, then the game
+        }
+        else
+        {
+            app_enter_main_menu(app);
+        }
+    }
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_quick_menu)])
+    {
+        if (app->ui.mode == UiMode::quick_menu)
+        {
+            app_enter_game(app);
+        }
+        else if (game_running(app))
+        {
+            app_open_quick_menu(app);
+        }
+    }
+    // DEVICES: the same hotkey closes it; from any mode it replaces what's up.
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_ports)])
+    {
+        if (app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::ports)
+        {
+            app_enter_game(app);
+        }
+        else if (game_running(app) && app->ports_widget.port_count > 0)
+        {
+            app_open_widget(app, UiWidget::ports);
+        }
+    }
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_save_state)])
+    {
+        handle_menu_action(app, MenuAction::save_state);
+    }
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_load_state)])
+    {
+        handle_menu_action(app, MenuAction::load_state);
+    }
+    // PAUSE: the player's own pause; what's up stays up.
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_pause)] && game_running(app))
+    {
+        toggle_user_pause(app);
+    }
+}
 
 constexpr uint64_t UI_BACK_HOLD_MS = 600;   // hold BACK (or SELECT alone) this long to close a window
 
@@ -1720,123 +2031,19 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     else if (!app->ui_back_done && now - app->ui_back_since_ms >= UI_BACK_HOLD_MS)
     {
         app->ui_back_done = true;   // once per hold
-        close_topmost_or_toggle_menu(app);
+        ui_do_back(app);
     }
     app->ui_back_down = back_down;
 
     // OPEN MENU (START on a gamepad): the menu bar's first menu, when the bar
     // is up and nothing else is open on top of it.
     // Not for the START that just joined a port.
-    bool bar_alone = (app->menu_visible || !game_running(app)) && !any_window_open(app) &&
+    bool bar_alone = app->ui.mode == UiMode::main_menu && app->ui.window_count == 0 &&
                      !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
     if (bar_alone && frame->joined_port == INPUT_NO_PORT && frame->pressed[static_cast<uint32_t>(InputAction::ui_open_menu)])
     {
         app->open_first_menu = true;
     }
-}
-
-// HOLD START TO REMAP: the first controller on a port playing a core's
-// device it hasn't played before. START held 1 s opens the remap in the
-// quick menu; 5 s without it keeps the RetroPad and remembers that.
-constexpr uint64_t REMAP_PROMPT_MS = 5000;
-constexpr uint64_t REMAP_HOLD_MS = 1000;
-
-static void update_remap_prompt(App* app, uint64_t now_ms)
-{
-    InputSystem* input = &app->input;
-    if (!game_running(app) || input->core_name.empty())
-    {
-        app->remap_prompt = false;
-        return;
-    }
-    if (app->remap_prompt)
-    {
-        uint32_t controller = app->remap_prompt_controller;
-        bool held = input_controller_action_held(input, controller, InputAction::pad_start);
-        if (!held)
-        {
-            app->remap_prompt_start_held_ms = 0;
-        }
-        else if (app->remap_prompt_start_held_ms == 0)
-        {
-            app->remap_prompt_start_held_ms = now_ms;
-        }
-        if (held && now_ms - app->remap_prompt_start_held_ms >= REMAP_HOLD_MS)
-        {
-            app->remap_prompt = false;
-            quick_menu_open_remap(&app->quick_menu, app->session.state_slot, app->remap_prompt_port, controller);
-        }
-        else if (now_ms - app->remap_prompt_started_ms >= REMAP_PROMPT_MS)
-        {
-            app->remap_prompt = false;
-            // (The game's remap if it has one, else the core's.)
-            std::string id = input_controller_profile_id(input, controller);
-            uint32_t device = input->port_devices[app->remap_prompt_port];
-            bool game_has = input_core_profile(input, input->core_name.c_str(), input->game_name.c_str(), device, id) != nullptr;
-            InputCoreProfile* profile = input_core_profile_for(input, input->core_name.c_str(),
-                                                               game_has ? input->game_name.c_str() : "", device, id);
-            profile->decided = true;   // the RetroPad, remembered
-            if (!app->input_config_path.empty())
-            {
-                input_config_save(input, app->input_config_path.c_str());
-            }
-        }
-        return;
-    }
-    if (ui_is_up(app))
-    {
-        return;   // asked when the game is playing
-    }
-    for (uint32_t port = 0; port < INPUT_PORT_COUNT; port++)
-    {
-        for (size_t m = 0; m < input->ports[port].size(); m++)
-        {
-            uint32_t controller = input->ports[port][m];
-            const InputCoreProfile* profile = input_active_core_profile(input, controller, port);
-            if (profile == nullptr || !profile->decided)
-            {
-                app->remap_prompt = true;
-                app->remap_prompt_controller = controller;
-                app->remap_prompt_port = port;
-                app->remap_prompt_started_ms = now_ms;
-                app->remap_prompt_start_held_ms = 0;
-                return;
-            }
-        }
-    }
-}
-
-// The prompt as a line at the top of the window.
-static void draw_remap_prompt(App* app)
-{
-    if (!app->remap_prompt)
-    {
-        return;
-    }
-    const LibretroHost* host = app->session.host;
-    uint32_t port = app->remap_prompt_port;
-    const char* device = libretro_input_controller_name(&host->input_info, port, host->port_devices[port]);
-    uint64_t now = SDL_GetTicks();
-    uint64_t elapsed = now - app->remap_prompt_started_ms;
-    int left = static_cast<int>((REMAP_PROMPT_MS - (elapsed < REMAP_PROMPT_MS ? elapsed : REMAP_PROMPT_MS) + 999) / 1000);
-    char text[400] = {};
-    std::snprintf(text, sizeof(text), piccolo_text(&app->strings, Str::remap_prompt), device != nullptr ? device : "RETROPAD",
-                  static_cast<int>(port + 1), input_controller_label(&app->input, app->remap_prompt_controller).c_str(), left);
-    retro_ui_push_theme(app->pixel_font, app->ui_scale);
-    const ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, 16.0f * static_cast<float>(app->ui_scale)), ImGuiCond_Always,
-                            ImVec2(0.5f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(1.0f);
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##remap_prompt", nullptr, flags))
-    {
-        retro_ui_begin_window(app->ui_scale);
-        ImGui::TextUnformatted(text);
-        retro_ui_end_window();
-    }
-    ImGui::End();
-    retro_ui_pop_theme();
 }
 
 // MAP CONTROLLER offered: once per session for a controller SDL doesn't
@@ -1965,9 +2172,11 @@ static bool gamepad_on_a_port(const App* app)
     return false;
 }
 
-// PAUSE WHEN CONTROLLERS DISCONNECT: notes whether a gamepad or the keyboard
-// played last (a RetroPad input held in the game), and resumes on START.
-static void follow_what_plays(App* app, const InputFrame* frame)
+// PAUSE WHEN CONTROLLERS DISCONNECT: notes whether a local gamepad played
+// last (a RetroPad input held in the game), or something that never
+// disconnects that way: the keyboard, a mouse, a device's pad over the
+// network, the on-screen pad (ui_derive's CONTROLLERS cause).
+static void follow_what_plays(App* app)
 {
     uint32_t pad_actions = static_cast<uint32_t>(InputAction::pad_turbo);   // the RetroPad's buttons and sticks
     for (size_t c = 0; c < app->input.controllers.size(); c++)
@@ -1985,30 +2194,7 @@ static void follow_what_plays(App* app, const InputFrame* frame)
         const InputDevice* device = input_devices_find_const(&app->input.devices, controller->device_id);
         if (playing && device != nullptr)
         {
-            app->played_with_gamepad = device->kind == InputDeviceKind::gamepad;
-        }
-    }
-    // Closing the menu (or any window) resumes too: with every pad gone and
-    // the keyboard on no port, nothing else could (Andrés).
-    bool menu_open = app->menu_visible || any_window_open(app);
-    bool menu_closed = app->menu_was_open && !menu_open;
-    app->menu_was_open = menu_open;
-    if (!app->disconnect_paused)
-    {
-        return;
-    }
-    bool start = frame->joined_port != INPUT_NO_PORT;
-    for (uint32_t p = 0; p < INPUT_PORT_COUNT && !start; p++)
-    {
-        start = (frame->pad_buttons[p] & (1u << 3)) != 0;   // RETRO_DEVICE_ID_JOYPAD_START
-    }
-    if (start || menu_closed || !game_running(app))
-    {
-        app->disconnect_paused = false;
-        if (start || menu_closed)
-        {
-            set_status(app, piccolo_text(&app->strings, Str::status_resumed));
-            SDL_Log("Resumed: %s", start ? "START" : "the menu closed");
+            app->played_with_gamepad = device->kind == InputDeviceKind::gamepad && !device->game_only && !device->retropad;
         }
     }
 }
@@ -2040,9 +2226,20 @@ static void update_port_pings(App* app)
 
 static void app_update_input(App* app)
 {
-    bool ui_up = ui_is_up(app);
-    app->input.settings.ui_active = ui_up;   // the INTERFACE layer
+    // The mode first (windows that opened or closed themselves, widgets,
+    // grabs), then what it means for the router.
+    if (!game_running(app))
+    {
+        ui_game_stopped(&app->ui);
+    }
+    ui_sync_windows(app);
+    ui_follow_widgets(app);
+    ui_follow_grabs(app);
+    app->ui_derived = app_derive(app);
+    bool ui_up = app->ui_derived.interface_layer;
     piccolo_settings_input(&app->settings, &app->input.settings);   // SETTINGS > INPUT, per core / game too
+    app->input.settings.ui_active = ui_up;   // the INTERFACE layer: the core gets no input
+    app->input.settings.keyboard_hotkeys_free = app->ui_derived.keyboard_hotkeys_free;   // MAIN MENU: no Shift
     text_input_set_osk(&app->shell.text_input, piccolo_settings_osk(&app->settings) ? TextInputOsk::on : TextInputOsk::off);
     // The core and the device on each port: a controller's bindings for them.
     app->input.core_name = game_running(app) ? app->core_name : "";
@@ -2055,10 +2252,9 @@ static void app_update_input(App* app)
     // held (drawn last frame) goes to the router while a game plays.
     OnscreenPadShow show = static_cast<OnscreenPadShow>(piccolo_settings_touch_pad(&app->settings));
     onscreen_pad_update(&app->onscreen_pad, &app->input, onscreen_pad_enabled(&app->onscreen_pad, show), show,
-                        game_running(app) && !ui_up);
+                        app->ui_derived.overlay_active);
     InputFrame frame = {};
     input_update(&app->input, SDL_GetTicks(), &frame);
-    update_remap_prompt(app, SDL_GetTicks());
     offer_mapping(app, &frame);
     update_cursors(app, &frame, ui_up);
     if (frame.profiles_changed && !app->input_config_path.empty())
@@ -2080,15 +2276,15 @@ static void app_update_input(App* app)
         SDL_Log("%s", message);
         // No CONTROLS here (Andrés): joining again is just START. The game
         // pauses if that was the last gamepad playing (the setting).
+        // (ui_derive's CONTROLLERS cause; it lifts by itself when one is back.)
         if (game_running(app) && settings_get_bool(&app->settings, PICCOLO_PAUSE_ON_DISCONNECT) &&
             app->played_with_gamepad && !gamepad_on_a_port(app))
         {
-            app->disconnect_paused = true;
             set_status(app, piccolo_text(&app->strings, Str::status_paused_disconnected));
             SDL_Log("Paused: the last gamepad playing went away");
         }
     }
-    follow_what_plays(app, &frame);
+    follow_what_plays(app);
     // The ports' tabs and DEVICES: its moves first (each controller reads
     // its own buttons), then who is where.
     bool board_was_open = app->ports_widget.open;
@@ -2101,9 +2297,12 @@ static void app_update_input(App* app)
     // its BACK (Escape too) only closes it.
     bool board = board_was_open || app->ports_widget.open;
     drive_ui_with_gamepads(app, &frame, ui_up && !board);
-    if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open)
+    // Escape in the UI: back, at once (an open list or popup is ImGui's: it
+    // closes on the same key).
+    if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open &&
+        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
     {
-        close_topmost_or_toggle_menu(app);   // Escape in the UI: back, at once
+        ui_do_back(app);
     }
     // PAGE LEFT / RIGHT change tabs (not while typing in a field).
     int page = 0;
@@ -2132,6 +2331,15 @@ static void app_handle_events(App* app)
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        // The keyboard's Escape always cancels an input grab (SET, MAP
+        // CONTROLLER, the macro recorder), before anything else sees it:
+        // the router is off or reading raw controls meanwhile.
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE && grab_now(app) != UiGrab::none)
+        {
+            SDL_Log("Escape: input grab cancelled");
+            cancel_grabs(app);
+            continue;
+        }
         if (core_session_handle_event(&app->session, &app->shell, &event, game_has_keyboard(app)))
         {
             continue;
@@ -2145,10 +2353,6 @@ static void app_handle_events(App* app)
         input_sdl_handle_event(&app->input_sdl, &app->input, &event);
         const ImGuiIO& io = ImGui::GetIO();
         onscreen_pad_event(&app->onscreen_pad, &event, io.DisplaySize.x, io.DisplaySize.y);
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_ESCAPE && app->input.suspended)
-        {
-            map_window_close(&app->map_window, &app->input);   // the router is off while mapping: Escape still gives up
-        }
 
         if ((event.type == SDL_EVENT_AUDIO_DEVICE_ADDED || event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED) &&
             !event.adevice.recording)
@@ -2158,6 +2362,16 @@ static void app_handle_events(App* app)
         if (event.type == SDL_EVENT_QUIT)
         {
             app->running = false;
+        }
+        // Android: the BACKGROUND pause cause (SDL keeps running a little while
+        // the app is behind another one).
+        if (event.type == SDL_EVENT_DID_ENTER_BACKGROUND)
+        {
+            app->android_background = true;
+        }
+        if (event.type == SDL_EVENT_WILL_ENTER_FOREGROUND || event.type == SDL_EVENT_DID_ENTER_FOREGROUND)
+        {
+            app->android_background = false;
         }
         if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED || event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
         {
@@ -2775,7 +2989,7 @@ static NetRemoteGame net_remote_game(const App* app)
     NetRemoteGame game;
     game.running = game_running(app);
     game.slot = app->session.state_slot;
-    game.paused = app->net_paused;
+    game.paused = app->ui.user_paused;
     return game;
 }
 
@@ -2818,7 +3032,7 @@ static void headless_back(App* app, bool pause)
     headless_leave(&app->headless, app->shell.window);
     if (pause && game_running(app))
     {
-        app->disconnect_paused = true;
+        app->ui.user_paused = true;   // it stays paused until the player here goes on
         set_status(app, piccolo_text(&app->strings, Str::status_headless_paused));
     }
     else
@@ -3113,15 +3327,11 @@ static void net_follow_remote(App* app)
         }
         size = net_remote_next_change(&app->net_remote, &app->settings);
     }
-    // A PAUSE from a device ends with another game (or none).
-    if (app->net_paused && game_running(app) != app->net_actions_sent.running)
-    {
-        app->net_paused = false;
-    }
     // A device whose access changed (NETWORK): its new welcome went out with
     // net_access_set_level; its action list follows at once, and what its new
-    // level doesn't cover stops: remote play, a FAST FORWARD it holds, a PAUSE
-    // it made (STREAM since 2026-11-20). Speed tests and pads are GAMEPAD.
+    // level doesn't cover stops: remote play and a FAST FORWARD it holds
+    // (STREAM since 2026-11-20; a PAUSE it made stays: only a player lifts
+    // it). Speed tests and pads are GAMEPAD.
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
         if (app->net_service.access.peers[i].state != NetAccessPeerState::authorized ||
@@ -3138,11 +3348,6 @@ static void net_follow_remote(App* app)
             {
                 headless_back(app, true);   // remote play (and so the game) needs STREAM
                 headless_tell(app);
-            }
-            if (app->net_paused && app->net_paused_by == i)
-            {
-                app->net_paused = false;   // it can't resume it any more
-                set_status(app, piccolo_text(&app->strings, Str::status_resumed));
             }
             net_service_set_stream(&app->net_service, i, 0);   // remote play needs STREAM
             app->stream_tuning_set[i] = false;
@@ -3218,10 +3423,11 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
     }
     else if (*key == "pause")
     {
-        app->net_paused = !app->net_paused;
-        app->net_paused_by = peer;
+        // The USER pause, the same as here: only a player lifts it (this
+        // device, another one, or here), even after this device leaves.
+        app->ui.user_paused = game_running(app) && !app->ui.user_paused;
         char status[256];
-        if (app->net_paused)
+        if (app->ui.user_paused)
         {
             std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_paused_remotely),
                           device);
@@ -3888,11 +4094,6 @@ static void net_update_locked(App* app)
                 app->net_fast_forward[event.peer] = false;   // a dropped device doesn't keep it held
                 app->net_peer_language[event.peer][0] = '\0';
                 app->net_devices_wanted[event.peer] = false;
-                if (app->net_paused && app->net_paused_by == event.peer)
-                {
-                    app->net_paused = false;   // nobody here could resume it
-                    set_status(app, piccolo_text(&app->strings, Str::status_resumed));
-                }
             }
             if (app->net_load_waiting && app->net_load_peer == event.peer)
             {
@@ -3966,6 +4167,44 @@ static void net_update_locked(App* app)
     net_follow_stream_tuning(app);
 }
 
+// The status line's text: why the game is paused, if it is ("PAUSED: MENU,
+// FOCUS"), then the last message.
+static void status_line_text(const App* app, char* out, size_t size)
+{
+    static const Str CAUSES[] = {Str::pause_cause_menu, Str::pause_cause_focus, Str::pause_cause_controllers,
+                                 Str::pause_cause_user, Str::pause_cause_background};
+    static_assert(sizeof(CAUSES) / sizeof(CAUSES[0]) == static_cast<size_t>(UiPause::count), "a name per cause");
+    out[0] = '\0';
+    if (!game_running(app) || app->ui_derived.pause == 0)
+    {
+        std::snprintf(out, size, "%s", app->status);
+        return;
+    }
+    char causes[160] = {};
+    size_t used = 0;
+    for (uint32_t c = 0; c < static_cast<uint32_t>(UiPause::count); c++)
+    {
+        if ((app->ui_derived.pause & ui_pause_bit(static_cast<UiPause>(c))) == 0)
+        {
+            continue;
+        }
+        int written = std::snprintf(causes + used, sizeof(causes) - used, "%s%s", used > 0 ? ", " : "",
+                                    piccolo_text(&app->strings, CAUSES[c]));
+        used = written > 0 && static_cast<size_t>(written) < sizeof(causes) - used ? used + static_cast<size_t>(written)
+                                                                                    : sizeof(causes) - 1;
+    }
+    char why[200] = {};
+    std::snprintf(why, sizeof(why), piccolo_text(&app->strings, Str::paused_why), causes);
+    if (app->status[0] != '\0')
+    {
+        std::snprintf(out, size, "%s - %s", why, app->status);
+    }
+    else
+    {
+        std::snprintf(out, size, "%s", why);
+    }
+}
+
 // INTERFACE > BACKDROP: while a menu or a window (DEVICES too) is up over a
 // game, the whole game is covered by black at that opacity, behind every
 // window (the menu bar stays on top of it): the UI reads well over any
@@ -4000,7 +4239,8 @@ static bool app_frame(App* app)
         core_session_stop(&app->session, &app->shell);   // writes save RAM
         remove_running_marker(app);   // a proper end
         update_settings_context(app);
-        app->menu_visible = true;
+        ui_game_stopped(&app->ui);
+        ui_follow_changes(app);
         set_status(app, piccolo_text(&app->strings, Str::status_game_closed));
     }
     if (app->has_pending_start)
@@ -4015,6 +4255,10 @@ static bool app_frame(App* app)
         }
     }
     update_pause(app);
+    if (app->menus_built_paused != app->ui.user_paused)
+    {
+        build_menus(app);   // GAME > PAUSE / RESUME
+    }
     app->session.timing.mode = piccolo_settings_timing(&app->settings);
     if (app->headless.on)
     {
@@ -4098,7 +4342,8 @@ static bool app_frame(App* app)
     if (ran == CoreSessionFrame::shut_down)
     {
         set_status(app, app->session.message);
-        app->menu_visible = true;
+        ui_game_stopped(&app->ui);
+        ui_follow_changes(app);
         update_settings_context(app);
         remove_running_marker(app);   // the core shut down on its own: a proper end
     }
@@ -4115,29 +4360,39 @@ static bool app_frame(App* app)
                          : geometry->base_height > 0 ? static_cast<float>(geometry->base_width) / static_cast<float>(geometry->base_height)
                                                      : 4.0f / 3.0f;
             const ImGuiIO& io = ImGui::GetIO();
-            onscreen_pad_place(&app->onscreen_pad, game_running(app) && !ui_is_up(app), aspect, io.DisplaySize.x, io.DisplaySize.y);
+            onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, io.DisplaySize.x, io.DisplaySize.y);
         }
         draw_game(app);   // background, behind everything
-        // The touch gamepad over the game (or EDIT LAYOUT); MENU opens the QUICK MENU.
+        // The touch gamepad over the game, a GAME-mode device (it takes touches
+        // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
+        // the overlay); MENU opens the QUICK MENU.
         onscreen_pad_draw(&app->onscreen_pad, app->pixel_font, piccolo_text(&app->strings, Str::touch_pad_menu),
                           static_cast<float>(settings_get_int(&app->settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f,
                           settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
-        if (app->onscreen_pad.menu_pressed && game_running(app) && !app->quick_menu.open)
+        if (app->onscreen_pad.menu_pressed && game_has_keyboard(app))
         {
-            quick_menu_open(&app->quick_menu, app->session.state_slot);
-            app->core_options_state.choose_layer = true;
+            app_open_quick_menu(app);
         }
         // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
-        bool menu_shown = (app->menu_visible || !game_running(app)) && !app->onscreen_pad.editor.active;
+        bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
         // The ports' tabs, behind every window (they peek while the menu is up).
         ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
         draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
+        // The status line: with the menu bar, or alone over a paused game
+        // (it says why: "PAUSED: ...").
+        char status[400] = {};
+        status_line_text(app, status, sizeof(status));
+        float status_left = ports_widget_tabs_width(&app->ports_widget);
+        status_left = status_left > 4.0f ? status_left : 4.0f;
+        if (!menu_shown && game_running(app) && app->session.paused)
+        {
+            retro_ui_status_line_from(app->pixel_font, app->ui_scale, status, status_left);
+        }
         if (menu_shown)
         {
             // The status line's window goes first, so it stays behind the
             // others; it starts past the tabs.
-            float status_left = ports_widget_tabs_width(&app->ports_widget);
-            retro_ui_status_line_from(app->pixel_font, app->ui_scale, app->status, status_left > 4.0f ? status_left : 4.0f);
+            retro_ui_status_line_from(app->pixel_font, app->ui_scale, status, status_left);
             int32_t picked = retro_ui_menu_bar(app->pixel_font, app->ui_scale, app->menus.data(),
                                                static_cast<int32_t>(app->menus.size()), app->open_first_menu);
             app->open_first_menu = false;
@@ -4182,10 +4437,6 @@ static bool app_frame(App* app)
                 app->has_pending_start = true;   // see pending_start
             }
         }
-        if (!game_running(app))
-        {
-            app->quick_menu.open = false;
-        }
         QuickMenuContext quick = {};
         quick.strings = &app->strings;
         quick.session = &app->session;
@@ -4201,8 +4452,8 @@ static bool app_frame(App* app)
         quick.core_name = app->core_name;
         quick.game_name = app->game_name;
         quick.shaders_available = app->shader_library.loaded;
+        quick.user_paused = app->ui.user_paused;
         QuickMenuAction quick_action = quick_menu_draw(&app->quick_menu, &quick, app->pixel_font, app->ui_scale);
-        draw_remap_prompt(app);
         ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
         if (app->quick_menu.choose_shader_request)
         {
@@ -4223,18 +4474,21 @@ static bool app_frame(App* app)
         case QuickMenuAction::load:
             if (core_session_load_state(&app->session))
             {
-                app->quick_menu.open = false;   // back to the game
+                app_enter_game(app);   // back to the game
             }
             set_status(app, app->session.message);
             break;
         case QuickMenuAction::reset:
             libretro_host_reset(app->session.host);
             set_status(app, piccolo_text(&app->strings, Str::status_reset));
-            app->quick_menu.open = false;
+            app_enter_game(app);
             break;
         case QuickMenuAction::close_game:
             app->pending_close_game = true;   // the texture may be in this frame already
-            app->quick_menu.open = false;
+            app_enter_game(app);
+            break;
+        case QuickMenuAction::pause:
+            toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
             break;
         case QuickMenuAction::none:
             break;
