@@ -11,11 +11,16 @@
 //     opening it closes the QUICK MENU) and the game stops while it's open
 //     (its own logic, not a pause cause). Drawn with retroui's dvr_view: the
 //     game shrinks into the space above the strip.
+//     No navigation but one (Andrés, 2026-11-21): UP focuses the exit
+//     button (BACK TO NOW), DOWN or any move leaves it. Every other button
+//     acts at once.
 //       LEFT / RIGHT   a frame (SCRUB) or a snapshot; held, faster
-//       L / R          5 s (SCRUB)
-//       B (accept)     PLAY FROM HERE: play on from the cursor
+//       L / R          5 s (SCRUB) or a snapshot
+//       B (accept)     PLAY FROM HERE: play on from the cursor (the exit
+//                      button focused: BACK TO NOW)
 //       Y              WATCH: the recording plays / pauses (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
+//     Each action is logged (what it did to the cursor).
 //     The hints name the keyboard's keys when it was used last.
 //   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
 //     HERE (state_widget), or a notification card saying why it didn't open.
@@ -58,6 +63,8 @@ struct DvrWidget
 
     // The keyboard was used last (the hints show its keys, Space is WATCH).
     bool keyboard = false;
+    // UP went to the exit button: ACCEPT is BACK TO NOW.
+    bool exit_focused = false;
 
     // Thumbnails cost a load and a frame, twice: with slow loads (bsnes,
     // 20 ms) they're spaced out so stepping stays smooth.
