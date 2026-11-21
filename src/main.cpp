@@ -1664,7 +1664,7 @@ static void widget_left(App* app, UiWidget widget)
         case UiWidget::ports:
             if (app->ports_widget.open)
             {
-                ports_widget_close(&app->ports_widget);
+                ports_widget_close(&app->ports_widget, &app->input);
             }
             break;
         case UiWidget::text_input:
