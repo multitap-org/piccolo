@@ -43,6 +43,7 @@ enum class QuickMenuAction
     reset,
     close_game,
     pause,        // PAUSE / RESUME: the player's own pause (main.cpp toggles it)
+    dvr,          // open the rewind DVR (the QUICK MENU closes)
 };
 
 struct QuickMenu

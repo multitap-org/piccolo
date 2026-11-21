@@ -2272,11 +2272,17 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
         }
         ImGui::TextDisabled("%s", running);
         ImGui::Spacing();
-        float third = static_cast<float>(static_cast<int>((content_width - 2.0f * style.ItemSpacing.x) / 3.0f));
+        // PAUSE, DVR, RESET, CLOSE GAME: always there, above the tabs.
+        float third = static_cast<float>(static_cast<int>((content_width - 3.0f * style.ItemSpacing.x) / 4.0f));
         if (retro_ui_button_sized(piccolo_text(strings, context->user_paused ? Str::quick_menu_resume : Str::quick_menu_pause),
                                   third, 0.0f))
         {
             action = QuickMenuAction::pause;
+        }
+        ImGui::SameLine();
+        if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_dvr), third, 0.0f))
+        {
+            action = QuickMenuAction::dvr;   // a window widget: the QUICK MENU closes
         }
         ImGui::SameLine();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_reset), third, 0.0f))

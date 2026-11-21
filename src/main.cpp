@@ -55,6 +55,7 @@
 #include "share_window.h"
 #include "content_cache.h"
 #include "core_session.h"
+#include "dvr_widget.h"
 #include "debug_ui.h"
 #include "input_bindings.h"
 #include "input_config.h"
@@ -322,6 +323,8 @@ struct App
     PortsWidget ports_widget;          // the ports' tabs over the game, and DEVICES (the ports hotkey)
     uint64_t    ports_ping_ms = 0;     // when the tabs' pings were last read
     OnscreenPad onscreen_pad;          // the touch gamepad over the game (onscreen_pad.h)
+    DvrWidget   dvr;                   // the rewind DVR: its history and its GUI (dvr_widget.h)
+    char        rewind_note[96] = {};  // SETTINGS > GENERAL: what AUTO chose for this game
     bool      pending_close_game = false;   // CLOSE GAME: done at the top of the next loop (like starts)
 
     GameMode game_mode = {};   // held while a game runs (GAME MODE setting)
@@ -798,6 +801,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     update_settings_context(app);
     if (started)
     {
+        dvr_widget_game_started(&app->dvr, &app->session, &app->settings);   // the game's REWIND settings
         // The emulated device on each port, as kept for this core (or game).
         for (unsigned port = 0; port < LIBRETRO_MAX_PORTS; port++)
         {
@@ -1681,6 +1685,11 @@ static void widget_left(App* app, UiWidget widget)
             }
             break;
         case UiWidget::dvr:
+            if (app->dvr.open)
+            {
+                dvr_widget_close(&app->dvr);   // BACK TO NOW
+            }
+            break;
         case UiWidget::none:
             break;
     }
@@ -1751,9 +1760,16 @@ static void app_open_quick_menu(App* app)
 
 static void app_open_widget(App* app, UiWidget widget)
 {
-    if (ui_enter_widget(&app->ui, widget) && widget == UiWidget::ports)
+    if (ui_enter_widget(&app->ui, widget))
     {
-        ports_widget_open(&app->ports_widget, &app->input);
+        if (widget == UiWidget::ports)
+        {
+            ports_widget_open(&app->ports_widget, &app->input);
+        }
+        else if (widget == UiWidget::dvr)
+        {
+            dvr_widget_open(&app->dvr, &app->strings, SDL_GetTicks());   // closed at once if there's no history yet
+        }
     }
     ui_follow_changes(app);
 }
@@ -1806,6 +1822,8 @@ static void ui_follow_widgets(App* app)
                 up = shader_check_asking(app);
                 break;
             case UiWidget::dvr:
+                up = app->dvr.open;
+                break;
             case UiWidget::none:
                 break;
         }
@@ -1968,6 +1986,19 @@ static void app_handle_hotkeys(App* app, const InputFrame* frame)
         else if (game_running(app) && app->ports_widget.port_count > 0)
         {
             app_open_widget(app, UiWidget::ports);
+        }
+    }
+    // The DVR: a window widget (it replaces what's up); the same hotkey goes
+    // back to now.
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_dvr)])
+    {
+        if (app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::dvr)
+        {
+            app_enter_game(app);
+        }
+        else if (game_running(app))
+        {
+            app_open_widget(app, UiWidget::dvr);
         }
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_save_state)])
@@ -2294,14 +2325,18 @@ static void app_update_input(App* app)
     uint32_t shown_ports = game_running(app) ? piccolo_settings_ports(&app->settings, app->session.host->input_info.port_count) : 0;
     ports_widget_update(&app->ports_widget, &app->input, &app->input_net, &frame, shown_ports, SDL_GetTicks());
     update_port_pings(app);
+    // The DVR reads its buttons itself (before the hotkeys: the one that
+    // opens it doesn't act in it the same frame).
+    bool dvr_was_open = app->dvr.open;
+    dvr_widget_update(&app->dvr, &frame, &app->strings, SDL_GetTicks());
     app_handle_hotkeys(app, &frame);
     // DEVICES reads the pads itself: they don't drive ImGui meanwhile, and
-    // its BACK (Escape too) only closes it.
-    bool board = board_was_open || app->ports_widget.open;
+    // its BACK (Escape too) only closes it. The DVR the same.
+    bool board = board_was_open || app->ports_widget.open || dvr_was_open || app->dvr.open;
     drive_ui_with_gamepads(app, &frame, ui_up && !board);
     // Escape in the UI: back, at once (an open list or popup is ImGui's: it
     // closes on the same key).
-    if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open &&
+    if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open && !dvr_was_open &&
         !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
     {
         ui_do_back(app);
@@ -2554,6 +2589,12 @@ static void draw_game(App* app)
         // Upright with the touch gamepad under it: the picture keeps the top.
         input.window_height = static_cast<uint32_t>(app->onscreen_pad.picture_height);
     }
+    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale);
+    if (strip > 0.0f && static_cast<float>(input.window_height) > strip)
+    {
+        // The DVR's strip at the bottom: the game shrinks into the space above.
+        input.window_height -= static_cast<uint32_t>(strip);
+    }
     piccolo_settings_viewport(&app->settings, &input);
 
     update_shader_stages(app, input.filter);
@@ -2781,6 +2822,9 @@ static void draw_settings(App* app)
                       audio->rate.floor_ms);
     }
     context.audio_latency = audio_latency;
+    dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
+    context.rewind_note = app->rewind_note;
+    context.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
     {
@@ -2862,6 +2906,13 @@ static void draw_settings(App* app)
     {
         app->settings_window.search_frame_delay = false;
         search_frame_delay_again(app);
+    }
+    // MEASURE AGAIN: AUTO forgets this game's verdict (measured at its next start).
+    if (app->settings_window.rewind_measure_again)
+    {
+        app->settings_window.rewind_measure_again = false;
+        settings_reset(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN);
+        save_settings(app);
     }
     // SAVE THEME: into themes/ in piccolo's folder, then listed in THEME.
     if (!app->settings_window.save_theme_request.empty())
@@ -4341,6 +4392,14 @@ static bool app_frame(App* app)
     {
         input_devices_end_frame(&app->input.devices);
     }
+    // AUTO decided: kept as the game's REWIND KNOWN, so it's measured once.
+    RewindMode known = RewindMode::automatic;
+    if (dvr_widget_take_verdict(&app->dvr, &known))
+    {
+        settings_set(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN,
+                     known == RewindMode::scrub ? "scrub" : "snapshots");
+        save_settings(app);
+    }
     if (ran == CoreSessionFrame::shut_down)
     {
         set_status(app, app->session.message);
@@ -4379,6 +4438,7 @@ static bool app_frame(App* app)
         bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
         // The ports' tabs, behind every window (they peek while the menu is up).
         ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
+        dvr_widget_draw_hud(&app->dvr, app->pixel_font, app->ui_scale, SDL_GetTicks());
         draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
         // The status line: with the menu bar, or alone over a paused game
         // (it says why: "PAUSED: ...").
@@ -4457,6 +4517,7 @@ static bool app_frame(App* app)
         quick.user_paused = app->ui.user_paused;
         QuickMenuAction quick_action = quick_menu_draw(&app->quick_menu, &quick, app->pixel_font, app->ui_scale);
         ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
+        dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
         if (app->quick_menu.choose_shader_request)
         {
             app->quick_menu.choose_shader_request = false;
@@ -4491,6 +4552,9 @@ static bool app_frame(App* app)
             break;
         case QuickMenuAction::pause:
             toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
+            break;
+        case QuickMenuAction::dvr:
+            app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
             break;
         case QuickMenuAction::none:
             break;
@@ -4662,6 +4726,7 @@ static bool app_frame(App* app)
         retro_ui_cursor(app->ui_scale, ui_up);   // the theme's cursor, on top of everything
         onscreen_pad_end_frame(&app->onscreen_pad);   // (the fingers seen by this frame are done)
 
+        dvr_widget_upload(&app->dvr, &app->session, &app->shell);   // a thumbnail (moves the core and back)
         core_session_upload_video(&app->session, &app->shell);
         quick_menu_upload(&app->quick_menu, &app->shell);
         if (app_shell_acquire(&app->shell))
@@ -4964,6 +5029,7 @@ int main(int argc, char** argv)
     save_core_options(app);
     core_updater_shutdown(&app->core_updater);   // cancels a download in progress
     core_session_destroy(&app->session, &app->shell);   // writes save RAM
+    dvr_widget_destroy(&app->dvr, &app->shell);
     remove_running_marker(app);   // quit properly (a marker found at launch stays if no game ran)
     game_mode_set(&app->game_mode, false);
     if (app->audio_ready)
