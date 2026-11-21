@@ -154,7 +154,7 @@ static void scan_ports(RemapWidget* widget, const InputSystem* input, const Inpu
     // Drop the old cards nobody kept (from the back: the indexes before stay valid).
     for (size_t i = old_count; i > 0; i--)
     {
-        if (!keep[i - 1])
+        if (!keep[i - 1] && !widget->cards[i - 1].debug)
         {
             widget->cards.erase(widget->cards.begin() + static_cast<long>(i - 1));
         }
@@ -203,13 +203,21 @@ RemapWidgetResult remap_widget_update(RemapWidget* widget, InputSystem* input, c
             result.open_remap = true;
             result.port = card->port;
             result.controller = card->controller;
-            widget->answered.push_back(answer_key(card->controller, card->port));
+            if (!card->debug)
+            {
+                widget->answered.push_back(answer_key(card->controller, card->port));
+            }
             widget->cards.erase(widget->cards.begin() + static_cast<long>(i - 1));
             continue;
         }
         if (in_game && !held)
         {
             card->counted_ms += step;
+        }
+        if (card->counted_ms >= REMAP_WIDGET_ASK_MS && card->debug)
+        {
+            widget->cards.erase(widget->cards.begin() + static_cast<long>(i - 1));
+            continue;
         }
         if (card->counted_ms >= REMAP_WIDGET_ASK_MS)
         {
@@ -220,6 +228,28 @@ RemapWidgetResult remap_widget_update(RemapWidget* widget, InputSystem* input, c
         }
     }
     return result;
+}
+
+bool remap_widget_debug_card(RemapWidget* widget, const InputSystem* input, const InputSdl* sdl,
+                             const InputLayouts* layouts, uint64_t now_ms)
+{
+    if (input->ports[0].empty() || widget->cards.size() >= MAX_CARDS)
+    {
+        return false;
+    }
+    RemapCard card = {};
+    card.controller = input->ports[0][0];
+    card.port = 0;
+    card.since_ms = now_ms;
+    card.debug = true;
+    remap_key_label(input, sdl, layouts, card.controller, card.key, sizeof(card.key));
+    if (card.key[0] == '\0')
+    {
+        std::snprintf(card.key, sizeof(card.key), "%s", "START");   // (the keyboard has no REMAP key)
+    }
+    std::snprintf(card.label, sizeof(card.label), "%s", input_controller_label(input, card.controller).c_str());
+    widget->cards.push_back(card);
+    return true;
 }
 
 void remap_widget_add_hud(const RemapWidget* widget, const Localization* strings, HudStack* stack, uint64_t now_ms)

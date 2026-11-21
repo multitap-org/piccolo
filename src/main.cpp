@@ -2992,6 +2992,101 @@ static void save_after_options_windows(App* app)
     app->options_window_was_open = open;
 }
 
+// The debug window's text box answers here (a fake TEXT request).
+static void debug_text_done(const char* text)
+{
+    SDL_Log("Debug text box: %s", text != nullptr ? text : "(cancelled)");
+}
+
+// WIDGETS: every widget on demand, to see and try them without the
+// situation that brings them up (Andrés, 2026-11-21).
+static void draw_debug_widgets(App* app)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    ImGui::TextUnformatted("Widgets (HUD)");
+    if (ImGui::Button("Remap card: port 1's first controller"))
+    {
+        if (!remap_widget_debug_card(&app->remap, &app->input, &app->input_sdl, &app->layouts, now_ms))
+        {
+            SDL_Log("Debug: no controller on port 1 for a remap card");
+        }
+    }
+    ImGui::Checkbox("PAUSED icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::pause)]);
+    ImGui::SameLine();
+    ImGui::Checkbox("REWINDING icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::rewind)]);
+    ImGui::Checkbox("PLAY icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::play)]);
+    ImGui::SameLine();
+    ImGui::Checkbox("FAST FORWARD icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::fast_forward)]);
+    if (ImGui::Button("PLAY icon as after PLAY FROM HERE (2.5 s)"))
+    {
+        app->dvr.played_from_ms = now_ms;
+    }
+    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
+    static const char* const DVR_CARD_NAMES[3] = {"DVR card: OFF", "DVR card: NO SAVESTATES", "DVR card: NOTHING YET"};
+    for (uint32_t i = 0; i < 3; i++)
+    {
+        if (i > 0)
+        {
+            ImGui::SameLine();
+        }
+        if (ImGui::Button(DVR_CARD_NAMES[i]))
+        {
+            std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[i]));
+            app->dvr.hud_since_ms = now_ms;
+        }
+    }
+    if (ImGui::Button("Ports' tabs rise"))
+    {
+        bool changed[PORTS_VIEW_MAX_PORTS] = {};
+        for (uint32_t p = 0; p < PORTS_VIEW_MAX_PORTS; p++)
+        {
+            changed[p] = true;
+        }
+        ports_view_pop(&app->ports_widget.view, changed, now_ms);
+    }
+
+    ImGui::TextUnformatted("Widgets (windows; a game must run)");
+    ImGui::BeginDisabled(!game_running(app));
+    // Asked for by the user: they replace what's up, this window included.
+    if (ImGui::Button("DEVICES") && app->ports_widget.port_count > 0)
+    {
+        app_open_widget(app, UiWidget::ports);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("DVR"))
+    {
+        app_open_widget(app, UiWidget::dvr);
+    }
+    // Asked for by the game: they wait until the menu is closed.
+    ImGui::SameLine();
+    if (ImGui::Button("Text box") && !text_input_pending(app))
+    {
+        LibretroTextInput* request = &app->session.host->text_input;
+        request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
+        request->type = RETRO_EXT_TEXT_INPUT_TYPE_TEXT;
+        std::snprintf(request->prompt, sizeof(request->prompt), "%s", "NAME (DEBUG)");
+        std::snprintf(request->initial, sizeof(request->initial), "%s", "PICCOLO");
+        request->max_length = 8;
+        request->done = debug_text_done;
+        request->serial++;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("KEEP / REVERT") && !shader_check_asking(app))
+    {
+        // REVERT goes back to the preset in use now: nothing changes.
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            app->shader_revert_set[i] = app->shader_layer_set[i];
+            app->shader_revert_value[i] = app->shader_layer_value[i];
+        }
+        app->shader_check.state = ShaderCheckState::asking;
+        app->shader_check.measured_ns = 1e9 / 41.0;
+        app->shader_check_asked_ms = now_ms;
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Text box and KEEP / REVERT show once the menu is closed.");
+}
+
 static void app_draw_debug_ui(App* app)
 {
     const ImGuiIO& io = ImGui::GetIO();
@@ -3021,6 +3116,8 @@ static void app_draw_debug_ui(App* app)
                     static_cast<unsigned long long>(session->timing.missed_total),
                     static_cast<unsigned long long>(session->timing.caught_up_total), app->frame_delay_ms);
     }
+    ImGui::Separator();
+    draw_debug_widgets(app);
     ImGui::Separator();
     ImGui::Checkbox("Dear ImGui demo window", &app->show_imgui_demo);
 

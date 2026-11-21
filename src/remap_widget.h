@@ -47,6 +47,7 @@ struct RemapCard
     uint64_t  since_ms = 0;     // when it appeared
     uint64_t  counted_ms = 0;   // of REMAP_WIDGET_ASK_MS, counted in GAME while not held
     InputHold hold;
+    bool      debug = false;    // from the debug window: kept by scans, never remembers a RetroPad
 };
 
 struct RemapWidget
@@ -80,6 +81,12 @@ void remap_widget_rescan(RemapWidget* widget);
 RemapWidgetResult remap_widget_update(RemapWidget* widget, InputSystem* input, const InputSdl* sdl,
                                       const InputLayouts* layouts, bool game_running, bool in_game, bool headless,
                                       uint64_t now_ms);
+
+// The debug window's WIDGETS: a card for port 1's first controller whatever
+// its remap (holding REMAP opens it; the countdown remembers nothing). False
+// when no controller is on port 1.
+bool remap_widget_debug_card(RemapWidget* widget, const InputSystem* input, const InputSdl* sdl,
+                             const InputLayouts* layouts, uint64_t now_ms);
 
 // Its cards, into the frame's HUD stack.
 void remap_widget_add_hud(const RemapWidget* widget, const Localization* strings, HudStack* stack, uint64_t now_ms);
