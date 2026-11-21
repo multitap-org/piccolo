@@ -42,7 +42,7 @@
 #include "recent_games.h"
 #include "safe_start_window.h"
 #include "shader_check.h"
-#include "shader_check_window.h"
+#include "shader_check_view.h"
 #include "text_input_window.h"
 #include "ui_mode.h"
 #include "settings_window.h"
@@ -4678,20 +4678,24 @@ static bool app_frame(App* app)
         }
         if (shader_check_asking(app))
         {
+            // The preset's file name without its folder and extension (the
+            // pixel font draws it in capitals).
             std::string name = app->shader_preset_seen;
             size_t slash = name.find_last_of("/\\");
             name = slash == std::string::npos ? name : name.substr(slash + 1);
             size_t dot = name.rfind('.');
             name = dot == std::string::npos ? name : name.substr(0, dot);
-            for (size_t i = 0; i < name.size(); i++)
-            {
-                name[i] = static_cast<char>(SDL_toupper(static_cast<unsigned char>(name[i])));   // the pixel font has capitals
-            }
             const FrameTiming* timing = &app->session.timing;
             double target = timing->effective == TimingMode::vsync ? timing->display_hz : timing->core_fps;
-            ShaderCheckChoice answer = shader_check_window_draw(
-                app->pixel_font, app->ui_scale, &app->strings, name.c_str(), 1e9 / app->shader_check.measured_ns,
-                target, app->shader_check_asked_ms, SDL_GetTicks());
+            ShaderCheckText words;
+            words.title = piccolo_text(&app->strings, Str::shader_slow_title);
+            words.speed = piccolo_text(&app->strings, Str::shader_slow_text);
+            words.question = piccolo_text(&app->strings, Str::shader_slow_question);
+            words.keep = piccolo_text(&app->strings, Str::shader_slow_keep);
+            words.revert = piccolo_text(&app->strings, Str::shader_slow_revert_n);
+            ShaderCheckChoice answer = shader_check_view_draw_window(app->pixel_font, app->ui_scale, &words, name.c_str(),
+                                                                     1e9 / app->shader_check.measured_ns, target,
+                                                                     app->shader_check_asked_ms, SDL_GetTicks());
             if (answer != ShaderCheckChoice::none)
             {
                 shader_check_answer(app, answer);

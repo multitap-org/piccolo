@@ -213,7 +213,6 @@ set(PICCOLO_SOURCES
     src/cores_window.cpp
     src/share_window.cpp
     src/safe_start_window.cpp
-    src/shader_check_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
     src/ports_widget.cpp
