@@ -153,7 +153,7 @@ else()
 endif()
 
 # libretro API header. Only include/libretro*.h is used; none of
-# libretro-common's .c files are compiled (only its include/libretro*.h are used: one of its .c files is GPL).
+# libretro-common's .c files are compiled (one of them is GPL).
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/libretro-common/include/libretro.h")
     message(FATAL_ERROR "deps/libretro-common is empty. Run: git submodule update --init --recursive")
 endif()
