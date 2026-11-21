@@ -7,16 +7,36 @@
 // and phones' pads do): START joins a port; remaps, turbo, DEVICES work on it.
 //
 // The page calls the exported piccolo_web_pad_show(on) when it shows or hides
-// the pad (it answers 0 until main() attached the router: the page retries) and piccolo_web_pad_state(buttons) with the RetroPad buttons held
-// (RETRO_DEVICE_ID_JOYPAD bits), on the main thread between frames. While it
-// shows, the on-screen pad drawn in the canvas stays off.
+// the pad (it answers 0 until main() attached the router: the page retries)
+// and piccolo_web_pad_state(buttons) with the RetroPad buttons held
+// (RETRO_DEVICE_ID_JOYPAD bits) plus WEB_PAD_MENU_BIT for its MENU button, on
+// the main thread between frames. While it shows, the on-screen pad drawn in
+// the canvas stays off.
+//
+// The other way, piccolo tells the page whether a game is being played (GAME
+// mode: the page hides its strip) and the picture's shape (an upright phone
+// gives the picture only the height it needs, the pad the rest), through
+// multitap_page_game(playing, aspect) in web/multitap-page.js.
 //
 // Desktop and Android (web_pad.cpp): nothing, never active.
 
+#include <cstdint>
+
 struct InputSystem;
+
+// The page's MENU button, above the RetroPad's 16 buttons (never sent to a core).
+constexpr int32_t WEB_PAD_MENU_BIT = 16;
 
 // Once the router exists: where the device goes.
 void web_pad_attach(InputSystem* input);
 
 // The page shows its pad (the in-canvas one stays off then).
 bool web_pad_active();
+
+// MENU was pressed on the page's pad since the last call.
+bool web_pad_take_menu();
+
+// What the page shows around the game: `playing` = a game in GAME mode,
+// `aspect` = the shown picture's width / height (0: none). Only a change
+// reaches the page.
+void web_pad_tell_page(bool playing, double aspect);

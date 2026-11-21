@@ -18,6 +18,15 @@
 #include "settings.h"
 #include "viewport.h"
 
+// The browser build (web/, docs/wasm.md): the page owns the window, the core
+// is linked in and the network is WebRTC through the beacon only, so some
+// settings are hidden there and a few defaults differ (Andrés, 2026-11-21).
+#if defined(__EMSCRIPTEN__)
+constexpr bool PICCOLO_BROWSER = true;
+#else
+constexpr bool PICCOLO_BROWSER = false;
+#endif
+
 // Keys (file keys: stable, never translated).
 constexpr const char* PICCOLO_LANGUAGE = "language";
 constexpr const char* PICCOLO_PAUSE_IN_MENU = "pause_in_menu";
@@ -27,6 +36,7 @@ constexpr const char* PICCOLO_PAUSE_ON_FOCUS_LOSS = "pause_on_focus_loss";
 constexpr const char* PICCOLO_PAUSE_ON_DISCONNECT = "pause_on_disconnect";
 constexpr const char* PICCOLO_SCREENSAVER_WHEN_PAUSED = "screensaver_when_paused";
 constexpr const char* PICCOLO_GAME_MODE = "game_mode";
+constexpr const char* PICCOLO_SHOW_FPS = "show_fps";   // fps_meter.h
 // Rewind (SETTINGS > GENERAL > REWIND; core_rewind.h). REWIND may be set per
 // core / game; REWIND KNOWN is AUTO's verdict, kept in the game's layer only
 // (not shown).

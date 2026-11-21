@@ -2,7 +2,7 @@
 # Packs the browser build into the folder and zip that deploy by unzipping
 # on any static server (docs/wasm.md, web/page/README.txt):
 #
-#   for core in sameboy snes9x; do web/build-core.sh $core && web/build.sh $core; done
+#   for core in sameboy snes9x piccobots; do web/build-core.sh $core && web/build.sh $core; done
 #   web/package.sh
 #
 # The look is piccolo's websites' (web/site/README.txt): get-piccolo.app's
@@ -36,7 +36,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
 build="$here/build"
-cores="sameboy snes9x"   # index.html links each one
+cores="sameboy snes9x piccobots"   # index.html links each one
 
 for core in $cores; do
     if [ ! -f "$build/wasm/$core/piccolo.wasm" ]; then
@@ -89,6 +89,7 @@ for core in $cores; do
     case "$core" in
         sameboy) core_name=SameBoy; pad=gb ;;
         snes9x)  core_name=Snes9x; pad=snes ;;
+        piccobots) core_name=piccobots; pad=snes ;;
         *)       core_name=$core; pad=snes ;;
     esac
     # @PAD@: the touch gamepad's buttons (piccolo-pad.js: gb or snes).
@@ -116,6 +117,7 @@ sed -n '1,/\*\//p' "$root/deps/qrcodegen/c/qrcodegen.c" > "$dist/LICENSES/qrcode
 cp "$root/deps/monocypher/LICENCE.md" "$dist/LICENSES/monocypher.txt"
 cp "$build/cores/sameboy-LICENSE" "$dist/LICENSES/SameBoy.txt"
 cp "$build/cores/snes9x-LICENSE" "$dist/LICENSES/Snes9x.txt"
+cp "$build/cores/piccobots-LICENSE" "$dist/LICENSES/piccobots.txt"
 
 # piccoletto, when there's a build of it.
 PICCOLETTO=${PICCOLETTO:-}

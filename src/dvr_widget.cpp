@@ -88,12 +88,23 @@ void dvr_widget_game_started(DvrWidget* widget, CoreSession* session, const Sett
     {
         config->known = RewindMode::automatic;
     }
+#if defined(SDL_PLATFORM_EMSCRIPTEN)
+    // The browser: AUTO is SNAPSHOTS, never measured. The core, the page and
+    // everything else share one thread there, and SCRUB's state every frame
+    // was too much on a phone (Andrés, 2026-11-21).
+    if (config->mode == RewindMode::automatic)
+    {
+        config->mode = RewindMode::snapshots;
+    }
+#endif
 
     uint64_t megabytes = number_of(settings, PICCOLO_REWIND_MEMORY);
     if (megabytes == 0)   // AUTO
     {
 #if defined(SDL_PLATFORM_ANDROID)
         megabytes = 128;
+#elif defined(SDL_PLATFORM_EMSCRIPTEN)
+        megabytes = 32;   // the whole page has 256 MiB, games and saves included (docs/wasm.md)
 #else
         megabytes = 256;
 #endif

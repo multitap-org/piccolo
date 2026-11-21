@@ -146,6 +146,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
         settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);
         ImGui::TextDisabled("%s", context->game_mode);
     }
+    settings_ui_row(ui, PICCOLO_SHOW_FPS, nullptr);
     retro_ui_separator_text(piccolo_text(ui->strings, Str::section_rewind));
     settings_ui_row(ui, PICCOLO_REWIND, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_SCRUB_LENGTH, nullptr);
@@ -173,10 +174,11 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
                                 context->paths->saves.c_str(), context->paths->states.c_str()};
         // Android: no CORES row. Cores load only from the app's private
         // storage (shared storage is noexec); main.cpp ignores the setting.
+        // The browser: no CORES or SYSTEM rows either (the core is linked in).
 #if defined(SDL_PLATFORM_ANDROID)
         uint32_t first = 1;
 #else
-        uint32_t first = 0;
+        uint32_t first = PICCOLO_BROWSER ? 2 : 0;
 #endif
         for (uint32_t i = first; i < 4; i++)
         {
@@ -278,6 +280,14 @@ static void draw_sync(SettingsWindow* window, const SettingsUiContext* ui, const
     settings_ui_row(ui, PICCOLO_VIDEO_TIMING, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_CATCH_UP, nullptr);
     retro_ui_separator_text(piccolo_text(ui->strings, Str::section_low_latency));
+    if (PICCOLO_BROWSER)
+    {
+        // The browser paces presents itself and never waits: frames in
+        // flight, waiting for present and frame delay mean nothing there.
+        settings_ui_row(ui, PICCOLO_LATENCY_RUN_AHEAD, nullptr);
+        ImGui::TextDisabled("%s", context->run_ahead);
+        return;
+    }
     draw_latency_preset(ui);
     settings_ui_row(ui, PICCOLO_LATENCY_FRAMES_IN_FLIGHT, nullptr);
     settings_ui_row(ui, PICCOLO_LATENCY_WAIT_FOR_PRESENT, nullptr);
@@ -743,7 +753,9 @@ static void draw_tabs(SettingsWindow* window, const SettingsUiContext* ui, const
                 end_tab_content();
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_display), "display")))
+            // DISPLAY (full screen, the window): the browser's page owns them.
+            if (!PICCOLO_BROWSER &&
+                ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_display), "display")))
             {
                 begin_tab_content();
                 draw_display(ui, context);

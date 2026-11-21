@@ -85,3 +85,8 @@ const char* bundled_files_folder_name()
     const char* name = SDL_getenv("PICCOLO_FOLDER_NAME");   // set by PiccoloActivity
     return (name != nullptr && name[0] != '\0') ? name : "piccolo";
 }
+
+const char* bundled_files_linked_core()
+{
+    return "";
+}

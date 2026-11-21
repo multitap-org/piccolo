@@ -78,7 +78,7 @@ jobs:
       - name: Build and package
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
-          for core in sameboy snes9x; do
+          for core in sameboy snes9x piccobots; do
             web/build-core.sh "$core"
             web/build.sh "$core"
           done

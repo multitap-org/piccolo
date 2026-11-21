@@ -31,3 +31,8 @@ const char* bundled_files_folder_name()
 {
     return "piccolo";
 }
+
+const char* bundled_files_linked_core()
+{
+    return PICCOLO_LINKED_CORE_FILE;
+}

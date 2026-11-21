@@ -184,7 +184,10 @@ static const SettingEnumValue LATENCY_VALUES[] = {
     {"160"},
     {"200"},
 };
-static const uint32_t LATENCIES[] = {RATE_CONTROL_AUTO_START_MS, 40, 50, 60, 80, 100, 120, 160, 200};
+// The browser: sound is fed from the page's one thread (no AudioWorklet
+// yet), where any long frame drains a short buffer; AUTO starts higher.
+constexpr uint32_t AUTO_LATENCY_START_MS = PICCOLO_BROWSER ? 100 : RATE_CONTROL_AUTO_START_MS;
+static const uint32_t LATENCIES[] = {AUTO_LATENCY_START_MS, 40, 50, 60, 80, 100, 120, 160, 200};
 constexpr uint32_t LATENCY_COUNT = sizeof(LATENCY_VALUES) / sizeof(LATENCY_VALUES[0]);
 
 static const SettingEnumValue QUALITY_VALUES[] = {
@@ -248,6 +251,8 @@ static const SettingDescriptor SETTINGS[] = {
      .min = 0, .max = 0x7fffffff, .label = text_id(Str::setting_input_port_device), .help = text_id(Str::setting_input_port_device_help)},
     {.key = PICCOLO_GAME_MODE, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_game_mode), .help = text_id(Str::setting_game_mode_help)},
+    {.key = PICCOLO_SHOW_FPS, .type = SettingType::boolean, .default_value = "false",
+     .label = text_id(Str::setting_show_fps), .help = text_id(Str::setting_show_fps_help)},
     // Rewind (GENERAL > REWIND).
     {.key = PICCOLO_REWIND, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
      .values = REWIND_VALUES, .value_count = REWIND_COUNT, .label = text_id(Str::setting_rewind),
@@ -275,7 +280,8 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_net_name), .help = text_id(Str::setting_net_name_help)},
     // Off by default: on, piccolo tells the beacon server it's here (Andrés
     // decides the default). beacon.get-piccolo.app = NET_BEACON_DEFAULT_SERVER.
-    {.key = PICCOLO_NET_INTERNET, .type = SettingType::boolean, .default_value = "false",
+    // (The browser: always on, the beacon is its only way; the row shows it checked and greyed.)
+    {.key = PICCOLO_NET_INTERNET, .type = SettingType::boolean, .default_value = PICCOLO_BROWSER ? "true" : "false",
      .label = text_id(Str::setting_net_internet), .help = text_id(Str::setting_net_internet_help)},
     {.key = PICCOLO_NET_BEACON, .type = SettingType::text, .default_value = "beacon.get-piccolo.app",
      .label = text_id(Str::setting_net_beacon), .help = text_id(Str::setting_net_beacon_help)},
@@ -385,7 +391,9 @@ static const SettingDescriptor SETTINGS[] = {
      .values = TIMING_VALUES, .value_count = TIMING_COUNT, .label = text_id(Str::setting_timing),
      .help = text_id(Str::setting_timing_help)},
 
-    {.key = PICCOLO_VIDEO_CATCH_UP, .type = SettingType::boolean, .default_value = "true", .overridable = true,
+    // (The browser: off. Extra core frames in one loop make a struggling phone worse.)
+    {.key = PICCOLO_VIDEO_CATCH_UP, .type = SettingType::boolean, .default_value = PICCOLO_BROWSER ? "false" : "true",
+     .overridable = true,
      .label = text_id(Str::setting_catch_up), .help = text_id(Str::setting_catch_up_help)},
 
     // Video: Sync, low latency (overridable: a heavy core may not afford it)
@@ -400,7 +408,8 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_LATENCY_FRAME_DELAY, .type = SettingType::integer, .default_value = "0", .overridable = true,
      .min = 0, .max = 12, .label = text_id(Str::setting_frame_delay),
      .help = text_id(Str::setting_frame_delay_help)},
-    {.key = PICCOLO_LATENCY_FRAME_DELAY_AUTO, .type = SettingType::boolean, .default_value = "true",
+    // (The browser: off. Frame delay never waits there; AUTO would only measure.)
+    {.key = PICCOLO_LATENCY_FRAME_DELAY_AUTO, .type = SettingType::boolean, .default_value = PICCOLO_BROWSER ? "false" : "true",
      .overridable = true, .label = text_id(Str::setting_frame_delay_auto),
      .help = text_id(Str::setting_frame_delay_auto_help)},
     {.key = PICCOLO_LATENCY_RUN_AHEAD, .type = SettingType::integer, .default_value = "0", .overridable = true,
@@ -517,7 +526,8 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_AUDIO_MAX_DEVIATION, .type = SettingType::real, .default_value = "0.5", .min_real = 0.1,
      .max_real = 1.0, .step_real = 0.1, .label = text_id(Str::setting_max_deviation),
      .help = text_id(Str::setting_max_deviation_help)},
-    {.key = PICCOLO_AUDIO_QUALITY, .type = SettingType::enumeration, .default_value = "medium",
+    // (The browser: FASTEST. The resampler runs on the page's one thread.)
+    {.key = PICCOLO_AUDIO_QUALITY, .type = SettingType::enumeration, .default_value = PICCOLO_BROWSER ? "fastest" : "medium",
      .values = QUALITY_VALUES, .value_count = QUALITY_COUNT, .label = text_id(Str::setting_resampler_quality),
      .help = text_id(Str::setting_resampler_quality_help)},
 };
@@ -628,6 +638,16 @@ void piccolo_settings_viewport(const Settings* settings, ViewportInput* input)
     input->aspect = ASPECTS[aspect];
     input->fixed_aspect = FIXED[aspect];
     input->scaling = SCALINGS[settings_get_enum(settings, PICCOLO_VIDEO_SCALING)];
+#if defined(SDL_PLATFORM_EMSCRIPTEN)
+    // The browser: AUTO fills the canvas. A phone's canvas is small in CSS
+    // pixels, where whole sizes waste a quarter of it (or, one size up, cut
+    // the picture's edges off), and its many device pixels per CSS pixel
+    // keep a non-whole size sharp (Andrés, 2026-11-21: "wasteful").
+    if (input->scaling == ViewportScaling::automatic)
+    {
+        input->scaling = ViewportScaling::full;
+    }
+#endif
     input->max_offscreen_percent = settings_get_real(settings, PICCOLO_VIDEO_MAX_OFFSCREEN);
     input->filter = FILTERS[settings_get_enum(settings, PICCOLO_VIDEO_FILTER)];
     input->anchor = ANCHORS[settings_get_enum(settings, PICCOLO_VIDEO_POSITION)];
