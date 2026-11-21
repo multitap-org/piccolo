@@ -74,3 +74,6 @@
 	url = https://github.com/multitap-org/piccolo-shaders-legacy.git
 	branch = main
 	shallow = true
+[submodule "deps/mbedtls"]
+	path = deps/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git
