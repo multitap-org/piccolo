@@ -141,6 +141,8 @@ struct App
     bool            stream_tuning_told[NET_MAX_PEERS] = {};
     uint32_t   stream_loop = 0;          // the loop number the stream carries
     uint64_t   stream_serial = 0;        // the core frame last handed over (a repeat isn't sent again)
+    bool       stream_frame_owed = false;   // a stream started or asked for a keyframe: the shown frame goes again
+                                            // even if no core frame runs (paused), or that device gets nothing
     NetService net_service;              // the listener on its own thread (net_service.h); its NetAccess:
                                          // net_service.access, used between net_service_lock / _unlock
     InputNet   input_net = {};           // paired devices' pads, in the input router
@@ -3765,6 +3767,7 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
     if (net_stream_read_start(event->data, event->size, &flags))
     {
         net_service_set_stream(&app->net_service, event->peer, flags);
+        app->stream_frame_owed = true;
         SDL_Log("Network: %s started remote play%s%s", device, (flags & NET_STREAM_WANT_VIDEO) != 0 ? " (video)" : "",
                 (flags & NET_STREAM_WANT_AUDIO) != 0 ? " (audio)" : "");
     }
@@ -3785,6 +3788,7 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
     else if (type == NET_STREAM_KEYFRAME_REQUEST && event->size == 1)
     {
         net_service_request_keyframe(&app->net_service, event->peer);
+        app->stream_frame_owed = true;
     }
     else if (net_stream_read_go_headless(event->data, event->size, &headless_on))
     {
@@ -3822,12 +3826,22 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
 // to the network thread (it codes and sends; this loop never waits for it).
 // With run-ahead (later) this stays the shown frame and the real timeline's
 // audio, numbered by this loop.
+// Also called when no frame ran but one is owed (a stream started or asked
+// for a keyframe while paused): the network thread codes keyframes only
+// from a frame handed over after the request, so the last shown frame goes
+// again, or a paused game would show that device nothing until it resumes.
 static void net_stream_frame(App* app)
 {
+    bool owed = app->stream_frame_owed;
+    app->stream_frame_owed = false;
     if (!app->net_streaming || !game_running(app))
     {
         app->session.captured_audio.clear();
         return;
+    }
+    if (owed)
+    {
+        app->stream_serial = 0;   // the same core frame again (serials start at 1)
     }
     app->stream_loop++;
     const LibretroHost* host = app->session.host;
@@ -4380,6 +4394,10 @@ static bool app_frame(App* app)
     {
         net_stream_frame(app);
         measure_shader_check(app);
+    }
+    else if (app->stream_frame_owed)
+    {
+        net_stream_frame(app);   // paused (or the frame not due yet): the shown frame for a new viewer
     }
     // Taps (a key down and up inside one loop) are kept through a loop whose
     // core frame wasn't due yet, so that frame still sees them; otherwise
