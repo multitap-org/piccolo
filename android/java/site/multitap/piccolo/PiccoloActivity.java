@@ -43,10 +43,10 @@ public class PiccoloActivity extends SDLActivity {
         String folder = getPackageName().replaceFirst("^site\\.multitap\\.", "").replace('.', '-');
         nativeSetenv("PICCOLO_FOLDER_NAME", folder);
         // When this APK was installed: the files it ships are copied out of
-        // it again only when this changes (bundled_files_android.cpp).
+        // it again only when this changes (frontends-common's app_assets).
         try {
             long installed = getPackageManager().getPackageInfo(getPackageName(), 0).lastUpdateTime;
-            nativeSetenv("PICCOLO_APK_STAMP", Long.toString(installed));
+            nativeSetenv("MULTITAP_APK_STAMP", Long.toString(installed));
         } catch (PackageManager.NameNotFoundException e) {
             Log.w(TAG, "can't read the package's update time: bundled files copied at every start");
         }
