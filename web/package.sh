@@ -2,17 +2,31 @@
 # Packs the browser build into the folder and zip that deploy by unzipping
 # on any static server (docs/wasm.md, web/page/README.txt):
 #
-#   web/build-core.sh && web/build.sh && web/package.sh
+#   for core in sameboy snes9x; do web/build-core.sh $core && web/build.sh $core; done
+#   web/package.sh
+#
+# The look is piccolo's websites' (web/site/README.txt): get-piccolo.app's
+# assets/v1 fetched into _site/v1 (SITE_ASSETS_URL to change where from;
+# web/site/v1 when the fetch fails), the start page's sites bar and footer
+# filled in from it. PICCOLO_WEB_CHANNEL (stable or dev, default dev) goes
+# into the pages: dev shows a DEV pill with the commit.
+#
+# With PICCOLETTO=<a piccoletto checkout> whose web/build.sh ran, piccoletto
+# goes in too, as piccoletto/ (its page, its module; the shared scripts and
+# sw.js are the same ones, at the top).
 #     -> web/build/dist/piccolo-<version>-web/      (the folder)
 #        web/build/dist/piccolo-<version>-web.zip   (the same, zipped)
 #
 # Layout (all paths relative):
-#   index.html                 choose the emulator
-#   sameboy/                   piccolo with SameBoy linked in: index.html, piccolo.js/.wasm/.data
-#   piccolo-page.js            the page's scripts, with piccolo-storage.js (its folder on OPFS)
-#                              and piccolo-files.js (the FILES panel)
-#   sw.js                      the service worker (COOP/COEP where the server can't send them,
-#                              offline cache)
+#   index.html                 choose the emulator (it lists every core below)
+#   _site/v1/                  piccolo's websites' shared look (site.css, fonts, bar, footer)
+#   sameboy/ snes9x/           piccolo with that core linked in: index.html, piccolo.js/.wasm/.data
+#   piccoletto/                piccoletto (PICCOLETTO=...): index.html, piccoletto-page.js,
+#                              manifest.webmanifest, icons, piccoletto.js/.wasm
+#   piccolo-page.js            the page's scripts, with piccolo-files.js (the FILES panel)
+#   multitap-page.js multitap-storage.js   frontends-common's web/: the start, the folder on OPFS
+#   sw.js                      the service worker (frontends-common's: COOP/COEP where the server
+#                              can't send them, offline cache)
 #   manifest.webmanifest icon-*.png   installable (PWA)
 #   .htaccess _headers nginx.conf.example README.txt
 #   LICENSES/                  piccolo's and every library's and core's license
@@ -22,28 +36,66 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/.." && pwd)
 build="$here/build"
-wasm="$build/wasm"
-core=sameboy
+cores="sameboy snes9x"   # index.html links each one
 
-version_header="$wasm/generated/piccolo_version.h"
-if [ ! -f "$wasm/piccolo.wasm" ] || [ ! -f "$version_header" ]; then
-    echo "web/package.sh: no browser build in $wasm (run web/build.sh first)" >&2
-    exit 1
-fi
+for core in $cores; do
+    if [ ! -f "$build/wasm/$core/piccolo.wasm" ]; then
+        echo "web/package.sh: no browser build in $build/wasm/$core (run web/build.sh $core first)" >&2
+        exit 1
+    fi
+done
+version_header="$build/wasm/sameboy/generated/piccolo_version.h"
 version=$(sed -n 's/.*PICCOLO_VERSION "\(.*\)".*/\1/p' "$version_header")
 name="piccolo-$version-web"
 dist="$build/dist/$name"
 
 rm -rf "$dist" "$build/dist/$name.zip"
-mkdir -p "$dist/$core" "$dist/LICENSES"
+mkdir -p "$dist/LICENSES"
 
-cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-storage.js" "$here/page/piccolo-files.js" "$here/page/sw.js" "$here/page/manifest.webmanifest" \
+cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/manifest.webmanifest" \
    "$here/page/.htaccess" "$here/page/_headers" "$here/page/nginx.conf.example" "$here/page/README.txt" "$dist/"
+# The page's shared half (frontends-common's web/: the start, the folder on
+# OPFS, the service worker), shared with piccoletto's page.
+cp "$root/deps/common/frontends-common/web/multitap-page.js" "$root/deps/common/frontends-common/web/multitap-storage.js" \
+   "$root/deps/common/frontends-common/web/sw.js" "$dist/"
 for size in 32 128 512; do
     cp "$root/assets/branding/png/piccolo-icon-$size.png" "$dist/icon-$size.png"
 done
-cp "$here/page/core.html" "$dist/$core/index.html"
-cp "$wasm/piccolo.js" "$wasm/piccolo.wasm" "$wasm/piccolo.data" "$dist/$core/"
+for core in $cores; do
+    mkdir -p "$dist/$core"
+    cp "$here/page/core.html" "$dist/$core/index.html"
+    cp "$build/wasm/$core/piccolo.js" "$build/wasm/$core/piccolo.wasm" "$build/wasm/$core/piccolo.data" "$dist/$core/"
+done
+
+# The shared look, of this day (or the committed copy without the network).
+site_copy="$build/site-assets"
+SITE_ASSETS_URL=${SITE_ASSETS_URL:-https://get-piccolo.app/assets/v1}
+rm -rf "$site_copy"
+if SITE_ASSETS_URL="$SITE_ASSETS_URL" "$here/site/fetch-site-assets.sh" "$site_copy"; then
+    echo "web/package.sh: the sites' look from $SITE_ASSETS_URL"
+else
+    echo "web/package.sh: can't fetch $SITE_ASSETS_URL: the committed copy (web/site/v1)"
+    rm -rf "$site_copy"
+    cp -r "$here/site/v1" "$site_copy"
+fi
+mkdir -p "$dist/_site"
+cp -r "$site_copy" "$dist/_site/v1"
+"$here/site/sync-snippets.sh" "$dist/_site/v1" "$dist/index.html"
+
+# The pages' placeholders: each core's name, the channel and the commit.
+channel=${PICCOLO_WEB_CHANNEL:-dev}
+commit=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo unknown)
+for core in $cores; do
+    case "$core" in
+        sameboy) core_name=SameBoy ;;
+        snes9x)  core_name=Snes9x ;;
+        *)       core_name=$core ;;
+    esac
+    sed -i "s/@CORE_NAME@/$core_name/g" "$dist/$core/index.html"
+done
+for page in "$dist/index.html" "$dist"/*/index.html; do
+    sed -i "s/@CHANNEL@/$channel/g; s/@COMMIT@/$commit/g" "$page"
+done
 
 # Licenses: piccolo, our libraries, the third-party ones linked in, the core.
 cp "$root/LICENSE" "$dist/LICENSES/piccolo.txt"
@@ -58,8 +110,28 @@ cp "$root/deps/libsamplerate/COPYING" "$dist/LICENSES/libsamplerate.txt"
 cp "$root/deps/miniz/LICENSE" "$dist/LICENSES/miniz.txt"
 cp "$root/deps/7zip/DOC/License.txt" "$dist/LICENSES/7zip.txt"
 cp "$root/deps/enet/LICENSE" "$dist/LICENSES/enet.txt"
+# Nayuki's QR Code generator has its MIT license in the source file's header.
+sed -n '1,/\*\//p' "$root/deps/qrcodegen/c/qrcodegen.c" > "$dist/LICENSES/qrcodegen.txt"
 cp "$root/deps/monocypher/LICENCE.md" "$dist/LICENSES/monocypher.txt"
 cp "$build/cores/sameboy-LICENSE" "$dist/LICENSES/SameBoy.txt"
+cp "$build/cores/snes9x-LICENSE" "$dist/LICENSES/Snes9x.txt"
+
+# piccoletto, when there's a build of it.
+PICCOLETTO=${PICCOLETTO:-}
+if [ -n "$PICCOLETTO" ]; then
+    if [ ! -f "$PICCOLETTO/web/build/wasm/piccoletto.wasm" ]; then
+        echo "web/package.sh: no browser build in $PICCOLETTO/web/build/wasm (run its web/build.sh first)" >&2
+        exit 1
+    fi
+    mkdir -p "$dist/piccoletto"
+    cp "$PICCOLETTO/web/page/index.html" "$PICCOLETTO/web/page/piccoletto-page.js" \
+       "$PICCOLETTO/web/page/manifest.webmanifest" "$dist/piccoletto/"
+    cp "$PICCOLETTO/web/build/wasm/piccoletto.js" "$PICCOLETTO/web/build/wasm/piccoletto.wasm" "$dist/piccoletto/"
+    for size in 32 128 512; do
+        cp "$PICCOLETTO/assets/branding/png/piccoletto-icon-$size.png" "$dist/piccoletto/icon-$size.png"
+    done
+    cp "$PICCOLETTO/LICENSE" "$dist/LICENSES/piccoletto.txt"
+fi
 
 (cd "$build/dist" && zip -qr9 "$name.zip" "$name")
 echo "web/package.sh: $dist"

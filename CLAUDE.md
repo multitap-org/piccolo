@@ -37,6 +37,9 @@ cores, no GUI) and **frontends** (GUI).
 - `deps/libretro/host-libretro`     host-libretro: the libretro host (no GUI), libretro_core_info, tests
 - `deps/libretro/frontend-libretro` frontend-libretro: core session, core options, core catalog
 - `deps/test-libretro`              test-libretro (the Test libretro core), optional (`update = none`)
+- `deps/cores`                      multitap-org/cores: every core's recipe (source, patches, build per platform);
+                                     the browser build builds its cores with it (`update = none`, web only).
+                                     A core recipe changes THERE (all platforms, web included), never in piccolo
 - `deps/beacon`                     multitap-beacon (multitap-org/multitap-beacon, MIT): the introduction server for
                                      connections across the internet (STUN-like + hole punching, never a relay);
                                      frontends-common builds only its `beacon_wire` library (tests also its server code)
@@ -50,7 +53,8 @@ cores, no GUI) and **frontends** (GUI).
   `deps/gamemode`, `deps/librashader`, `deps/miniz` (zip reading only), `deps/7zip`
   (only its C 7z decoder + SHA-256, no PPMd), `deps/enet` (zpl-c's ENet: UDP connections, IPv6 dual-stack), `deps/monocypher`
   (X25519, ChaCha20-Poly1305, BLAKE2b, SHA-512 from optional/; EdDSA for the core downloader's
-  signatures); libcurl from the system (Linux) for the core downloader
+  signatures), `deps/qrcodegen` (Nayuki's QR Code generator, MIT, v1.8.0: its C file only; the pair
+  link as a QR); libcurl from the system (Linux) for the core downloader
 
 Other repos: libretro-test-frontend (the host's test frontend, same libraries,
 test-libretro always), multitap (README + STYLE.md: the family), imguisw (fork
@@ -154,22 +158,26 @@ src/
   cores_window.*          TOOLS > CORES: the core downloader's window (core_updater in frontend-libretro)
   share_window.*          TOOLS > SHARE: two panes (here / another piccolo with OWNER access), folders above,
                           files below, arrows in the middle copy games, saves and states (net_share_*)
-  app_icon.* bundled_files_android.* storage_web.*   window icon; files packed in the APK; OPFS in the browser
+  app_icon.* bundled_files_android.* bundled_files_web.*   window icon; files packed in the APK / linked core in the browser
 layouts/                  controller layouts (<Maker>/<model>.cfg)
 android/                  Android APK: build-apk.sh (--legacy: GLES 2, armeabi-v7a, Android 5+), res/ (icons,
                           banner), res-debug/ (debug variant)
-web/                      the browser build (Emscripten, WebGL 2, pthreads): build-core.sh (SameBoy
-                          as a static archive), build.sh; src/bundled_files_web.cpp registers the linked core
-  main_loop.*             who drives the loop: desktop while, or the browser (main_loop_web: rAF, save on
-                          leave, piccolo_web_open); storage.* the browser's piccolo folder: in memory,
-                          kept on OPFS by the page (web/page/piccolo-storage.js; WasmFS's OPFS backend
-                          hangs Firefox); web/page/piccolo-files.js the FILES panel (the session's files)
+web/                      the browser build (Emscripten, WebGL 2, pthreads): build-core.sh <core>
+                          (runs deps/cores' recipe for the web: sameboy, snes9x), build.sh <core> (one wasm per core); src/bundled_files_web.cpp registers the linked core
+  page/                   piccolo's page: core.html, piccolo-page.js (OPEN GAME, drops), piccolo-files.js
+                          (the FILES panel); the shared half (the start, the folder on OPFS, sw.js) is
+                          frontends-common's web/, and app_loop / app_storage its C++ side
+  site/                   the websites' shared look (piccolo-site's assets/v1): package.sh fetches it into
+                          _site/v1 (this committed copy without the network) and fills the start page's bar
+                          and footer; PICCOLO_WEB_CHANNEL stable / dev (DEV pill + commit)
 tools/                    strings_check, recent_games_test, stream_measure (remote play
                           codec on real games), netplay_measure (which netplay mode a core and game
                           suit: determinism, exact states, cost), lsan-suppressions.txt
 deps/common/hosts-common/     host_common: host_log, host_fs (mkdir -p, read, atomic write; the only
                               <filesystem> user), dynamic_library; cmake/multitap.cmake
-deps/common/frontends-common/ frontend_common: app_shell (SDL + window + Vulkan + swapchain + renderer + ImGui),
+deps/common/frontends-common/ frontend_common: app_shell (SDL + window + Vulkan + swapchain + renderer + ImGui), app_loop (who drives
+                              the loop: a while, or the browser's animation frames) / app_storage (the folder on
+                              OPFS in the browser) + web/ (the pages' shared scripts, sw.js),
                               video_texture / video_output (what frontends draw the picture with: Vulkan's
                               picture + shader_chain, or the GLES path's gl_texture + gl_picture),
                               gl_context / gl_texture / gl_picture / gl_shader_chain (the GLES fallback when Vulkan
@@ -188,10 +196,12 @@ deps/common/frontends-common/ frontend_common: app_shell (SDL + window + Vulkan 
                               net_host (ENet + LAN discovery on one UDP port), net_noise (Noise XX),
                               net_link / net_session (encrypted channels per peer), net_cpace (PAKE),
                               net_trust / net_pairing / net_access (host) / net_client (6-digit pairing,
+                              on the LAN or across the internet with net_pair_link: the link / QR,
                               access levels gamepad / stream / full), net_input + input_net (remote pads
                               in the router, game-only), net_content (browse / load games: messages) +
                               net_content_folders (host: game folders as virtual paths, never left),
-                              net_rtc (WebRTC under NetHost: net_rtc_datachannel / _none; peers
+                              net_rtc (WebRTC under NetHost: net_rtc_datachannel / _emscripten (the browser,
+                              net_webrtc.js; WebRTC only there) / _none; peers
                               carry their transport, the same channels and bytes as ENet),
                               net_beacon (across the internet: register with the beacon, meet,
                               punch, peer-reflexive), net_signal (WebRTC signaling over the beacon's
@@ -215,6 +225,7 @@ deps/libretro/frontend-libretro/ frontend_libretro: core_session, core_catalog, 
 ```sh
 git clone --recursive https://github.com/multitap-org/piccolo.git
 git -C piccolo submodule update --init --recursive --checkout deps/test-libretro   # optional, for all tests
+git -C piccolo submodule update --init --checkout deps/cores                       # optional, for the browser build
 for d in deps/common/hosts-common deps/common/frontends-common deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro; do git -C piccolo/$d checkout main; done
 ```
 
@@ -240,7 +251,8 @@ cmake --build build-asan && (cd build-asan && LSAN_OPTIONS=suppressions=$PWD/../
 ./build/piccolo                    # normal builds in the main checkout also copy it to ~/.local/share/piccolo/
                                    # (not from a worktree: MULTITAP_COPY_FROM_WORKTREE=ON to copy)
 MULTITAP_GPU=gl ./build/piccolo     # the OpenGL ES path (GLES 3); -DMULTITAP_GL_ES2=ON builds test like the Tegra 4
-web/build-core.sh && web/build.sh  # wasm (emsdk 6.0.13 sourced, rgbds): SameBoy linked into web/build/wasm/piccolo.{js,wasm}
+web/build-core.sh snes9x && web/build.sh snes9x  # wasm (emsdk 6.0.13 sourced, deps/cores checked out): web/build/wasm/<core>/
+web/package.sh                     # the zip with every core (sameboy and snes9x built first)
 android/build-apk.sh [--legacy]    # --legacy: armv7, Android 5+, GLES 2 only (-DMULTITAP_GPU_VULKAN=OFF), the SHIELD Portable
 ./build/deps/libretro/host-libretro/libretro_core_info [--frames N] [--set KEY=VALUE]... <core> [content]
 ```
@@ -316,8 +328,8 @@ Everything below is on main (piccolo ec86c7f); main CI (Flatpak, Windows, Androi
 - SHARE (TOOLS > SHARE, OWNER access): steps 1-9 done (games with their save and
   states, REPLACE?, net_probe as a headless client / host). Untested between two
   real piccolos.
-- Browser (web/, docs/wasm.md): WebGL 2, SameBoy linked statically, OPFS through
-  WasmFS, pthreads (COOP/COEP: the zip ships .htaccess / nginx / _headers configs
+- Browser (web/, docs/wasm.md): WebGL 2, one page per core (SameBoy, Snes9x) with
+  the core linked statically, piccolo's folder in memory kept on OPFS by the page, pthreads (COOP/COEP: the zip ships .htaccess / nginx / _headers configs
   plus coi-serviceworker; web/docker for a ready server). Published at
   get-piccolo.app/play/. frontend_net is compiled in but inert. Untested:
   Firefox / Safari, real fps, gamepad.
