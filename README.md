@@ -291,7 +291,7 @@ checks with it to the tests:
 git submodule update --init --recursive --checkout deps/test-libretro
 ```
 
-Other platforms (details in [`CLAUDE.md`](CLAUDE.md#build-run-check) and `docs/packaging.md`):
+Other platforms (details in [`docs/compilation.md`](docs/compilation.md)):
 
 ```sh
 MULTITAP_GPU=gl ./build/piccolo       # try the OpenGL ES path on the desktop
@@ -309,7 +309,7 @@ push it there first), then piccolo's pointer to it is committed.
 
 `src/` is the program (menus, windows, the retro UI, the pixel font);
 `android/`, `web/` and `flatpak/` are the platform builds; `deps/` the
-libraries. The full map, file by file, is in [`CLAUDE.md`](CLAUDE.md#layout).
+libraries.
 
 ## License
 
