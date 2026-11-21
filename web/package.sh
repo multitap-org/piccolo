@@ -52,7 +52,7 @@ dist="$build/dist/$name"
 rm -rf "$dist" "$build/dist/$name.zip"
 mkdir -p "$dist/LICENSES"
 
-cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/manifest.webmanifest" \
+cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-pad.js" "$here/page/manifest.webmanifest" \
    "$here/page/.htaccess" "$here/page/_headers" "$here/page/nginx.conf.example" "$here/page/README.txt" "$dist/"
 # The page's shared half (frontends-common's web/: the start, the folder on
 # OPFS, the service worker), shared with piccoletto's page.
@@ -87,11 +87,12 @@ channel=${PICCOLO_WEB_CHANNEL:-dev}
 commit=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || echo unknown)
 for core in $cores; do
     case "$core" in
-        sameboy) core_name=SameBoy ;;
-        snes9x)  core_name=Snes9x ;;
-        *)       core_name=$core ;;
+        sameboy) core_name=SameBoy; pad=gb ;;
+        snes9x)  core_name=Snes9x; pad=snes ;;
+        *)       core_name=$core; pad=snes ;;
     esac
-    sed -i "s/@CORE_NAME@/$core_name/g" "$dist/$core/index.html"
+    # @PAD@: the touch gamepad's buttons (piccolo-pad.js: gb or snes).
+    sed -i "s/@CORE_NAME@/$core_name/g; s/@PAD@/$pad/g" "$dist/$core/index.html"
 done
 for page in "$dist/index.html" "$dist"/*/index.html; do
     sed -i "s/@CHANNEL@/$channel/g; s/@COMMIT@/$commit/g" "$page"

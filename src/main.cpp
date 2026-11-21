@@ -31,6 +31,7 @@
 #include "host_libretro_version.h"
 #include "shader_chain.h"   // ShaderLibrary
 #include "video_output.h"
+#include "web_pad.h"
 #include "piccolo_version.h"
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
@@ -2251,8 +2252,9 @@ static void app_update_input(App* app)
     // The touch gamepad: a controller while SHOW allows it; what its parts
     // held (drawn last frame) goes to the router while a game plays.
     OnscreenPadShow show = static_cast<OnscreenPadShow>(piccolo_settings_touch_pad(&app->settings));
-    onscreen_pad_update(&app->onscreen_pad, &app->input, onscreen_pad_enabled(&app->onscreen_pad, show), show,
-                        app->ui_derived.overlay_active);
+    // The browser's page pad (web_pad.h) takes its place while it shows.
+    bool onscreen_on = onscreen_pad_enabled(&app->onscreen_pad, show) && !web_pad_active();
+    onscreen_pad_update(&app->onscreen_pad, &app->input, onscreen_on, show, app->ui_derived.overlay_active);
     InputFrame frame = {};
     input_update(&app->input, SDL_GetTicks(), &frame);
     offer_mapping(app, &frame);
@@ -4936,6 +4938,7 @@ int main(int argc, char** argv)
     }
     input_sdl_init(&app->input_sdl, &app->input, database_path.empty() ? nullptr : database_path.c_str());
     onscreen_pad_init(&app->onscreen_pad, app->paths.settings.c_str());
+    web_pad_attach(&app->input);   // the browser: the page's gamepad goes into this router
     update_language(app);
     set_status(app, piccolo_text(&app->strings, Str::status_start));
 
