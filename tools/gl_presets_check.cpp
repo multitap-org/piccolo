@@ -1,4 +1,4 @@
-// Every OpenGL ES preset piccolo ships (shaders/gl/, presets/ included) loads
+// Every OpenGL ES preset piccolo ships (shaders/gl/ and deps/piccolo-shaders-legacy) loads
 // (its shaders compile and link on this GPU's GLES) and runs a frame over a
 // small picture, after pass 0. Run on a GLES 2 build too (MULTITAP_GL_ES2):
 // that's what the Tegra 4 takes. Needs a display: without one (or without
@@ -10,7 +10,9 @@
 // within a source pixel at too low a precision (mediump is 16-bit on Mali)
 // draws uneven lines and fails this.
 //
-// Usage: piccolo_gl_presets_check <shaders/gl folder> [--frames N]
+// Usage: piccolo_gl_presets_check <shaders/gl folder> [presets folder] [--frames N]
+//   presets folder: the curated GLES presets (deps/piccolo-shaders-legacy),
+//   checked like the ones in shaders/gl (pass 0 still comes from there).
 //   --frames N: also times N frames of each (pass 0 + the preset, 256x224 to
 //   1280x720 like the SHIELD Portable's screen, vsync off, glFinish each
 //   frame) and prints the milliseconds per frame.
@@ -88,16 +90,24 @@ int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        std::printf("usage: piccolo_gl_presets_check <shaders/gl folder> [--frames N]\n");
+        std::printf("usage: piccolo_gl_presets_check <shaders/gl folder> [presets folder] [--frames N]\n");
         return 2;
     }
     uint32_t timed_frames = 0;
-    if (argc >= 4 && std::strcmp(argv[2], "--frames") == 0)
-    {
-        timed_frames = static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10));
-    }
     std::vector<std::string> presets;
     find_presets(argv[1], &presets);
+    for (int i = 2; i < argc; i++)
+    {
+        if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc)
+        {
+            timed_frames = static_cast<uint32_t>(std::strtoul(argv[i + 1], nullptr, 10));
+            i++;
+        }
+        else
+        {
+            find_presets(argv[i], &presets);
+        }
+    }
     if (presets.empty())
     {
         std::printf("FAIL: no presets in %s\n", argv[1]);

@@ -339,6 +339,28 @@ else()
     message(STATUS "piccolo: deps/piccolo-shaders not checked out, no curated shader presets")
 endif()
 
+# The OpenGL ES presets (deps/piccolo-shaders-legacy, MIT: CRT MASK, DOT,
+# LCD3X, SCANLINES; the same ones piccoletto uses) go to shaders/gl/presets/,
+# where the picker opens on GLES (legacy APK, the browser). pass 0 and the
+# scale presets stay in shaders/gl/. Optional like the slang ones.
+set(PICCOLO_GL_PRESETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/piccolo-shaders-legacy")
+if(EXISTS "${PICCOLO_GL_PRESETS_DIR}/LICENSE")
+    add_custom_command(TARGET piccolo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -DSOURCE=${PICCOLO_GL_PRESETS_DIR} -DDESTINATION=$<TARGET_FILE_DIR:piccolo>/shaders/gl/presets
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_presets.cmake"
+        VERBATIM)
+    if(MULTITAP_PICCOLO_DIR)
+        add_custom_target(copy_piccolo_gl_presets ALL
+            COMMAND ${CMAKE_COMMAND} -DSOURCE=${PICCOLO_GL_PRESETS_DIR} -DDESTINATION=${MULTITAP_PICCOLO_DIR}/shaders/gl/presets
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_presets.cmake"
+            DEPENDS piccolo
+            COMMENT "Copying the OpenGL ES shader presets to ${MULTITAP_PICCOLO_DIR}/shaders/gl/presets"
+            VERBATIM)
+    endif()
+else()
+    message(STATUS "piccolo: deps/piccolo-shaders-legacy not checked out, no OpenGL ES shader presets")
+endif()
+
 # Nayuki's QR Code generator (deps/qrcodegen, MIT): the pair link as a QR in
 # SETTINGS > NETWORK while pairing. Its C file only (no demo, no tests).
 add_library(multitap_dep_qrcodegen STATIC "${MULTITAP_DEPS_DIR}/qrcodegen/c/qrcodegen.c")
@@ -390,6 +412,10 @@ if(EMSCRIPTEN)
         # The files piccolo ships next to its program (bundled_files_web.cpp:
         # the root of the virtual filesystem), packed into piccolo.data.
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/shaders/gl@/shaders/gl"
+        # The OpenGL ES presets (deps/piccolo-shaders-legacy) where the
+        # desktop build copies them, without the submodule's .git file.
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/deps/piccolo-shaders-legacy@/shaders/gl/presets"
+        "--exclude-file=${CMAKE_CURRENT_SOURCE_DIR}/deps/piccolo-shaders-legacy/.git"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/lang@/lang"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/layouts@/layouts"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/themes@/themes"
@@ -435,11 +461,18 @@ if(MULTITAP_BUILD_TESTS)
     set_tests_properties(piccolo_shader_check PROPERTIES
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    # The OpenGL ES presets (shaders/gl/) compile and run (needs a display; skipped without).
+    # The OpenGL ES presets (shaders/gl/: pass 0 and the scale presets, and
+    # deps/piccolo-shaders-legacy when checked out) compile and run (needs a
+    # display; skipped without).
     add_executable(piccolo_gl_presets_check tools/gl_presets_check.cpp)
     target_link_libraries(piccolo_gl_presets_check PRIVATE frontend_common)
     multitap_set_project_flags(piccolo_gl_presets_check)
-    add_test(NAME piccolo_gl_presets COMMAND piccolo_gl_presets_check "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gl")
+    if(EXISTS "${PICCOLO_GL_PRESETS_DIR}/LICENSE")
+        add_test(NAME piccolo_gl_presets COMMAND piccolo_gl_presets_check "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gl"
+                                                 "${PICCOLO_GL_PRESETS_DIR}")
+    else()
+        add_test(NAME piccolo_gl_presets COMMAND piccolo_gl_presets_check "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gl")
+    endif()
     set_tests_properties(piccolo_gl_presets PROPERTIES
                          SKIP_RETURN_CODE 77
                          PASS_REGULAR_EXPRESSION "gl presets: all [0-9]+ load, run and come out even"

@@ -202,6 +202,12 @@ if [ -e "$root/deps/piccolo-shaders/LICENSES" ]; then
     cmake -DSOURCE="$root/deps/piccolo-shaders" -DDESTINATION="$apk_dir/assets/shaders/presets" \
         -P "$root/cmake/copy_presets.cmake"
 fi
+# The OpenGL ES presets (deps/piccolo-shaders-legacy, optional) in
+# shaders/gl/presets, where the desktop build puts them too.
+if [ -e "$root/deps/piccolo-shaders-legacy/LICENSE" ]; then
+    cmake -DSOURCE="$root/deps/piccolo-shaders-legacy" -DDESTINATION="$apk_dir/assets/shaders/gl/presets" \
+        -P "$root/cmake/copy_presets.cmake"
+fi
 if [ -n "$librashader" ]; then
     mkdir -p "$apk_dir/assets/licenses"
     cp "$root/deps/librashader/LICENSE.md" "$apk_dir/assets/licenses/librashader-LICENSE.md"

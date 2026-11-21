@@ -69,3 +69,8 @@
 	path = deps/common/retroui
 	url = https://github.com/multitap-org/retroui.git
 	branch = main
+[submodule "deps/piccolo-shaders-legacy"]
+	path = deps/piccolo-shaders-legacy
+	url = https://github.com/multitap-org/piccolo-shaders-legacy.git
+	branch = main
+	shallow = true

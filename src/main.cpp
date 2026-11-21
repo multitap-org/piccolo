@@ -4901,7 +4901,9 @@ int main(int argc, char** argv)
             *targets[i] = !user_copy.empty() && host_fs_exists(user_copy.c_str()) ? user_copy : bundled_folder + names[i];
         }
         // The curated presets: the copy in piccolo's folder when the build
-        // put one there, else the one next to the program.
+        // put one there, else the one next to the program. On OpenGL ES they
+        // come from deps/piccolo-shaders-legacy (the build copies them to
+        // shaders/gl/presets, like deps/piccolo-shaders to shaders/presets).
         std::string user_presets = user_folder.empty() ? std::string() : user_folder + "presets";
         app->shader_presets_folder = !user_presets.empty() && host_fs_exists(user_presets.c_str()) ? user_presets
                                                                                                   : bundled_folder + "presets";
