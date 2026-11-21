@@ -475,6 +475,7 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
     uint32_t index = static_cast<uint32_t>(action);
     InputSource* sources = controller->bindings.sources[index];
     bool changed = !same_sources(sources, defaults->sources[index]);
+    InputAction clash = input_binding_conflict_with(&controller->bindings, action);
     bool waiting = window->capturing && window->capture_action == action && window->capture_controller == controller_index;
     uint32_t count = input_sources_count(sources);
     uint32_t rows = count > 0 ? count : 1;   // an action with nothing still has its row
@@ -503,6 +504,16 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
                 retro_ui_push_section_text();   // the one being bound stands out
                 ImGui::TextUnformatted(piccolo_text(strings, ACTION_LABELS[index]));
                 retro_ui_pop_section_text();
+            }
+            else if (clash != InputAction::count)
+            {
+                // Shares a control with an action that fires with it
+                // (input_binding_conflicts): red, and the other one named.
+                ImGui::TextColored(ImVec4(0.88f, 0.31f, 0.31f, 1.0f), "%s", piccolo_text(strings, ACTION_LABELS[index]));
+                char also[160] = {};
+                std::snprintf(also, sizeof(also), piccolo_text(strings, Str::input_conflict_also),
+                              piccolo_text(strings, ACTION_LABELS[static_cast<uint32_t>(clash)]));
+                retro_ui_item_tooltip(also);
             }
             else if (changed)
             {

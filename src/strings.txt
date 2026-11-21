@@ -992,3 +992,4 @@ input_action_hotkey_remap = REMAP (HOLD)
 remap_card_port = PORT %u
 remap_card_hold = HOLD
 remap_card_to_remap = TO REMAP
+input_conflict_also = ALSO %s: both fire together. Bind one of them elsewhere.

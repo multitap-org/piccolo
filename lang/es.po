@@ -3806,3 +3806,7 @@ msgstr "MANTÉN"
 msgctxt "remap_card_to_remap"
 msgid "TO REMAP"
 msgstr "PARA REMAPEAR"
+
+msgctxt "input_conflict_also"
+msgid "ALSO %s: both fire together. Bind one of them elsewhere."
+msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
