@@ -47,7 +47,7 @@ struct NetRemoteGame
 {
     bool     running = false;
     uint32_t slot = 1;
-    bool     paused = false;   // by a device (PAUSE)
+    uint32_t pause = 0;       // why the game is paused: NET_PAUSE_* bits (net_settings.h), USER the toggle's own
 };
 
 // A settings_request / setting_set: the answer into `reply`, its size

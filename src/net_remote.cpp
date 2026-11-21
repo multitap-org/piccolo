@@ -329,7 +329,7 @@ size_t net_remote_write_actions(NetRemote* remote, uint32_t id, const char* lang
         action.kind = ACTIONS[i].kind;
         if (action.kind == NetActionKind::toggle)
         {
-            action.state = game->paused ? 1 : 0;
+            action.state = game->pause;   // bit 0 (USER) is the toggle; the others say why else it's paused
         }
         else if (std::strstr(ACTIONS[i].key, "state") != nullptr || std::strstr(ACTIONS[i].key, "slot") != nullptr)
         {
