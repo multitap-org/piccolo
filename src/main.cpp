@@ -58,6 +58,7 @@
 #include "dvr_widget.h"
 #include "hud_view.h"
 #include "remap_widget.h"
+#include "state_widget.h"
 #include "debug_ui.h"
 #include "input_bindings.h"
 #include "input_config.h"
@@ -327,6 +328,7 @@ struct App
     OnscreenPad onscreen_pad;          // the touch gamepad over the game (onscreen_pad.h)
     DvrWidget   dvr;                   // the rewind DVR: its history and its GUI (dvr_widget.h)
     RemapWidget remap;                 // HOLD START TO REMAP: a card per undecided controller (remap_widget.h)
+    StateWidget state_icons;           // PAUSED, REWINDING, PLAY, FAST FORWARD in the top right (state_widget.h)
     HudStack    hud;                   // what the HUD widgets show this frame (retroui's hud_view)
     char        rewind_note[96] = {};  // SETTINGS > GENERAL: what AUTO chose for this game
     bool      pending_close_game = false;   // CLOSE GAME: done at the top of the next loop (like starts)
@@ -2357,7 +2359,7 @@ static void app_update_input(App* app)
     // The DVR reads its buttons itself (before the hotkeys: the one that
     // opens it doesn't act in it the same frame).
     bool dvr_was_open = app->dvr.open;
-    dvr_widget_update(&app->dvr, &frame, &app->strings, SDL_GetTicks());
+    dvr_widget_update(&app->dvr, &frame, SDL_GetTicks());
     app_handle_hotkeys(app, &frame);
     // DEVICES reads the pads itself: they don't drive ImGui meanwhile, and
     // its BACK (Escape too) only closes it. The DVR the same.
@@ -4319,6 +4321,13 @@ static void draw_hud(App* app)
 {
     uint64_t now_ms = SDL_GetTicks();
     hud_view_clear(&app->hud);
+    StateFacts facts = {};
+    facts.paused = game_running(app) && app->session.paused;
+    facts.rewinding = app->dvr.open;
+    facts.fast_forwarding = game_running(app) && core_session_fast_forwarding(&app->session);
+    facts.played_from_ms = app->dvr.played_from_ms;
+    state_widget_add_hud(&app->state_icons, &facts, &app->hud, now_ms);
+    dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
 
     const ImGuiIO& io = ImGui::GetIO();
@@ -4491,7 +4500,6 @@ static bool app_frame(App* app)
         bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
         // The ports' tabs, behind every window (they peek while the menu is up).
         ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
-        dvr_widget_draw_hud(&app->dvr, app->pixel_font, app->ui_scale, SDL_GetTicks());
         draw_hud(app);
         draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
         // The status line: with the menu bar, or alone over a paused game

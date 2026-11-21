@@ -983,7 +983,6 @@ dvr_play_here = PLAY FROM HERE
 dvr_watch = WATCH
 dvr_pause = PAUSE
 dvr_back_to_now = BACK TO NOW
-dvr_hud_from = ◀◀ PLAYING FROM
 dvr_hud_nothing = REWIND: NOTHING RECORDED YET
 dvr_hud_unsupported = REWIND: THIS CORE HAS NO SAVESTATES
 dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)

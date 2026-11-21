@@ -9,6 +9,7 @@
 #include "imgui.h"
 
 #include "core_session.h"
+#include "hud_view.h"
 #include "input_bindings.h"
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
@@ -198,17 +199,12 @@ void dvr_widget_close(DvrWidget* widget)
     }
 }
 
-static void play_from_here(DvrWidget* widget, const Localization* strings, uint64_t now_ms)
+static void play_from_here(DvrWidget* widget, uint64_t now_ms)
 {
-    CoreRewindPosition position = {};
-    core_rewind_dvr_position(&widget->rewind, &position);
-    char when[16] = {};
-    format_back(when, sizeof(when), position.newest - position.cursor, fps_of(widget), true);
     core_rewind_dvr_resume_here(&widget->rewind);
     widget->open = false;
-    char text[96] = {};
-    std::snprintf(text, sizeof(text), "%s %s", piccolo_text(strings, Str::dvr_hud_from), when);
-    set_hud(widget, text, now_ms);
+    widget->hud_since_ms = 0;
+    widget->played_from_ms = now_ms == 0 ? 1 : now_ms;   // the PLAY state icon
 }
 
 static bool pressed(const InputFrame* frame, InputAction action)
@@ -243,7 +239,7 @@ static void follow_history(DvrWidget* widget)
     widget->open = widget->open && widget->rewind.dvr_open;
 }
 
-void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, const Localization* strings, uint64_t now_ms)
+void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms)
 {
     follow_history(widget);
     if (!widget->open)
@@ -257,7 +253,7 @@ void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, const Localiz
     }
     if (pressed(frame, InputAction::ui_accept))
     {
-        play_from_here(widget, strings, now_ms);
+        play_from_here(widget, now_ms);
         return;
     }
     // Which the hints name: the keyboard if a key did something, else the pads.
@@ -553,7 +549,7 @@ void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const
         core_rewind_dvr_step(&widget->rewind, 1);
         break;
     case DvrViewAction::play_here:
-        play_from_here(widget, strings, now_ms);
+        play_from_here(widget, now_ms);
         break;
     case DvrViewAction::watch:
         core_rewind_dvr_set_playing(&widget->rewind, !widget->rewind.playing);
@@ -566,9 +562,24 @@ void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const
     }
 }
 
-void dvr_widget_draw_hud(DvrWidget* widget, ImFont* pixel_font, int32_t scale, uint64_t now_ms)
+constexpr uint64_t HUD_CARD_MS = 2500;      // the card stays this long...
+constexpr uint64_t HUD_CARD_FADE_MS = 500;  // ...then fades out
+
+void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms)
 {
-    dvr_view_draw_hud(pixel_font, scale, widget->hud, widget->hud_since_ms, now_ms);
+    uint64_t since = widget->hud_since_ms;
+    if (since == 0 || now_ms < since || now_ms - since >= HUD_CARD_MS + HUD_CARD_FADE_MS)
+    {
+        return;
+    }
+    HudCard card = {};
+    hud_view_card_text(&card, widget->hud);   // across two lines when it needs them
+    card.since_ms = since;
+    if (now_ms - since > HUD_CARD_MS)
+    {
+        card.alpha = 1.0f - static_cast<float>(now_ms - since - HUD_CARD_MS) / static_cast<float>(HUD_CARD_FADE_MS);
+    }
+    hud_view_add_card(stack, &card);
 }
 
 void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char* out, size_t out_size)

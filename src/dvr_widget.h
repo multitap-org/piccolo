@@ -17,8 +17,8 @@
 //       Y              WATCH: the recording plays / pauses (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
 //     The hints name the keyboard's keys when it was used last.
-//   - A HUD indicator (no input, never pauses): "PLAYING FROM -0:27.8" after
-//     PLAY FROM HERE, or why the DVR didn't open.
+//   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
+//     HERE (state_widget), or a notification card saying why it didn't open.
 //
 // Kept behind these calls on purpose: main.cpp's UI state is being reworked
 // (ui-state) and rewires them without touching this file.
@@ -31,6 +31,7 @@
 #include "video_texture.h"
 
 struct AppShell;
+struct HudStack;
 struct CoreSession;
 struct ImFont;
 struct InputFrame;
@@ -62,9 +63,10 @@ struct DvrWidget
     // 20 ms) they're spaced out so stepping stays smooth.
     uint64_t next_thumb_ms = 0;
 
-    // The HUD indicator.
+    // Why it didn't open: a notification card for a few seconds (HUD).
     char     hud[96] = {};
     uint64_t hud_since_ms = 0;
+    uint64_t played_from_ms = 0;   // the last PLAY FROM HERE: the PLAY state icon (state_widget)
 
     char readout[16] = {};
     char kept[32]    = {};
@@ -84,7 +86,7 @@ bool dvr_widget_open(DvrWidget* widget, const Localization* strings, uint64_t no
 void dvr_widget_close(DvrWidget* widget);
 
 // While open, after input_update: the gamepads' and keyboard's actions.
-void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, const Localization* strings, uint64_t now_ms);
+void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms);
 
 // While open, in a frame (after app_shell_acquire, before the session's own
 // upload): makes the next missing thumbnail.
@@ -97,8 +99,8 @@ float dvr_widget_strip_height(const DvrWidget* widget, int32_t scale);
 // The strip (above every window) and what a click / tap on it did.
 void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
                      uint64_t now_ms);
-// The HUD indicator (behind the windows, drawn every frame).
-void dvr_widget_draw_hud(DvrWidget* widget, ImFont* pixel_font, int32_t scale, uint64_t now_ms);
+// Why it didn't open, as a notification card for a few seconds (hud_view).
+void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms);
 
 // For SETTINGS > GENERAL: what AUTO chose for the running game ("" = nothing).
 void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char* out, size_t out_size);

@@ -218,6 +218,7 @@ set(PICCOLO_SOURCES
     src/ports_widget.cpp
     src/dvr_widget.cpp
     src/remap_widget.cpp
+    src/state_widget.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)

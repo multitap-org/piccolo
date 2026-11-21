@@ -3778,9 +3778,6 @@ msgctxt "dvr_back_to_now"
 msgid "BACK TO NOW"
 msgstr "VOLVER AL PRESENTE"
 
-msgctxt "dvr_hud_from"
-msgid "◀◀ PLAYING FROM"
-msgstr "◀◀ JUGANDO DESDE"
 
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
