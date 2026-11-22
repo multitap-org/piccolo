@@ -11,9 +11,15 @@ so a checkout with its submodules builds on its own.
 piccolo is built natively on Windows with [MSYS2](https://www.msys2.org/):
 the **UCRT64** environment (GCC, libstdc++ and the Universal CRT) on x86_64,
 **CLANGARM64** (clang, libc++) on ARM64. The C/C++ runtimes are linked
-statically, so the resulting `piccolo.exe` needs only Windows' own DLLs and
-`vulkan-1.dll`, which comes with the GPU driver. The same steps are what CI
-runs (`.github/workflows/windows.yml`).
+statically, so the resulting `piccolo.exe` needs only Windows' own DLLs,
+`vulkan-1.dll` (it comes with the GPU driver) and OpenSSL's `libssl` and
+`libcrypto` from MSYS2 (WebRTC; step 4 copies them). The same steps are what CI runs
+(`.github/workflows/windows.yml`).
+
+Once the packages and the source are there (steps 1 and 2),
+`tools/build-windows.sh` does steps 3 to 6 in one go: it builds piccolo and
+librashader and deploys them to `%USERPROFILE%\piccolo` with the DLLs they
+need (`--debug`, `--test`, `--no-librashader`; `--help` lists them).
 
 ### 1. Install MSYS2 and the packages
 
@@ -35,6 +41,8 @@ pacman -S --needed git \
     mingw-w64-ucrt-x86_64-cmake \
     mingw-w64-ucrt-x86_64-ninja \
     mingw-w64-ucrt-x86_64-vulkan-devel \
+    mingw-w64-ucrt-x86_64-openssl \
+    mingw-w64-ucrt-x86_64-ntldd \
     mingw-w64-ucrt-x86_64-rust
 ```
 
@@ -44,7 +52,9 @@ pacman -S --needed git \
 | `gcc`          | the compiler (C and C++) |
 | `cmake`, `ninja` | the build (CMake 3.25 or newer) |
 | `vulkan-devel` | the Vulkan headers and loader to link against |
-| `rust`         | only for `librashader.dll` (shader presets, step 5); optional |
+| `openssl`      | TLS / DTLS for WebRTC (`deps/libdatachannel`) |
+| `ntldd`        | finds the MSYS2 DLLs to copy next to piccolo (step 4) |
+| `rust`         | only for `librashader.dll` (shader presets, step 6); optional |
 
 On ARM64 use the **MSYS2 CLANGARM64** shell and the `mingw-w64-clang-aarch64-`
 prefix, with `clang` instead of `gcc`.
@@ -75,7 +85,8 @@ git submodule update --init --recursive \
     deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon \
     deps/piccolo-shaders deps/piccolo-shaders-legacy \
     deps/common/hosts-common deps/common/frontends-common \
-    deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro
+    deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro \
+    deps/libdatachannel
 git submodule update --init deps/librashader
 ```
 
@@ -121,13 +132,33 @@ cores) are left alone. Useful options:
 | `-DCMAKE_BUILD_TYPE=Debug` | debug build; turn on `-DMULTITAP_WARNINGS_AS_ERRORS=ON` while developing (Release builds give two harmless GCC warnings) |
 | `-DMULTITAP_BUILD_TESTS=OFF` | skip the tests |
 
-### 4. Run the tests (optional)
+### 4. Copy the MSYS2 DLLs
+
+What piccolo still links from MSYS2 (OpenSSL, for WebRTC with
+`deps/libdatachannel`) has to sit next to it. From piccolo's folder, copy
+every DLL that `ntldd` resolves to MSYS2's bin folder; the loop runs three
+times so the DLLs just copied are followed too. `vulkan-1.dll` is left out:
+the GPU driver's loader must win, and Windows looks in piccolo's folder first.
+(`librashader.dll` is loaded at run time, so `ntldd` doesn't see it: step 6
+copies its DLLs.) CI runs the same loop.
+
+```sh
+msys_bin=$(cygpath -w "$MSYSTEM_PREFIX/bin")
+cd "$USERPROFILE/piccolo"
+for i in $(seq 3); do
+    for bin in $(ntldd -R *.exe | grep -iF "$msys_bin" | grep -iv 'vulkan-1\.dll' | cut -d">" -f2 | cut -d" " -f2); do
+        cp -vu "$bin" .
+    done
+done
+```
+
+### 5. Run the tests (optional)
 
 ```sh
 ctest --test-dir build --output-on-failure
 ```
 
-### 5. librashader (optional: shader presets)
+### 6. librashader (optional: shader presets)
 
 piccolo loads `librashader.dll` at run time from its own folder. Without it
 the picture is drawn without shader presets. Only its C API with the Vulkan
@@ -161,11 +192,12 @@ target, which also needs the Visual Studio Build Tools. That DLL needs no
 runtime DLL at all (`+crt-static`); the same `cargo build` command works from
 PowerShell there.
 
-### 6. Check the DLLs (optional)
+### 7. Check the DLLs (optional)
 
-`piccolo.exe` should list no MSYS2 DLL (`libstdc++`, `libgcc`,
-`libwinpthread`, `SDL3`, ...), only Windows' own and `vulkan-1.dll`.
-`librashader.dll` built with MSYS2's Rust lists `libstdc++-6.dll` too (step 5):
+`piccolo.exe` should list no C/C++ runtime or SDL DLL (`libstdc++`, `libgcc`,
+`libwinpthread`, `SDL3`, ...): only Windows' own, `vulkan-1.dll`,
+`libssl-4-x64.dll` and `libcrypto-4-x64.dll` (step 4).
+`librashader.dll` built with MSYS2's Rust lists `libstdc++-6.dll` too (step 6):
 
 ```sh
 objdump -p "$USERPROFILE/piccolo/piccolo.exe" | grep 'DLL Name'

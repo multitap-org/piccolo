@@ -5,7 +5,8 @@
 #   ARM64:  CLANGARM64 (clang + libc++ + the Universal CRT) on GitHub's
 #           Windows ARM runner; MSYS2 has no GCC for ARM64.
 # The C/C++ runtimes are linked statically, so piccolo.exe only needs Windows'
-# own DLLs and vulkan-1.dll (installed with the GPU driver).
+# own DLLs, vulkan-1.dll (installed with the GPU driver) and OpenSSL's
+# libssl / libcrypto (WebRTC, deps/libdatachannel), copied next to it.
 name: Windows
 
 # Tags: release.yml calls this workflow for v* tags (workflow_call).
@@ -52,9 +53,12 @@ jobs:
             cmake:p
             ninja:p
             vulkan-devel:p
+            openssl:p
+            ntldd:p
 
       # Only the submodules the build uses.
       # deps/librashader without --recursive: its own submodules are tests.
+      # deps/libdatachannel with --recursive: plog, usrsctp and libjuice.
       - name: Submodules
         run: |
           git submodule update --init --recursive --depth 1 \
@@ -62,7 +66,8 @@ jobs:
             deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon \
             deps/piccolo-shaders deps/piccolo-shaders-legacy \
             deps/common/hosts-common deps/common/frontends-common deps/common/retroui \
-            deps/libretro/host-libretro deps/libretro/frontend-libretro
+            deps/libretro/host-libretro deps/libretro/frontend-libretro \
+            deps/libdatachannel
           git submodule update --init --depth 1 deps/librashader
           # Test libretro ships in every package. Its nested submodules
           # (imguisw's) have SSH URLs: fetched over HTTPS instead.
@@ -87,6 +92,20 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      # The DLLs piccolo.exe still links from MSYS2 (OpenSSL) go next to it:
+      # every DLL ntldd resolves to the environment's bin folder, three passes
+      # so the DLLs just copied are followed too. Not vulkan-1.dll: the
+      # driver's loader must win (Windows looks in piccolo's folder first).
+      - name: Copy MSYS2 DLLs
+        run: |
+          msys_bin=$(cygpath -w "$MSYSTEM_PREFIX/bin")
+          cd dist/piccolo
+          for i in $(seq 3); do
+            for bin in $(ntldd -R *.exe | grep -iF "$msys_bin" | grep -iv 'vulkan-1\.dll' | cut -d">" -f2 | cut -d" " -f2); do
+              cp -vu "$bin" .
+            done
+          done
+
       # MULTITAP_NET_HTTP_ONLINE_URL: net_http_test also downloads over the
       # network (WinHTTP, TLS by Schannel) from the cores site.
       - name: Test
@@ -109,14 +128,24 @@ jobs:
           Copy-Item build-librashader/release/librashader_capi.dll dist/piccolo/librashader.dll
           Copy-Item deps/librashader/LICENSE.md dist/piccolo/librashader-LICENSE.md
 
-      # Fails if piccolo.exe still needs a DLL from MSYS2 (anything besides
-      # Windows' own and vulkan-1.dll), or librashader.dll a C/C++ runtime DLL.
+      # Fails if piccolo.exe needs a C/C++ runtime or SDL DLL from MSYS2, or a
+      # DLL from MSYS2 that isn't in its folder (only OpenSSL's are allowed,
+      # copied above; vulkan-1.dll comes with the driver), or librashader.dll
+      # a C/C++ runtime DLL.
       - name: Check DLL dependencies
         run: |
           objdump=$(command -v objdump || command -v llvm-objdump)
           "$objdump" -p dist/piccolo/piccolo.exe | grep 'DLL Name' | tee dlls.txt
           if grep -iE 'libstdc|libgcc|libwinpthread|libc\+\+|libunwind|libcurl|SDL3' dlls.txt; then
             echo "piccolo.exe depends on MSYS2 DLLs"
+            exit 1
+          fi
+          # Run from piccolo's folder its own DLLs win, so anything still
+          # resolved to MSYS2's bin folder is missing from the package.
+          msys_bin=$(cygpath -w "$MSYSTEM_PREFIX/bin")
+          (cd dist/piccolo && ntldd -R piccolo.exe) | tee ntldd.txt
+          if grep -iF "$msys_bin" ntldd.txt | grep -iv 'vulkan-1\.dll'; then
+            echo "piccolo.exe needs MSYS2 DLLs that aren't in its folder"
             exit 1
           fi
           # Test libretro ships in every package, in piccolo's cores folder.
