@@ -5,9 +5,13 @@
 # Run from the MSYS2 UCRT64 shell, anywhere in the checkout:
 #
 #   tools/build-windows.sh                  Release, deployed
+#   tools/build-windows.sh --deps           first install the packages (pacman)
 #   tools/build-windows.sh --debug          Debug with warnings as errors (build-debug/)
 #   tools/build-windows.sh --test           also run the tests (ctest)
 #   tools/build-windows.sh --no-librashader skip librashader (no Rust needed)
+#
+# Submodules not checked out yet are fetched (the ones of compilation.md step
+# 2); the ones already there are left as they are.
 #
 # Environment, all optional:
 #   PICCOLO_DIR  where to deploy (default $USERPROFILE/piccolo)
@@ -25,14 +29,16 @@
 set -eu
 
 build_type=Release
+install_deps=0
 run_tests=0
 with_librashader=1
 for arg in "$@"; do
     case "$arg" in
+        --deps) install_deps=1 ;;
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-windows.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -42,9 +48,35 @@ case "${MSYSTEM:-}" in
     *) echo "build-windows.sh: run it from the MSYS2 UCRT64 (or CLANGARM64) shell, not '${MSYSTEM:-none}'" >&2; exit 1 ;;
 esac
 
-for tool in cmake ninja ntldd cygpath; do
+# The packages, the same list as docs/compilation.md step 1, for this
+# environment (MINGW_PACKAGE_PREFIX: mingw-w64-ucrt-x86_64 or
+# mingw-w64-clang-aarch64). Only -S --needed: never -Sy (MSYS2 doesn't
+# support partial upgrades), and not -Syu either (an update of MSYS2 itself
+# closes the shell): that one is left to the user.
+if [ "$install_deps" = 1 ]; then
+    if [ "$MSYSTEM" = CLANGARM64 ]; then
+        compiler=clang
+    else
+        compiler=gcc
+    fi
+    packages="git"
+    for package in $compiler cmake ninja vulkan-devel openssl ntldd; do
+        packages="$packages $MINGW_PACKAGE_PREFIX-$package"
+    done
+    if [ "$with_librashader" = 1 ]; then
+        packages="$packages $MINGW_PACKAGE_PREFIX-rust"
+    fi
+    echo "== packages (pacman)"
+    # shellcheck disable=SC2086 # packages is a list
+    if ! pacman -S --needed --noconfirm $packages; then
+        echo "build-windows.sh: pacman failed; update MSYS2 first with pacman -Syu (until nothing is left), then run this again" >&2
+        exit 1
+    fi
+fi
+
+for tool in git cmake ninja ntldd cygpath; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "build-windows.sh: $tool not found (packages: docs/compilation.md, step 1)" >&2
+        echo "build-windows.sh: $tool not found (tools/build-windows.sh --deps, or docs/compilation.md step 1)" >&2
         exit 1
     fi
 done
@@ -52,15 +84,41 @@ done
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
 
-if [ ! -f deps/SDL/CMakeLists.txt ]; then
-    echo "build-windows.sh: submodules missing (docs/compilation.md, step 2)" >&2
-    exit 1
-fi
-if [ "$with_librashader" = 1 ]; then
-    if [ ! -f deps/librashader/Cargo.toml ]; then
-        echo "build-windows.sh: deps/librashader missing: git submodule update --init deps/librashader (or --no-librashader)" >&2
-        exit 1
+# The submodules of compilation.md step 2, only the ones not checked out yet
+# (no .git in their folder): one already there may be on a branch being
+# worked on, and `git submodule update` would move it back to the pinned
+# commit.
+submodules="deps/SDL deps/imgui deps/libretro-common deps/libsamplerate
+    deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon
+    deps/piccolo-shaders deps/piccolo-shaders-legacy
+    deps/common/hosts-common deps/common/frontends-common
+    deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro
+    deps/libdatachannel"
+missing=""
+for submodule in $submodules; do
+    if [ ! -e "$submodule/.git" ]; then
+        missing="$missing $submodule"
     fi
+done
+if [ -n "$missing" ]; then
+    echo "== submodules:$missing"
+    # shellcheck disable=SC2086 # missing is a list
+    git submodule update --init --recursive $missing
+fi
+# Without --recursive: its own submodules are only its tests.
+if [ "$with_librashader" = 1 ] && [ ! -e deps/librashader/.git ]; then
+    echo "== submodule: deps/librashader"
+    git submodule update --init deps/librashader
+fi
+# The Test libretro core's nested submodules have SSH URLs: over HTTPS, so no
+# GitHub SSH key is needed.
+if [ ! -e deps/test-libretro/.git ]; then
+    echo "== submodule: deps/test-libretro"
+    git -c url."https://github.com/".insteadOf="git@github.com:" \
+        submodule update --init --recursive --checkout deps/test-libretro
+fi
+
+if [ "$with_librashader" = 1 ]; then
     if ! command -v cargo >/dev/null 2>&1; then
         echo "build-windows.sh: cargo not found: pacman -S --needed \${MINGW_PACKAGE_PREFIX}-rust (or --no-librashader)" >&2
         exit 1
