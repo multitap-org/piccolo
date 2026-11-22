@@ -76,13 +76,44 @@ void onscreen_pad_edit_end(OnscreenPad* pad)
 }
 
 // A real gamepad played (a button held): AUTO hides the pad.
+// Whether two devices' controllers share a port (any port either is on).
+static bool share_a_port(const InputSystem* input, uint32_t device_a, uint32_t device_b)
+{
+    for (uint32_t p = 0; p < INPUT_PORT_COUNT; p++)
+    {
+        bool has_a = false;
+        bool has_b = false;
+        for (size_t m = 0; m < input->ports[p].size(); m++)
+        {
+            uint32_t controller = input->ports[p][m];
+            if (controller < input->controllers.size())
+            {
+                has_a = has_a || input->controllers[controller].device_id == device_a;
+                has_b = has_b || input->controllers[controller].device_id == device_b;
+            }
+        }
+        if (has_a && has_b)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A real gamepad on the touch pad's port pressed something: the player there
+// picked up a controller (Andrés: a gamepad on another port, another
+// player, leaves the touch pad alone).
 static bool real_gamepad_played(const OnscreenPad* pad, const InputSystem* input)
 {
+    if (!pad->plugged)
+    {
+        return false;
+    }
     for (size_t i = 0; i < input->devices.devices.size(); i++)
     {
         const InputDevice* device = &input->devices.devices[i];
         if (device->kind != InputDeviceKind::gamepad || !device->connected || device->game_only || device->retropad ||
-            (pad->plugged && device->id == pad->device))
+            device->id == pad->device || !share_a_port(input, device->id, pad->device))
         {
             continue;
         }
@@ -106,6 +137,7 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
         if (device != nullptr)
         {
             device->retropad = true;               // hands a RetroPad (the layouts' parts)
+            device->shares_port1 = true;           // on port 1 at once, a gamepad's START still takes port 1
             device->ignore = InputIgnore::no;      // (a finger held on a stick isn't a stuck receiver)
         }
         input_add_controllers_for_device(input, pad->device);
