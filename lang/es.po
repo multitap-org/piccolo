@@ -3930,3 +3930,19 @@ msgstr "TODAVÍA SE ESTÁ GUARDANDO LA ÚLTIMA CAPTURA"
 msgctxt "input_action_hotkey_screenshot"
 msgid "SCREENSHOT"
 msgstr "CAPTURA"
+
+msgctxt "quick_menu_config"
+msgid "CONFIG"
+msgstr "CONFIGURAR"
+
+msgctxt "quick_menu_config_help"
+msgid "CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND SHADER."
+msgstr "CONFIGURACIÓN DEL CORE: SUS OPCIONES, CONTROLES Y SHADER."
+
+msgctxt "core_config_title"
+msgid "CORE CONFIGURATION"
+msgstr "CONFIGURACIÓN DEL CORE"
+
+msgctxt "menu_core_config"
+msgid "CORE CONFIGURATION..."
+msgstr "CONFIGURACIÓN DEL CORE..."

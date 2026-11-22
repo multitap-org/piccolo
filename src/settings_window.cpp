@@ -206,7 +206,7 @@ static void draw_picture(SettingsWindow* window, const SettingsUiContext* ui, co
     settings_ui_row(ui, PICCOLO_VIDEO_SCALING, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_MAX_OFFSCREEN, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_FILTER, nullptr);
-    // The shader preset is in the QUICK MENU (SHADER), next to the game.
+    // The shader preset is in CORE CONFIGURATION (SHADER), next to the game.
     settings_ui_row(ui, PICCOLO_VIDEO_POSITION, nullptr);
 
     // The crop (and more image settings later) live in their own window.

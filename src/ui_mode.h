@@ -6,13 +6,18 @@
 // main.cpp opens and closes the windows themselves.
 //
 //   GAME        the game has the input (the on-screen pad too).
-//   QUICK MENU  the actions on the running core (a slide-out on the right).
-//   WIDGET      one window widget during play: the ports popup (DEVICES),
-//               a core's text box, the shader KEEP / REVERT question, the
-//               DVR's GUI. HUD widgets (the ports' tabs, indicators) are no
-//               mode: they draw over anything and take no input.
-//   MAIN MENU   the menu bar and its stack of windows (settings, LOAD GAME...);
-//               always this mode while no game runs.
+//   WIDGET      one window widget during play: QUICK MENU (the actions on the
+//               running core: states, DVR, PAUSE, RESTART, CLOSE GAME,
+//               CONFIG), the ports popup (DEVICES), a core's text box, the
+//               shader KEEP / REVERT question, the DVR's GUI. HUD widgets (the
+//               ports' tabs, indicators) are no mode: they draw over anything
+//               and take no input.
+//   MAIN MENU   the menu bar and its stack of windows (settings, LOAD GAME,
+//               CORE CONFIGURATION...); always this mode while no game runs.
+//
+// QUICK MENU was a mode of its own until 2026-11-22 (Andrés split it: the
+// actions became a widget, the per-core settings the CORE CONFIGURATION
+// window).
 //
 // The mode changes only through the ui_enter_* functions. Each change counts
 // in UiState::changes: main.cpp then lets go of every held key and cancels
@@ -27,7 +32,6 @@
 enum class UiMode
 {
     game,
-    quick_menu,
     widget,
     main_menu,
 };
@@ -35,6 +39,7 @@ enum class UiMode
 enum class UiWidget
 {
     none,
+    quick_menu,     // QUICK MENU: the actions on the running core
     ports,          // DEVICES (the ports widget's popup)
     text_input,     // a core's TEXT request (libretro extension); the core waits for it
     shader_check,   // KEEP / REVERT a preset that's too slow; it measures the frame time
@@ -59,6 +64,7 @@ enum class UiWindow
     safe_start,        // SAFE START (after a crash, before the game starts)
     debug,             // the debug window
     pad_editor,        // the on-screen pad's EDIT LAYOUT (drawn by the overlay)
+    core_config,       // CORE CONFIGURATION: core options, controls, shader (also QUICK MENU's CONFIG)
     count,
 };
 
@@ -69,7 +75,7 @@ constexpr uint32_t UI_WINDOW_MAX = static_cast<uint32_t>(UiWindow::count);
 enum class UiGrab
 {
     none,
-    capture,   // SET (INPUT, QUICK MENU > CONTROLS): input_capture_*
+    capture,   // SET (INPUT, CORE CONFIGURATION > CONTROLS): input_capture_*
     mapping,   // MAP CONTROLLER: the router suspended
     macro,     // the macro recorder
 };
@@ -95,9 +101,8 @@ void ui_game_stopped(UiState* state);
 
 // The transitions. True when the mode (or the widget) changed. Entering a
 // mode closes what the old one had open (MAIN MENU's stack, the widget).
-// GAME and QUICK MENU need a running game (refused otherwise).
+// GAME and the widgets need a running game (refused otherwise).
 bool ui_enter_game(UiState* state);
-bool ui_enter_quick_menu(UiState* state);
 bool ui_enter_widget(UiState* state, UiWidget widget);
 bool ui_enter_main_menu(UiState* state);
 
@@ -119,13 +124,15 @@ enum class UiBack
 {
     none,             // GAME: the key is the game's
     cancel_grab,      // a grab is on: it's cancelled, nothing closes
-    close_sub_view,   // QUICK MENU's shader picker or remap view
+    close_sub_view,   // a view inside the window that's up (CORE CONFIGURATION's remap view, its shader picker)
     close_widget,     // the widget's own back (text box: cancel; KEEP / REVERT: REVERT), then GAME
     close_window,     // MAIN MENU's top window
-    to_game,          // QUICK MENU, or the bar alone with a game running
+    to_game,          // the bar alone with a game running
 };
 
-UiBack ui_back(const UiState* state, bool quick_menu_sub_view);
+// `sub_view`: the window that's up (the widget, or MAIN MENU's top window)
+// shows a view of its own that BACK leaves first.
+UiBack ui_back(const UiState* state, bool sub_view);
 
 // The pause causes (a bit each; the pause is their sum).
 enum class UiPause

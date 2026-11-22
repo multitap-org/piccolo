@@ -30,6 +30,7 @@ enum class MenuAction
     cores,         // TOOLS > CORES (the core downloader)
     share,         // TOOLS > SHARE (files with another piccolo)
     network,       // CONFIG > NETWORK (listener, pairing, paired devices)
+    core_config,   // GAME > CORE CONFIGURATION (the running core's options, controls, shader)
     separator,     // not an action: a line between items (its label isn't shown)
 };
 

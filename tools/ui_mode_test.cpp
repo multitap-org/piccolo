@@ -24,7 +24,7 @@ static void test_transitions()
     UiState state = {};
     check(state.mode == UiMode::main_menu, "start: MAIN MENU (nothing runs)");
     check(!ui_enter_game(&state) && state.mode == UiMode::main_menu, "no game: GAME refused");
-    check(!ui_enter_quick_menu(&state), "no game: QUICK MENU refused");
+    check(!ui_enter_widget(&state, UiWidget::quick_menu), "no game: QUICK MENU refused");
     check(!ui_enter_widget(&state, UiWidget::ports), "no game: widgets refused");
     ui_push_window(&state, UiWindow::load_game);
 
@@ -33,14 +33,20 @@ static void test_transitions()
     check(state.mode == UiMode::game && state.window_count == 0, "a game starts: GAME, LOAD GAME closed");
     check(state.changes == changes + 1, "a game starts: counted as a change");
 
-    check(ui_enter_quick_menu(&state) && state.mode == UiMode::quick_menu, "F1: QUICK MENU");
-    check(!ui_enter_quick_menu(&state), "QUICK MENU again: no change");
+    check(ui_enter_widget(&state, UiWidget::quick_menu) && state.mode == UiMode::widget &&
+              state.widget == UiWidget::quick_menu,
+          "F1: QUICK MENU (a window widget)");
+    check(!ui_enter_widget(&state, UiWidget::quick_menu), "QUICK MENU again: no change");
     check(ui_enter_widget(&state, UiWidget::ports) && state.mode == UiMode::widget && state.widget == UiWidget::ports,
           "a window widget from QUICK MENU replaces it");
     check(ui_enter_widget(&state, UiWidget::text_input) && state.widget == UiWidget::text_input,
           "one window widget at a time");
     check(ui_enter_main_menu(&state) && state.widget == UiWidget::none, "MAIN MENU closes the widget");
-    check(ui_enter_quick_menu(&state) && state.mode == UiMode::quick_menu, "F1 in MAIN MENU: QUICK MENU");
+    check(ui_enter_widget(&state, UiWidget::quick_menu) && state.widget == UiWidget::quick_menu, "F1 in MAIN MENU: QUICK MENU");
+    ui_push_window(&state, UiWindow::core_config);
+    check(state.mode == UiMode::main_menu && ui_top_window(&state) == UiWindow::core_config && state.widget == UiWidget::none,
+          "CONFIG: CORE CONFIGURATION, a MAIN MENU window, closes QUICK MENU");
+    ui_remove_window(&state, UiWindow::core_config);
 
     ui_push_window(&state, UiWindow::settings);
     check(state.mode == UiMode::main_menu && ui_top_window(&state) == UiWindow::settings, "a window enters MAIN MENU");
@@ -63,9 +69,12 @@ static void test_back()
     check(ui_back(&state, false) == UiBack::none, "back: the bar alone with nothing running stays");
     ui_game_started(&state);
     check(ui_back(&state, false) == UiBack::none, "back: in GAME it's the game's");
-    ui_enter_quick_menu(&state);
-    check(ui_back(&state, true) == UiBack::close_sub_view, "back: QUICK MENU's sub-view first");
-    check(ui_back(&state, false) == UiBack::to_game, "back: then QUICK MENU to GAME");
+    ui_enter_widget(&state, UiWidget::quick_menu);
+    check(ui_back(&state, false) == UiBack::close_widget, "back: QUICK MENU closes (a widget)");
+    ui_push_window(&state, UiWindow::core_config);
+    check(ui_back(&state, true) == UiBack::close_sub_view, "back: CORE CONFIGURATION's remap view first");
+    check(ui_back(&state, false) == UiBack::close_window, "back: then the window");
+    ui_remove_window(&state, UiWindow::core_config);
     ui_enter_widget(&state, UiWidget::shader_check);
     check(ui_back(&state, false) == UiBack::close_widget, "back: a widget's own back");
     ui_push_window(&state, UiWindow::settings);
@@ -92,13 +101,19 @@ static void test_grabs()
     ui_grab_end(&state);
     check(!ui_grab_orphaned(&state) && state.grab == UiGrab::none, "grab: ended");
 
-    ui_enter_quick_menu(&state);
+    ui_push_window(&state, UiWindow::core_config);
     ui_grab_begin(&state, UiGrab::macro);
-    check(state.grab_mode == UiMode::quick_menu && state.grab_window == UiWindow::none, "grab: the macro recorder is QUICK MENU's");
+    check(state.grab_mode == UiMode::main_menu && state.grab_window == UiWindow::core_config,
+          "grab: the macro recorder is CORE CONFIGURATION's");
+    ui_remove_window(&state, UiWindow::core_config);
+    check(ui_grab_orphaned(&state), "grab: CORE CONFIGURATION closed: orphaned");
+    ui_grab_end(&state);
     uint32_t changes = state.changes;
+    ui_push_window(&state, UiWindow::core_config);
+    ui_grab_begin(&state, UiGrab::macro);
     ui_enter_game(&state);
     check(state.grab == UiGrab::none && state.changes == changes + 1, "grab: a mode change ends it");
-    ui_enter_quick_menu(&state);
+    ui_push_window(&state, UiWindow::core_config);
     ui_grab_begin(&state, UiGrab::macro);
     state.mode = UiMode::game;   // (as if something changed the mode behind its back)
     check(ui_grab_orphaned(&state), "grab: its mode gone: orphaned");
@@ -118,7 +133,7 @@ static void test_derive()
     check(!d.interface_layer && !d.keyboard_hotkeys_free && d.overlay_active && d.pause == 0 && !d.frame_delay_interrupt,
           "derive: GAME: the game's input, overlay on, runs");
 
-    ui_enter_quick_menu(&state);
+    ui_enter_widget(&state, UiWidget::quick_menu);
     d = ui_derive(&state, &facts);
     check(d.interface_layer && !d.keyboard_hotkeys_free && !d.overlay_active, "derive: QUICK MENU: interface, hotkeys need Shift");
     check(d.pause == ui_pause_bit(UiPause::menu) && d.frame_delay_interrupt, "derive: QUICK MENU pauses with PAUSE IN MENU");

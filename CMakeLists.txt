@@ -215,6 +215,7 @@ set(PICCOLO_SOURCES
     src/safe_start_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
+    src/core_config_window.cpp
     src/ports_widget.cpp
     src/dvr_widget.cpp
     src/fps_meter.cpp

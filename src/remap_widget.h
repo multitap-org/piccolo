@@ -14,7 +14,7 @@
 //     (not designed yet); headless: no cards (nobody sees them).
 //   - No pause, input untouched (a HUD): the game sees the button too.
 //   - REMAP (a hotkey binding the router never fires, START by default)
-//     held 1 s by that controller opens QUICK MENU on CONTROLS' remap of
+//     held 1 s by that controller opens CORE CONFIGURATION on CONTROLS' remap of
 //     that port and controller.
 //   - 5 s without it: the RetroPad is kept and remembered as decided.
 //     The countdown runs only in GAME (elsewhere the button is the UI's) and
@@ -62,7 +62,7 @@ struct RemapWidget
 // What the update decided for the frontend to do.
 struct RemapWidgetResult
 {
-    bool     open_remap = false;   // REMAP held: open QUICK MENU on this remap
+    bool     open_remap = false;   // REMAP held: open CORE CONFIGURATION on this remap
     uint32_t port = 0;
     uint32_t controller = 0;
     bool     save = false;         // a RetroPad was remembered: save input.cfg
