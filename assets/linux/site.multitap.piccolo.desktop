@@ -2,8 +2,10 @@
 Type=Application
 Name=piccolo
 Comment=A small retro libretro frontend
-Exec=piccolo
+Exec=piccolo %u
 Icon=site.multitap.piccolo
 Terminal=false
 Categories=Game;Emulator;
 StartupWMClass=site.multitap.piccolo
+# piccolo:// links open piccolo (app_links.h: the running copy takes them).
+MimeType=x-scheme-handler/piccolo;

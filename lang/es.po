@@ -3122,6 +3122,10 @@ msgctxt "status_resumed"
 msgid "RESUMED"
 msgstr "REANUDADO"
 
+msgctxt "status_link_unknown"
+msgid "NOTHING OPENS THIS LINK YET:"
+msgstr "TODAVÍA NADA ABRE ESTE ENLACE:"
+
 msgctxt "status_net_unpaired"
 msgid "UNPAIRED:"
 msgstr "DESEMPAREJADO:"
