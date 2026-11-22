@@ -4030,3 +4030,15 @@ msgstr "NO"
 msgctxt "pair_ok"
 msgid "OK"
 msgstr "OK"
+
+msgctxt "net_section_hosts"
+msgid "PICCOLOS I CONNECT TO"
+msgstr "PICCOLOS A LOS QUE ME CONECTO"
+
+msgctxt "net_no_hosts"
+msgid "NONE YET (TOOLS > PAIR)"
+msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
+
+msgctxt "net_host_forget_help"
+msgid "Forgets this piccolo here (and there too, if connected now)."
+msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."

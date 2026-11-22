@@ -3198,6 +3198,15 @@ static void draw_settings(App* app)
     context.themes = &app->themes;
     NetWindowContext network;
     network.state = &app->net_window_state;
+    // The hosts list (our client side): SHARE's connection knows it.
+    NetShareLinkStatus hosts_status;
+    int32_t forget_host = -1;
+    if (app->settings_window.open && app->settings_window.tab == SettingsTab::network && start_share_link(app))
+    {
+        net_share_link_status(&app->share_link, &hosts_status);
+        network.hosts = &hosts_status.paired;
+        network.forget_host = &forget_host;
+    }
     network.settings = &app->settings;
     network.strings = &app->strings;
     network.access = app->net_running ? &app->net_service.access : nullptr;
@@ -3323,6 +3332,10 @@ static void draw_settings(App* app)
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
+    }
+    if (forget_host >= 0)
+    {
+        net_share_link_forget_host(&app->share_link, static_cast<uint32_t>(forget_host));
     }
     choose_folder_start(app);
     if (app->settings_window.search_frame_delay)

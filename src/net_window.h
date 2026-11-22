@@ -100,6 +100,10 @@ struct NetWindowContext
     const char*         this_device = "";   // our key's fingerprint
     const std::vector<NetSpeedSummary>* speed = nullptr;   // speed test results, by device key
     bool                internet = false;   // INTERNET is on (the beacon status row shows)
+    // The piccolos this one connects to (its client side, SHARE / PAIR), and
+    // FORGET on one of them (the index, for main.cpp; -1 = none).
+    const std::vector<std::string>* hosts = nullptr;
+    int32_t*            forget_host = nullptr;
 };
 
 // The tab's contents, inside SETTINGS' tab. The rows always edit the global
