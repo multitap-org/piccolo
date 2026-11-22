@@ -1,29 +1,25 @@
 #!/bin/bash
 # Builds piccolo on Linux (Debian / Ubuntu), plus librashader, and installs it
-# to ~/.local/share/piccolo with a menu entry and a `piccolo` command. The
-# steps of docs/compilation.md ("Linux (Debian / Ubuntu)") in one go. Run it
-# anywhere in the checkout:
+# to ~/.local/share/piccolo. The steps of docs/compilation.md ("Linux
+# (Debian / Ubuntu)") in one go. Run it anywhere in the checkout:
 #
 #   tools/build-linux.sh                  Release, installed
 #   tools/build-linux.sh --deps           first install the packages (apt, sudo)
 #   tools/build-linux.sh --debug          Debug with warnings as errors (build-debug/)
 #   tools/build-linux.sh --test           also run the tests (ctest)
 #   tools/build-linux.sh --no-librashader skip librashader (no Rust needed)
-#   tools/build-linux.sh --no-desktop     no menu entry, icons or ~/.local/bin/piccolo
 #
 # Environment, all optional:
 #   PICCOLO_DIR  where to install (default $XDG_DATA_HOME/piccolo, that is
 #                ~/.local/share/piccolo: piccolo's own data folder)
 #   BUILD_DIR    CMake build folder (default build, or build-debug with --debug)
 #
-# The build copies piccolo, lang/, layouts/, themes/, shaders/ and
-# cores/test_libretro.so to PICCOLO_DIR (also from a git worktree: running
-# this script is asking for it). Saves, states, settings and cores already
-# there are left alone. librashader.so goes next to it. The menu entry
-# (site.multitap.piccolo.desktop, the app id piccolo gives its window) and
-# the icons go to ~/.local/share, and ~/.local/bin/piccolo links to the
-# program. With the Flatpak installed too, this menu entry hides the
-# Flatpak's: the menu then starts this build.
+# Submodules not checked out yet are fetched (the ones of compilation.md step
+# 2); the ones already there are left as they are. The build copies piccolo,
+# lang/, layouts/, themes/, shaders/ and cores/test_libretro.so to
+# PICCOLO_DIR (also from a git worktree: running this script is asking for
+# it). Saves, states, settings and cores already there are left alone.
+# librashader.so goes next to it. No menu entry: that's for the packages.
 
 set -eu
 
@@ -31,15 +27,13 @@ build_type=Release
 install_deps=0
 run_tests=0
 with_librashader=1
-with_desktop=1
 for arg in "$@"; do
     case "$arg" in
         --deps) install_deps=1 ;;
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        --no-desktop) with_desktop=0 ;;
-        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-linux.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -71,7 +65,7 @@ if [ "$install_deps" = 1 ]; then
     $sudo_cmd apt-get install -y --no-install-recommends $packages
 fi
 
-for tool in cmake ninja cc c++; do
+for tool in git cmake ninja cc c++; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "build-linux.sh: $tool not found (tools/build-linux.sh --deps, or docs/compilation.md step 1)" >&2
         exit 1
@@ -81,15 +75,41 @@ done
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
 
-if [ ! -f deps/SDL/CMakeLists.txt ]; then
-    echo "build-linux.sh: submodules missing (docs/compilation.md, step 2)" >&2
-    exit 1
-fi
-if [ "$with_librashader" = 1 ]; then
-    if [ ! -f deps/librashader/Cargo.toml ]; then
-        echo "build-linux.sh: deps/librashader missing: git submodule update --init deps/librashader (or --no-librashader)" >&2
-        exit 1
+# The submodules of compilation.md step 2, only the ones not checked out yet
+# (no .git in their folder): one already there may be on a branch being
+# worked on, and `git submodule update` would move it back to the pinned
+# commit.
+submodules="deps/SDL deps/imgui deps/libretro-common deps/libsamplerate
+    deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon
+    deps/piccolo-shaders deps/piccolo-shaders-legacy
+    deps/common/hosts-common deps/common/frontends-common
+    deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro
+    deps/libdatachannel"
+missing=""
+for submodule in $submodules; do
+    if [ ! -e "$submodule/.git" ]; then
+        missing="$missing $submodule"
     fi
+done
+if [ -n "$missing" ]; then
+    echo "== submodules:$missing"
+    # shellcheck disable=SC2086 # missing is a list
+    git submodule update --init --recursive $missing
+fi
+# Without --recursive: its own submodules are only its tests.
+if [ "$with_librashader" = 1 ] && [ ! -e deps/librashader/.git ]; then
+    echo "== submodule: deps/librashader"
+    git submodule update --init deps/librashader
+fi
+# The Test libretro core's nested submodules have SSH URLs: over HTTPS, so no
+# GitHub SSH key is needed.
+if [ ! -e deps/test-libretro/.git ]; then
+    echo "== submodule: deps/test-libretro"
+    git -c url."https://github.com/".insteadOf="git@github.com:" \
+        submodule update --init --recursive --checkout deps/test-libretro
+fi
+
+if [ "$with_librashader" = 1 ]; then
     if ! command -v cargo >/dev/null 2>&1; then
         echo "build-linux.sh: cargo not found: tools/build-linux.sh --deps, or rustup (or --no-librashader)" >&2
         exit 1
@@ -135,30 +155,6 @@ if [ "$with_librashader" = 1 ]; then
     fi
     install -m755 build-librashader/release/liblibrashader_capi.so "$piccolo_dir/librashader.so"
     install -m644 deps/librashader/LICENSE.md "$piccolo_dir/librashader-LICENSE.md"
-fi
-
-if [ "$with_desktop" = 1 ]; then
-    echo "== menu entry, icons, ~/.local/bin/piccolo"
-    sed "s|^Exec=.*|Exec=\"$piccolo_dir/piccolo\"|" assets/linux/site.multitap.piccolo.desktop > "$build_dir/site.multitap.piccolo.desktop"
-    install -Dm644 "$build_dir/site.multitap.piccolo.desktop" "$data_home/applications/site.multitap.piccolo.desktop"
-    install -Dm644 assets/branding/piccolo-icon.svg "$data_home/icons/hicolor/scalable/apps/site.multitap.piccolo.svg"
-    for size in 16 24 32 48 64 128 256 512; do
-        install -Dm644 "assets/branding/png/piccolo-icon-$size.png" \
-            "$data_home/icons/hicolor/${size}x$size/apps/site.multitap.piccolo.png"
-    done
-    # piccolo finds lang/, layouts/ and shaders/ through the link (SDL_GetBasePath follows it).
-    mkdir -p "$HOME/.local/bin"
-    ln -sfn "$piccolo_dir/piccolo" "$HOME/.local/bin/piccolo"
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database -q "$data_home/applications" || true
-    fi
-    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-        gtk-update-icon-cache -q -t "$data_home/icons/hicolor" || true
-    fi
-    case ":$PATH:" in
-        *":$HOME/.local/bin:"*) ;;
-        *) echo "build-linux.sh: ~/.local/bin isn't in PATH yet (log in again, or add it): the menu entry works anyway" ;;
-    esac
 fi
 
 echo "== done: $piccolo_dir/piccolo"

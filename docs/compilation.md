@@ -14,12 +14,12 @@ every other library come from `deps/`. Other distributions work the same with
 their own package names (SDL's `deps/SDL/docs/README-linux.md` lists them for
 Fedora and others).
 
-`tools/build-linux.sh` does it all in one go once the source is there
-(step 2): with `--deps` it first installs the packages of step 1 (apt, with
-sudo), then builds piccolo and librashader, installs them to
-`~/.local/share/piccolo` and adds a menu entry and a `piccolo` command in
-`~/.local/bin` (`--debug`, `--test`, `--no-librashader`, `--no-desktop`;
-`--help` lists them).
+`tools/build-linux.sh` does it all in one go from a clone: with `--deps` it
+first installs the packages of step 1 (apt, with sudo), then fetches the
+submodules not checked out yet (step 2), builds piccolo and librashader and
+installs them to `~/.local/share/piccolo` (`--debug`, `--test`,
+`--no-librashader`; `--help` lists them). It adds no menu entry: that's for
+the packages.
 
 ### 1. The packages
 
@@ -84,17 +84,6 @@ CARGO_TARGET_DIR=build-librashader \
 cp build-librashader/release/liblibrashader_capi.so ~/.local/share/piccolo/librashader.so
 cp deps/librashader/LICENSE.md ~/.local/share/piccolo/librashader-LICENSE.md
 ```
-
-### 6. Menu entry (optional)
-
-```sh
-sed "s|^Exec=.*|Exec=\"$HOME/.local/share/piccolo/piccolo\"|" assets/linux/site.multitap.piccolo.desktop \
-    > ~/.local/share/applications/site.multitap.piccolo.desktop
-cp assets/branding/piccolo-icon.svg ~/.local/share/icons/hicolor/scalable/apps/site.multitap.piccolo.svg
-```
-
-The file name is the app id piccolo gives its window, so the desktop shows
-its icon. With the Flatpak installed too, this entry hides the Flatpak's.
 
 ## Windows (MSYS2)
 
