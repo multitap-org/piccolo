@@ -103,6 +103,7 @@ struct NetWindowContext
     // The piccolos this one connects to (its client side, SHARE / PAIR), and
     // FORGET on one of them (the index, for main.cpp; -1 = none).
     const std::vector<std::string>* hosts = nullptr;
+    const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
     int32_t*            forget_host = nullptr;
 };
 

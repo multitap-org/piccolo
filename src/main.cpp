@@ -1205,6 +1205,8 @@ static void open_share_window(App* app)
     net_share_set_folders(&app->share_folders, &game_folders, saves.c_str(), states.c_str());
     if (start_share_link(app))
     {
+        // The paired piccolos' ONLINE / OFFLINE is asked through BEACON SERVER.
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         net_share_link_set_folders(&app->share_link, &game_folders, saves.c_str(), states.c_str());
     }
     share_window_open(&app->share_window);
@@ -3205,6 +3207,8 @@ static void draw_settings(App* app)
     {
         net_share_link_status(&app->share_link, &hosts_status);
         network.hosts = &hosts_status.paired;
+        network.hosts_online = &hosts_status.paired_online;
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         network.forget_host = &forget_host;
     }
     network.settings = &app->settings;

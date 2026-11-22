@@ -312,6 +312,20 @@ static void draw_hosts(const NetWindowContext* context)
         ImGui::PushID(static_cast<int>(5000 + i));
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted((*context->hosts)[i].empty() ? "?" : (*context->hosts)[i].c_str());
+        if (context->hosts_online != nullptr && i < context->hosts_online->size())
+        {
+            ImGui::SameLine();
+            if ((*context->hosts_online)[i] != 0)
+            {
+                retro_ui_push_section_text();
+                ImGui::TextUnformatted(piccolo_text(strings, Str::net_online));
+                retro_ui_pop_section_text();
+            }
+            else
+            {
+                ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_offline));
+            }
+        }
         ImGui::SameLine();
         if (retro_ui_button(piccolo_text(strings, Str::net_device_forget)) && context->forget_host != nullptr)
         {

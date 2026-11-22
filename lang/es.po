@@ -4042,3 +4042,11 @@ msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
 msgctxt "net_host_forget_help"
 msgid "Forgets this piccolo here (and there too, if connected now)."
 msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."
+
+msgctxt "net_online"
+msgid "ONLINE"
+msgstr "EN LÍNEA"
+
+msgctxt "net_offline"
+msgid "OFFLINE"
+msgstr "DESCONECTADO"

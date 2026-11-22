@@ -598,7 +598,14 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
             for (size_t i = 0; i < link->paired.size(); i++)
             {
                 ImGui::PushID(static_cast<int>(1000 + i));
-                if (ImGui::Selectable(link->paired[i].c_str(), window->paired_selected == static_cast<int32_t>(i)))
+                const char* state = "";
+                if (i < link->paired_online.size())
+                {
+                    state = piccolo_text(strings, link->paired_online[i] != 0 ? Str::net_online : Str::net_offline);
+                }
+                char label[160] = {};
+                std::snprintf(label, sizeof(label), "%s  %s", link->paired[i].c_str(), state);
+                if (ImGui::Selectable(label, window->paired_selected == static_cast<int32_t>(i)))
                 {
                     window->paired_selected = static_cast<int32_t>(i);
                     window->found_selected = -1;
