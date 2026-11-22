@@ -19,6 +19,7 @@ static const MenuItem GAME_ITEMS[] = {
     { Str::menu_reset,      MenuAction::reset },
     { Str::menu_save_state, MenuAction::save_state },
     { Str::menu_load_state, MenuAction::load_state },
+    { Str::menu_screenshot, MenuAction::screenshot },
     { Str::menu_quit,       MenuAction::quit },
 };
 
@@ -90,6 +91,7 @@ const char* menu_action_name(MenuAction action)
         case MenuAction::reset:      return "RESET";
         case MenuAction::save_state: return "SAVE STATE";
         case MenuAction::load_state: return "LOAD STATE";
+        case MenuAction::screenshot: return "SCREENSHOT";
         case MenuAction::quit:       return "QUIT";
         case MenuAction::general:    return "GENERAL";
         case MenuAction::interface:  return "INTERFACE";

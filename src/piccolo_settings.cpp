@@ -70,6 +70,13 @@ static const SettingEnumValue TIMING_VALUES[] = {
     {"exact", text_id(Str::value_timing_exact)},
 };
 
+static const SettingEnumValue SCREENSHOT_MODE_VALUES[] = {
+    {"raw", text_id(Str::value_screenshot_raw)},
+    {"gpu", text_id(Str::value_screenshot_gpu)},
+    {"both", text_id(Str::value_screenshot_both)},
+};
+constexpr uint32_t SCREENSHOT_MODE_COUNT = sizeof(SCREENSHOT_MODE_VALUES) / sizeof(SCREENSHOT_MODE_VALUES[0]);
+
 static const SettingEnumValue REWIND_VALUES[] = {
     {"off", text_id(Str::value_rewind_off)},
     {"auto", text_id(Str::value_rewind_auto)},
@@ -255,6 +262,9 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_game_mode), .help = text_id(Str::setting_game_mode_help)},
     {.key = PICCOLO_SHOW_FPS, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_show_fps), .help = text_id(Str::setting_show_fps_help)},
+    {.key = PICCOLO_SCREENSHOT_MODE, .type = SettingType::enumeration, .default_value = "gpu",
+     .values = SCREENSHOT_MODE_VALUES, .value_count = SCREENSHOT_MODE_COUNT, .label = text_id(Str::setting_screenshot_mode),
+     .help = text_id(Str::setting_screenshot_mode_help)},
     // Rewind (GENERAL > REWIND).
     {.key = PICCOLO_REWIND, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
      .values = REWIND_VALUES, .value_count = REWIND_COUNT, .label = text_id(Str::setting_rewind),
@@ -295,6 +305,8 @@ static const SettingDescriptor SETTINGS[] = {
      .help = text_id(Str::setting_path_saves_help)},
     {.key = PICCOLO_PATH_STATES, .type = SettingType::path, .default_value = "", .label = text_id(Str::setting_path_states),
      .help = text_id(Str::setting_path_states_help)},
+    {.key = PICCOLO_PATH_SCREENSHOTS, .type = SettingType::path, .default_value = "",
+     .label = text_id(Str::setting_path_screenshots), .help = text_id(Str::setting_path_screenshots_help)},
     {.key = PICCOLO_CORE_SERVER, .type = SettingType::text, .default_value = "https://cores.get-piccolo.app",
      .label = text_id(Str::setting_core_server), .help = text_id(Str::setting_core_server_help)},
     {.key = PICCOLO_CORE_SERVER_INSECURE, .type = SettingType::boolean, .default_value = "false",

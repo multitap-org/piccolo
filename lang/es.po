@@ -3882,3 +3882,51 @@ msgstr "PARA REMAPEAR"
 msgctxt "input_conflict_also"
 msgid "ALSO %s: both fire together. Bind one of them elsewhere."
 msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
+
+msgctxt "menu_screenshot"
+msgid "SCREENSHOT"
+msgstr "CAPTURA"
+
+msgctxt "setting_screenshot_mode"
+msgid "SCREENSHOTS"
+msgstr "CAPTURAS"
+
+msgctxt "setting_screenshot_mode_help"
+msgid "What a screenshot saves. RAW: the game's own frame, as the core made it. GPU: the picture as shown, with its shader, crop and size (no menus). BOTH: one file of each."
+msgstr "Qué guarda una captura. RAW: el cuadro del juego tal como lo hizo el núcleo. GPU: la imagen como se ve, con su shader, recorte y tamaño (sin menús). AMBAS: un archivo de cada una."
+
+msgctxt "value_screenshot_raw"
+msgid "RAW"
+msgstr "RAW"
+
+msgctxt "value_screenshot_gpu"
+msgid "GPU"
+msgstr "GPU"
+
+msgctxt "value_screenshot_both"
+msgid "BOTH"
+msgstr "AMBAS"
+
+msgctxt "setting_path_screenshots"
+msgid "SCREENSHOTS"
+msgstr "CAPTURAS"
+
+msgctxt "setting_path_screenshots_help"
+msgid "Folder for screenshots (PNG). Empty: the screenshots folder in piccolo's folder."
+msgstr "Carpeta para las capturas (PNG). Vacía: la carpeta screenshots en la carpeta de piccolo."
+
+msgctxt "status_screenshot_saved"
+msgid "SCREENSHOT SAVED: %s"
+msgstr "CAPTURA GUARDADA: %s"
+
+msgctxt "status_screenshot_failed"
+msgid "THE SCREENSHOT COULD NOT BE SAVED (SEE THE LOG)"
+msgstr "NO SE PUDO GUARDAR LA CAPTURA (MIRA EL REGISTRO)"
+
+msgctxt "status_screenshot_busy"
+msgid "STILL SAVING THE LAST SCREENSHOT"
+msgstr "TODAVÍA SE ESTÁ GUARDANDO LA ÚLTIMA CAPTURA"
+
+msgctxt "input_action_hotkey_screenshot"
+msgid "SCREENSHOT"
+msgstr "CAPTURA"

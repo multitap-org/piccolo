@@ -16,6 +16,7 @@ enum class MenuAction
     reset,
     save_state,
     load_state,
+    screenshot,    // GAME > SCREENSHOT (also the screenshot hotkey)
     quit,
     general,
     interface,

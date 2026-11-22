@@ -147,6 +147,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
         ImGui::TextDisabled("%s", context->game_mode);
     }
     settings_ui_row(ui, PICCOLO_SHOW_FPS, nullptr);
+    settings_ui_row(ui, PICCOLO_SCREENSHOT_MODE, nullptr);
     retro_ui_separator_text(piccolo_text(ui->strings, Str::section_rewind));
     settings_ui_row(ui, PICCOLO_REWIND, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_SCRUB_LENGTH, nullptr);
@@ -169,9 +170,11 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
     // opens CHOOSE FOLDER (piccolo); RESET goes back to the default shown.
     if (folder_section(window, FolderSection::folders, piccolo_text(ui->strings, Str::section_folders), "folders"))
     {
-        const char* keys[4] = {PICCOLO_PATH_CORES, PICCOLO_PATH_SYSTEM, PICCOLO_PATH_SAVES, PICCOLO_PATH_STATES};
-        const char* hints[4] = {context->paths->cores.c_str(), context->paths->system.c_str(),
-                                context->paths->saves.c_str(), context->paths->states.c_str()};
+        const char* keys[5] = {PICCOLO_PATH_CORES, PICCOLO_PATH_SYSTEM, PICCOLO_PATH_SAVES, PICCOLO_PATH_STATES,
+                               PICCOLO_PATH_SCREENSHOTS};
+        const char* hints[5] = {context->paths->cores.c_str(), context->paths->system.c_str(),
+                                context->paths->saves.c_str(), context->paths->states.c_str(),
+                                context->paths->screenshots.c_str()};
         // Android: no CORES row. Cores load only from the app's private
         // storage (shared storage is noexec); main.cpp ignores the setting.
         // The browser: no CORES or SYSTEM rows either (the core is linked in).
@@ -180,7 +183,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
 #else
         uint32_t first = PICCOLO_BROWSER ? 2 : 0;
 #endif
-        for (uint32_t i = first; i < 4; i++)
+        for (uint32_t i = first; i < 5; i++)
         {
             if (settings_ui_folder_row(ui, keys[i], hints[i]))
             {

@@ -76,6 +76,11 @@ constexpr const char* PICCOLO_PATH_CORES = "path_cores";
 constexpr const char* PICCOLO_PATH_SYSTEM = "path_system";
 constexpr const char* PICCOLO_PATH_SAVES = "path_saves";
 constexpr const char* PICCOLO_PATH_STATES = "path_states";
+// Screenshots (the screenshot hotkey, GAME > SCREENSHOT): where they go, and
+// what they are: RAW (the core's frame as it is), GPU (the picture as shown:
+// shaders, crop, aspect, scale; no UI) or BOTH. PNG files.
+constexpr const char* PICCOLO_PATH_SCREENSHOTS = "path_screenshots";
+constexpr const char* PICCOLO_SCREENSHOT_MODE = "screenshot_mode";
 // TOOLS > CORES: the core downloader's server (no row in SETTINGS yet: set in
 // piccolo.cfg), and the development switch that lets it be http:// or file://.
 constexpr const char* PICCOLO_CORE_SERVER = "core_server";
