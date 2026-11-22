@@ -38,6 +38,7 @@
 #include "piccolo_window.h"
 #include "onscreen_pad.h"
 #include "ports_widget.h"
+#include "core_config_window.h"
 #include "quick_menu.h"
 #include "recent_games.h"
 #include "safe_start_window.h"
@@ -178,10 +179,10 @@ struct App
     std::string net_sent_core;           // "" = nothing runs
     std::string net_sent_content;
     FilePicker  picker  = {};
-    FilePicker  shader_picker = {};   // QUICK MENU > SHADER > CHOOSE
+    FilePicker  shader_picker = {};   // CORE CONFIGURATION > SHADER > CHOOSE
     SettingLayer shader_picker_scope = SettingLayer::global;   // where its pick goes
-    // What has the screen and the input (ui_mode.h): GAME, QUICK MENU, a
-    // window widget or MAIN MENU, and what follows from it this loop.
+    // What has the screen and the input (ui_mode.h): GAME, a window widget
+    // (QUICK MENU is one) or MAIN MENU, and what follows from it this loop.
     UiState     ui;
     uint32_t    ui_changes_seen = 0;               // ui.changes already followed (ui_follow_changes)
     UiWidget    ui_widget_applied = UiWidget::none; // the widget the windows were last set up for
@@ -330,7 +331,8 @@ struct App
     uint64_t           share_rate_ticks = 0;
     uint32_t           share_rate_kbps = 0;
 
-    QuickMenu quick_menu;              // F1 while a game runs
+    QuickMenu quick_menu;              // F1 while a game runs: the actions (a window widget)
+    CoreConfigWindow core_config;      // CORE CONFIGURATION: the core's options, controls, shader (a MAIN MENU window)
     PortsWidget ports_widget;          // the ports' tabs over the game, and DEVICES (the ports hotkey)
     uint64_t    ports_ping_ms = 0;     // when the tabs' pings were last read
     OnscreenPad onscreen_pad;          // the touch gamepad over the game (onscreen_pad.h)
@@ -1145,6 +1147,8 @@ static void app_enter_game(App* app);
 static void app_leave_main_menu(App* app);
 static void net_answer_load(App* app, NetContentStatus status);
 
+static void app_open_core_config(App* app, uint32_t port, uint32_t controller);   // (the UI modes, further down)
+
 static void handle_menu_action(App* app, MenuAction action)
 {
     switch (action)
@@ -1210,6 +1214,9 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::options_manager:
             core_options_manager_open(&app->core_options_manager, &app->core_options_state);
+            break;
+        case MenuAction::core_config:
+            app_open_core_config(app, UINT32_MAX, 0);
             break;
         case MenuAction::cores:
             open_cores_window(app);
@@ -1570,6 +1577,8 @@ static bool window_flag(const App* app, UiWindow window)
             return app->settings_window.image_open;
         case UiWindow::core_options:
             return app->core_options_manager;
+        case UiWindow::core_config:
+            return app->core_config.open;
         case UiWindow::cores:
             return app->cores_window.open;
         case UiWindow::share:
@@ -1609,6 +1618,10 @@ static void window_close(App* app, UiWindow window)
         case UiWindow::core_options:
             app->core_options_manager = false;
             break;
+        case UiWindow::core_config:
+            app->core_config.open = false;
+            app->shader_picker.open = false;   // CORE CONFIGURATION > SHADER > CHOOSE
+            break;
         case UiWindow::cores:
             app->cores_window.open = false;
             break;
@@ -1643,7 +1656,7 @@ static void window_close(App* app, UiWindow window)
 // What grabs the input now, from the modules' own state.
 static UiGrab grab_now(const App* app)
 {
-    if (app->quick_menu.macro_record != 0)
+    if (app->core_config.macro_record != 0)
     {
         return UiGrab::macro;
     }
@@ -1663,9 +1676,9 @@ static UiGrab grab_now(const App* app)
 // recorder. The router runs again.
 static void cancel_grabs(App* app)
 {
-    if (app->quick_menu.macro_record != 0)
+    if (app->core_config.macro_record != 0)
     {
-        app->quick_menu.macro_record = 0;
+        app->core_config.macro_record = 0;
     }
     if (map_window_open_now(&app->map_window) && app->input.suspended)
     {
@@ -1674,7 +1687,7 @@ static void cancel_grabs(App* app)
     input_capture_cancel(&app->input);
     app->input.suspended = false;
     app->input_window.capturing = false;
-    app->quick_menu.capturing = false;
+    app->core_config.capturing = false;
     ui_grab_end(&app->ui);
 }
 
@@ -1704,6 +1717,9 @@ static void widget_left(App* app, UiWidget widget)
 {
     switch (widget)
     {
+        case UiWidget::quick_menu:
+            app->quick_menu.open = false;
+            break;
         case UiWidget::ports:
             if (app->ports_widget.open)
             {
@@ -1755,11 +1771,6 @@ static void ui_follow_changes(App* app)
             window_close(app, window);
         }
     }
-    if (app->ui.mode != UiMode::quick_menu)
-    {
-        app->quick_menu.open = false;
-        app->shader_picker.open = false;   // QUICK MENU > SHADER > CHOOSE
-    }
     UiWidget widget = app->ui.mode == UiMode::widget ? app->ui.widget : UiWidget::none;
     if (app->ui_widget_applied != widget)
     {
@@ -1790,14 +1801,17 @@ static void app_enter_main_menu(App* app)
     ui_follow_changes(app);
 }
 
+// QUICK MENU is the window widget that's up.
+static bool quick_menu_up(const App* app)
+{
+    return app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::quick_menu;
+}
+
+static void app_open_widget(App* app, UiWidget widget);
+
 static void app_open_quick_menu(App* app)
 {
-    if (ui_enter_quick_menu(&app->ui))
-    {
-        quick_menu_open(&app->quick_menu, app->session.state_slot);
-        app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
-    }
-    ui_follow_changes(app);
+    app_open_widget(app, UiWidget::quick_menu);
 }
 
 static void app_open_widget(App* app, UiWidget widget)
@@ -1812,10 +1826,39 @@ static void app_open_widget(App* app, UiWidget widget)
             return;
         }
     }
-    if (ui_enter_widget(&app->ui, widget) && widget == UiWidget::ports)
+    if (ui_enter_widget(&app->ui, widget))
     {
-        ports_widget_open(&app->ports_widget, &app->input);
+        if (widget == UiWidget::ports)
+        {
+            ports_widget_open(&app->ports_widget, &app->input);
+        }
+        else if (widget == UiWidget::quick_menu)
+        {
+            quick_menu_open(&app->quick_menu, app->session.state_slot);
+        }
     }
+    ui_follow_changes(app);
+}
+
+// CORE CONFIGURATION (QUICK MENU's CONFIG, GAME > CORE CONFIGURATION, HOLD
+// START TO REMAP): a MAIN MENU window, so opening it closes QUICK MENU.
+// `port` / `controller`: open on that controller's remap (UINT32_MAX: no).
+static void app_open_core_config(App* app, uint32_t port, uint32_t controller)
+{
+    if (!game_running(app))
+    {
+        return;
+    }
+    if (port != UINT32_MAX)
+    {
+        core_config_window_open_remap(&app->core_config, port, controller);
+    }
+    else
+    {
+        core_config_window_open(&app->core_config);
+    }
+    app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
+    ui_push_window(&app->ui, UiWindow::core_config);
     ui_follow_changes(app);
 }
 
@@ -1842,21 +1885,20 @@ static void ui_sync_windows(App* app)
     ui_follow_changes(app);
 }
 
-// QUICK MENU and widgets that closed themselves go back to the game; the
-// windows the game asks for (a core's text box, KEEP / REVERT) open from
-// GAME or QUICK MENU. In MAIN MENU they wait until it's closed: they don't
-// take over what the player is doing there.
+// Widgets that closed themselves go back to the game; the windows the
+// game asks for (a core's text box, KEEP / REVERT) open from GAME or QUICK
+// MENU. In MAIN MENU they wait until it's closed: they don't take over what
+// the player is doing there.
 static void ui_follow_widgets(App* app)
 {
-    if (app->ui.mode == UiMode::quick_menu && !app->quick_menu.open)
-    {
-        app_enter_game(app);
-    }
     if (app->ui.mode == UiMode::widget)
     {
         bool up = true;
         switch (app->ui.widget)
         {
+            case UiWidget::quick_menu:
+                up = app->quick_menu.open;
+                break;
             case UiWidget::ports:
                 up = app->ports_widget.open;
                 break;
@@ -1878,7 +1920,7 @@ static void ui_follow_widgets(App* app)
             app_enter_game(app);
         }
     }
-    if (app->ui.mode == UiMode::game || app->ui.mode == UiMode::quick_menu)
+    if (app->ui.mode == UiMode::game || quick_menu_up(app))
     {
         if (text_input_pending(app))
         {
@@ -1957,10 +1999,14 @@ static bool ui_is_up(const App* app)
 }
 
 // Escape / B: back, the same in every mode (ui_back): a grab is cancelled,
-// QUICK MENU's view or MAIN MENU's top window closes, then the game.
+// CORE CONFIGURATION's view, the widget or MAIN MENU's top window closes,
+// then the game.
 static void ui_do_back(App* app)
 {
-    bool sub_view = app->shader_picker.open || (app->quick_menu.remap && !app->quick_menu.capturing);
+    // A view inside CORE CONFIGURATION (its shader picker, the remap view)
+    // closes before the window, while it's the top one.
+    bool sub_view = ui_top_window(&app->ui) == UiWindow::core_config &&
+                    (app->shader_picker.open || core_config_window_sub_view(&app->core_config));
     switch (ui_back(&app->ui, sub_view))
     {
         case UiBack::none:
@@ -1975,7 +2021,7 @@ static void ui_do_back(App* app)
             }
             else
             {
-                app->quick_menu.remap = false;
+                core_config_window_close_sub_view(&app->core_config);
             }
             break;
         case UiBack::close_widget:
@@ -2026,7 +2072,7 @@ static void app_handle_hotkeys(App* app, const InputFrame* frame)
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_quick_menu)])
     {
-        if (app->ui.mode == UiMode::quick_menu)
+        if (quick_menu_up(app))
         {
             app_enter_game(app);
         }
@@ -2105,9 +2151,9 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
             io.AddKeyEvent(ImGuiKey_Escape, true);   // a list or popup closes first
             io.AddKeyEvent(ImGuiKey_Escape, false);
         }
-        else if (app->quick_menu.open && app->quick_menu.remap && !app->quick_menu.capturing)
+        else if (ui_top_window(&app->ui) == UiWindow::core_config && core_config_window_sub_view(&app->core_config))
         {
-            app->quick_menu.remap = false;   // a view inside a window: back out of it
+            core_config_window_close_sub_view(&app->core_config);   // a view inside a window: back out of it
         }
     }
     if (!hold_down)
@@ -2397,11 +2443,7 @@ static void app_update_input(App* app)
     }
     if (remap.open_remap)
     {
-        app_open_quick_menu(app);
-        if (app->ui.mode == UiMode::quick_menu)
-        {
-            quick_menu_open_remap(&app->quick_menu, app->session.state_slot, remap.port, remap.controller);
-        }
+        app_open_core_config(app, remap.port, remap.controller);   // CONTROLS, that controller's remap
     }
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
@@ -2462,7 +2504,7 @@ static void app_handle_events(App* app)
         }
         // While INPUT waits for a key (SET), keys are the binding's, not ImGui's.
         bool key_event = event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_TEXT_INPUT;
-        if (!(key_event && (app->input_window.capturing || app->quick_menu.capturing)))
+        if (!(key_event && (app->input_window.capturing || app->core_config.capturing)))
         {
             app_shell_process_event(&app->shell, &event);
         }
@@ -2794,7 +2836,7 @@ static void choose_folder_done(App* app, const FilePickerChoice* picked)
     }
 }
 
-// QUICK MENU > SHADER > CHOOSE: the picker opens in the
+// CORE CONFIGURATION > SHADER > CHOOSE: the picker opens in the
 // chosen preset's folder, else in the curated presets. What's picked goes to
 // `scope`, the scope the QUICK MENU's SHADER tab edits.
 static void open_shader_picker(App* app, SettingLayer scope)
@@ -3031,15 +3073,15 @@ static void draw_settings(App* app)
 // option that crashes the core at once is not kept.)
 static void save_after_options_windows(App* app)
 {
-    bool open = app->quick_menu.open || app->core_options_manager;
+    bool open = app->core_config.open || app->core_options_manager;
     if (app->options_window_was_open && !open)
     {
         save_core_options(app);
         save_settings(app);   // a port's DEVICE (CONTROLS)
-        if (app->quick_menu.input_dirty && !app->input_config_path.empty())
+        if (app->core_config.input_dirty && !app->input_config_path.empty())
         {
             input_config_save(&app->input, app->input_config_path.c_str());   // a remap (CONTROLS)
-            app->quick_menu.input_dirty = false;
+            app->core_config.input_dirty = false;
         }
     }
     app->options_window_was_open = open;
@@ -4741,7 +4783,7 @@ static bool app_frame(App* app)
             {
                 app_open_quick_menu(app);
             }
-            else if (app->ui.mode == UiMode::quick_menu)
+            else if (quick_menu_up(app))
             {
                 app_enter_game(app);
             }
@@ -4818,32 +4860,41 @@ static bool app_frame(App* app)
         QuickMenuContext quick = {};
         quick.strings = &app->strings;
         quick.session = &app->session;
-        quick.core_options_state = &app->core_options_state;
-        quick.core_options = core_options_context(app);
-        quick.input = &app->input;
-        quick.host = app->session.host;
-        quick.settings = &app->settings;
-        uint32_t slot_before = app->quick_menu.slot;
-        quick.sdl = &app->input_sdl;
-        quick.layouts = &app->layouts;
-        quick.now_ms = SDL_GetTicks();
         quick.core_name = app->core_name;
         quick.game_name = app->game_name;
-        quick.shaders_available = app->shader_library.loaded;
         quick.user_paused = app->ui.user_paused;
+        uint32_t slot_before = app->quick_menu.slot;
         QuickMenuAction quick_action = quick_menu_draw(&app->quick_menu, &quick, app->pixel_font, app->ui_scale);
-        ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
-        dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
-        if (app->quick_menu.choose_shader_request)
-        {
-            app->quick_menu.choose_shader_request = false;
-            open_shader_picker(app, app->quick_menu.shader_scope);
-        }
-        draw_shader_picker(app);   // over the QUICK MENU
         if (app->quick_menu.slot != slot_before || app->quick_menu.open)
         {
             app->session.state_slot = app->quick_menu.slot;   // F2 / F4 follow the picked slot
         }
+        if (!game_running(app))
+        {
+            app->core_config.open = false;   // the core it configured is gone
+        }
+        CoreConfigContext config = {};
+        config.strings = &app->strings;
+        config.core_options_state = &app->core_options_state;
+        config.core_options = core_options_context(app);
+        config.input = &app->input;
+        config.host = app->session.host;
+        config.settings = &app->settings;
+        config.sdl = &app->input_sdl;
+        config.layouts = &app->layouts;
+        config.now_ms = SDL_GetTicks();
+        config.core_name = app->core_name;
+        config.game_name = app->game_name;
+        config.shaders_available = app->shader_library.loaded;
+        core_config_window_draw(&app->core_config, &config, app->pixel_font, app->ui_scale);
+        if (app->core_config.choose_shader_request)
+        {
+            app->core_config.choose_shader_request = false;
+            open_shader_picker(app, app->core_config.shader_scope);
+        }
+        draw_shader_picker(app);   // over CORE CONFIGURATION
+        ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
+        dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
         switch (quick_action)
         {
         case QuickMenuAction::save:
@@ -4871,6 +4922,9 @@ static bool app_frame(App* app)
             break;
         case QuickMenuAction::dvr:
             app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
+            break;
+        case QuickMenuAction::config:
+            app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes
             break;
         case QuickMenuAction::none:
             break;

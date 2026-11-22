@@ -3870,3 +3870,19 @@ msgstr "PARA REMAPEAR"
 msgctxt "input_conflict_also"
 msgid "ALSO %s: both fire together. Bind one of them elsewhere."
 msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
+
+msgctxt "quick_menu_config"
+msgid "CONFIG"
+msgstr "CONFIGURAR"
+
+msgctxt "quick_menu_config_help"
+msgid "CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND SHADER."
+msgstr "CONFIGURACIÓN DEL CORE: SUS OPCIONES, CONTROLES Y SHADER."
+
+msgctxt "core_config_title"
+msgid "CORE CONFIGURATION"
+msgstr "CONFIGURACIÓN DEL CORE"
+
+msgctxt "menu_core_config"
+msgid "CORE CONFIGURATION..."
+msgstr "CONFIGURACIÓN DEL CORE..."

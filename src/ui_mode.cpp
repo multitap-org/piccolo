@@ -48,15 +48,6 @@ bool ui_enter_game(UiState* state)
     return change_mode(state, UiMode::game, UiWidget::none);
 }
 
-bool ui_enter_quick_menu(UiState* state)
-{
-    if (!state->game_running)
-    {
-        return false;
-    }
-    return change_mode(state, UiMode::quick_menu, UiWidget::none);
-}
-
 bool ui_enter_widget(UiState* state, UiWidget widget)
 {
     if (!state->game_running || widget == UiWidget::none)
@@ -143,7 +134,7 @@ bool ui_grab_orphaned(const UiState* state)
     return state->grab_window != UiWindow::none && !ui_window_open(state, state->grab_window);
 }
 
-UiBack ui_back(const UiState* state, bool quick_menu_sub_view)
+UiBack ui_back(const UiState* state, bool sub_view)
 {
     if (state->grab != UiGrab::none)
     {
@@ -153,14 +144,12 @@ UiBack ui_back(const UiState* state, bool quick_menu_sub_view)
     {
         case UiMode::game:
             return UiBack::none;
-        case UiMode::quick_menu:
-            return quick_menu_sub_view ? UiBack::close_sub_view : UiBack::to_game;
         case UiMode::widget:
-            return UiBack::close_widget;
+            return sub_view ? UiBack::close_sub_view : UiBack::close_widget;
         case UiMode::main_menu:
             if (state->window_count > 0)
             {
-                return UiBack::close_window;
+                return sub_view ? UiBack::close_sub_view : UiBack::close_window;
             }
             return state->game_running ? UiBack::to_game : UiBack::none;   // the bar stays while nothing runs
     }

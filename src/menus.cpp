@@ -19,6 +19,7 @@ static const MenuItem GAME_ITEMS[] = {
     { Str::menu_reset,      MenuAction::reset },
     { Str::menu_save_state, MenuAction::save_state },
     { Str::menu_load_state, MenuAction::load_state },
+    { Str::menu_core_config, MenuAction::core_config },
     { Str::menu_quit,       MenuAction::quit },
 };
 
@@ -100,6 +101,7 @@ const char* menu_action_name(MenuAction action)
         case MenuAction::debug_window: return "DEBUG WINDOW";
         case MenuAction::recent_game:  return "RECENT GAME";
         case MenuAction::options_manager: return "OPTIONS MANAGER";
+        case MenuAction::core_config: return "CORE CONFIGURATION";
         case MenuAction::cores:      return "CORES";
         case MenuAction::share:      return "SHARE";
         case MenuAction::network:    return "NETWORK";

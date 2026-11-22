@@ -12,7 +12,7 @@
 //   - The middle button is MENU (retroui's action button): the QUICK MENU.
 //   - SHOW: AUTO (a touch screen: shown until a real gamepad plays, a tap
 //     brings it back), ON, OFF.
-//   - EDIT LAYOUT (QUICK MENU > CONTROLS): piccoletto's editor; saved in
+//   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD): piccoletto's editor; saved in
 //     <settings>/touch_layouts.cfg.
 //
 // Fingers come from SDL's finger events (touch_fingers); with the mouse on
