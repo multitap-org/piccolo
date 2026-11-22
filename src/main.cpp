@@ -94,6 +94,7 @@ struct App
     uint64_t    ui_back_since_ms = 0;      // BACK / SELECT held since (0 = not held)
     bool        ui_back_done = false;      // this hold already closed a window
     bool        open_first_menu = false;
+    ImVec2      shown_display = {};   // the display size windows were last placed for
     std::string input_config_path;   // settings/input.cfg
     InputWindow input_window = {};   // CONFIG > INPUT
     MapWindow   map_window = {};     // MAP CONTROLLER
@@ -4436,7 +4437,18 @@ static bool app_frame(App* app)
 
     if (!app->headless.on && app_shell_begin_frame(&app->shell))
     {
-        app->ui_scale = retro_ui_scale_for_window(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
+        ImVec2 display = ImGui::GetIO().DisplaySize;
+        app->ui_scale = retro_ui_scale_for_window(display.x, display.y);
+        // A new size (a phone turned, the browser's strip or pad came or
+        // went): the windows that are up go back to the middle.
+        if (display.x != app->shown_display.x || display.y != app->shown_display.y)
+        {
+            if (app->shown_display.x > 0.0f)
+            {
+                retro_ui_center_windows();
+            }
+            app->shown_display = display;
+        }
 
         // Where the touch gamepad goes (under the picture upright, if it fits),
         // before the picture is placed.
