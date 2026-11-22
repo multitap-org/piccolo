@@ -134,6 +134,10 @@ constexpr const char* PICCOLO_WINDOW_REMEMBER = "window_remember";
 // is covered by black at this opacity (percent; 0 = not covered). Not part of
 // a theme (not ui_*): readability over any picture.
 constexpr const char* PICCOLO_MENU_BACKDROP = "menu_backdrop";
+// INTERFACE > EFFECTS: short effects on the game picture (screen_effects.h:
+// SNAP on the DVR's PLAY FROM HERE, SHUTTER on a screenshot). On by default;
+// global only. Not part of a theme (not ui_*).
+constexpr const char* PICCOLO_SCREEN_EFFECTS = "screen_effects";
 constexpr const char* PICCOLO_UI_MENU_BOXES = "ui_menu_boxes";
 constexpr const char* PICCOLO_UI_SHADOWS = "ui_shadows";
 constexpr const char* PICCOLO_UI_COLOR_BACKGROUND = "ui_color_background";

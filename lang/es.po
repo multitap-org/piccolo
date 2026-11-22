@@ -1542,6 +1542,18 @@ msgctxt "setting_ui_shadows_help"
 msgid "Shadows under windows, open menus and menu text."
 msgstr "Sombras bajo las ventanas, los menús abiertos y el texto de los menús."
 
+msgctxt "section_effects"
+msgid "EFFECTS"
+msgstr "EFECTOS"
+
+msgctxt "setting_screen_effects"
+msgid "SCREEN EFFECTS"
+msgstr "EFECTOS EN PANTALLA"
+
+msgctxt "setting_screen_effects_help"
+msgid "Short effects on the game picture: a camera snap when the DVR plays from here, a shutter when a screenshot is taken."
+msgstr "Efectos breves sobre la imagen del juego: un disparo de cámara cuando el DVR juega desde aquí, un obturador al sacar una captura."
+
 msgctxt "setting_ui_color_background"
 msgid "BACKGROUND"
 msgstr "FONDO"

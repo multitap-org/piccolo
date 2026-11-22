@@ -52,6 +52,7 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_MENU_BOXES);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_SHADOWS);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_THEME_CURSOR);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
     for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
     {
         add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), piccolo_settings_ui_color_key(i));

@@ -59,6 +59,7 @@
 #include "fps_meter.h"
 #include "hud_view.h"
 #include "remap_widget.h"
+#include "screen_effects.h"
 #include "state_widget.h"
 #include "debug_ui.h"
 #include "input_bindings.h"
@@ -337,6 +338,7 @@ struct App
     DvrWidget   dvr;                   // the rewind DVR: its history and its GUI (dvr_widget.h)
     RemapWidget remap;                 // HOLD START TO REMAP: a card per undecided controller (remap_widget.h)
     StateWidget state_icons;           // PAUSED, REWINDING, PLAY, FAST FORWARD in the top right (state_widget.h)
+    ScreenEffects screen_effects;      // SNAP, SHUTTER on the game picture (screen_effects.h)
     HudStack    hud;                   // what the HUD widgets show this frame (retroui's hud_view)
     char        rewind_note[96] = {};  // SETTINGS > GENERAL: what AUTO chose for this game
     bool      pending_close_game = false;   // CLOSE GAME: done at the top of the next loop (like starts)
@@ -2678,6 +2680,12 @@ static void draw_game(App* app)
     piccolo_settings_viewport(&app->settings, &input);
 
     update_shader_stages(app, input.filter);
+
+    // This frame's screen effect (the DVR's PLAY FROM HERE starts SNAP).
+    ScreenEffectParams effect = {};
+    screen_effects_update(&app->screen_effects, app->dvr.played_from_ms, SDL_GetTicks(),
+                          settings_get_bool(&app->settings, PICCOLO_SCREEN_EFFECTS), &effect);
+    video_output_set_effect(&app->video, &effect);
 
     ViewportResult viewport = {};
     bool shown = false;

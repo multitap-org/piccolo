@@ -446,6 +446,8 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_menu_backdrop), .help = text_id(Str::setting_menu_backdrop_help)},
     {.key = PICCOLO_UI_SHADOWS, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_shadows), .help = text_id(Str::setting_ui_shadows_help)},
+    {.key = PICCOLO_SCREEN_EFFECTS, .type = SettingType::boolean, .default_value = "true",
+     .label = text_id(Str::setting_screen_effects), .help = text_id(Str::setting_screen_effects_help)},
     {.key = PICCOLO_UI_COLOR_BACKGROUND, .type = SettingType::color, .default_value = "#000000",
      .label = text_id(Str::setting_ui_color_background), .help = text_id(Str::setting_ui_color_background_help)},
     {.key = PICCOLO_UI_COLOR_BAR, .type = SettingType::color, .default_value = "#34507C",

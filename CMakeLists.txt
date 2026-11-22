@@ -220,6 +220,7 @@ set(PICCOLO_SOURCES
     src/fps_meter.cpp
     src/remap_widget.cpp
     src/state_widget.cpp
+    src/screen_effects.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)
@@ -478,6 +479,15 @@ if(MULTITAP_BUILD_TESTS)
     multitap_set_project_flags(piccolo_ui_mode_test)
     add_test(NAME piccolo_ui_mode COMMAND piccolo_ui_mode_test)
     set_tests_properties(piccolo_ui_mode PROPERTIES
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp src/screen_effects.cpp)
+    target_include_directories(piccolo_screen_effects_test PRIVATE src)
+    target_link_libraries(piccolo_screen_effects_test PRIVATE frontend_common)
+    multitap_set_project_flags(piccolo_screen_effects_test)
+    add_test(NAME piccolo_screen_effects COMMAND piccolo_screen_effects_test)
+    set_tests_properties(piccolo_screen_effects PROPERTIES
+        PASS_REGULAR_EXPRESSION "screen effects: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     add_executable(piccolo_recent_games_test tools/recent_games_test.cpp src/recent_games.cpp)
