@@ -5225,13 +5225,16 @@ static bool app_frame(App* app)
         if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
         {
             net_service_lock(&app->net_service);
-            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings);
-            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings);
+            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings,
+                                     app->pixel_font, app->ui_scale);
+            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings, app->pixel_font,
+                            app->ui_scale);
             net_service_unlock(&app->net_service);
         }
         else if (app->net_window_state.invite.open)
         {
-            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings);   // says the network is off
+            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings, app->pixel_font,
+                            app->ui_scale);   // says the network is off
         }
         if (app->cores_window.show_changed)
         {
