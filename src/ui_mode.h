@@ -135,6 +135,7 @@ enum class UiPause
     controllers,   // every controller gone, with PAUSE WHEN CONTROLLERS DISCONNECT
     user,          // the PAUSE hotkey / button / menu item, a device's PAUSE
     background,    // Android: the app is in the background
+    pairing,       // a device asks to pair: its dialog is up (Andrés, 2026-11-22)
     count,
 };
 
@@ -152,6 +153,7 @@ struct UiFacts
     bool played_with_gamepad = false;   // the last game input came from a local gamepad
     bool gamepad_on_port = false;       // a local gamepad is on a port now
     bool background = false;            // Android: in the background
+    bool pairing_request = false;       // the pairing request dialog is up
 };
 
 struct UiDerived

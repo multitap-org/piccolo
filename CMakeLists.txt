@@ -362,12 +362,8 @@ else()
     message(STATUS "piccolo: deps/piccolo-shaders-legacy not checked out, no OpenGL ES shader presets")
 endif()
 
-# Nayuki's QR Code generator (deps/qrcodegen, MIT): the pair link as a QR in
-# SETTINGS > NETWORK while pairing. Its C file only (no demo, no tests).
-add_library(multitap_dep_qrcodegen STATIC "${MULTITAP_DEPS_DIR}/qrcodegen/c/qrcodegen.c")
-target_include_directories(multitap_dep_qrcodegen SYSTEM PUBLIC "${MULTITAP_DEPS_DIR}/qrcodegen/c")
 
-target_link_libraries(piccolo PRIVATE frontend_libretro frontend_net retroui multitap_dep_qrcodegen)
+target_link_libraries(piccolo PRIVATE frontend_libretro frontend_net retroui)
 
 # Windows: the .exe's icon, as a resource (assets/windows/piccolo.ico, made by
 # tools/make_app_icon.py from the same PNGs as the window icon).

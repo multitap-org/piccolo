@@ -1,5 +1,7 @@
 #include "share_window.h"
 
+#include "net_window.h"
+
 #include <cfloat>
 #include <cstdio>
 #include <cstring>
@@ -562,15 +564,24 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
             ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_found_none));
         }
         ImGui::Spacing();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000").x + ImGui::GetStyle().FramePadding.x * 2.0f);
-        retro_ui_push_field_text();
-        ImGui::InputText("##code", window->code, sizeof(window->code), ImGuiInputTextFlags_CharsDecimal);
-        retro_ui_pop_field_text();
-        retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
         bool connecting = link->state == NetShareLinkState::connecting;
+        if (connecting && !link->code.empty())
+        {
+            // Ours: the other piccolo's user types it the first time (its
+            // pairing request dialog). A wrong try gives a new one.
+            ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
+            retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
+            char grouped[16] = {};
+            std::snprintf(grouped, sizeof(grouped), "%.3s %.3s %.3s", link->code.c_str(), link->code.c_str() + 3,
+                          link->code.c_str() + 6);
+            retro_ui_push_section_text();
+            ImGui::TextUnformatted(grouped);
+            retro_ui_pop_section_text();
+            if (link->waiting_host)
+            {
+                net_window_waiting_leds(piccolo_text(strings, Str::share_waiting));
+            }
+        }
         ImGui::BeginDisabled(window->found_selected < 0 || connecting);
         if (retro_ui_button(piccolo_text(strings, Str::share_connect)))
         {
@@ -879,7 +890,8 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
     }
     const Localization* strings = context->strings;
     const NetShareLinkStatus* link = context->link;
-    bool connected = link != nullptr && link->state == NetShareLinkState::ready && link->access == NetAccessLevel::owner;
+    bool connected = link != nullptr && link->state == NetShareLinkState::ready &&
+                     net_access_allows(link->access, NetAccessLevel::share);
     if (window->local.stale && context->local_folders != nullptr)
     {
         window->local.stale = false;

@@ -211,6 +211,10 @@ UiDerived ui_derive(const UiState* state, const UiFacts* facts)
         {
             derived.pause |= ui_pause_bit(UiPause::background);
         }
+        if (facts->pairing_request)
+        {
+            derived.pause |= ui_pause_bit(UiPause::pairing);
+        }
     }
     derived.frame_delay_interrupt = !in_game || derived.pause != 0;
     return derived;

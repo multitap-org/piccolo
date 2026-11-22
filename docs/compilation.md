@@ -82,7 +82,7 @@ The submodules the Windows build uses (`deps/librashader` without
 ```sh
 git submodule update --init --recursive \
     deps/SDL deps/imgui deps/libretro-common deps/libsamplerate \
-    deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon \
+    deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/beacon \
     deps/piccolo-shaders deps/piccolo-shaders-legacy \
     deps/common/hosts-common deps/common/frontends-common \
     deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro \

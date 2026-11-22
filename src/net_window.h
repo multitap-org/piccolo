@@ -13,22 +13,16 @@
 //   |   BEACON SERVER      [beacon.get-piccolo.app    ]             |
 //   |   INTERNET STATUS    READY: PAIRED DEVICES CAN CONNECT        |
 //   |   THIS DEVICE        3fa2-91c0-7d4e-b815                       |
-//   | -- PAIRING -------------------------------------------------- |
-//   |   [PAIR A DEVICE]                                             |
-//   |     or, while pairing:                                        |
-//   |   CODE  482 915                       (highlight color)       |
-//   |   VALIDITY: 4:32  [REFRESH] [STOP]  [COPY LINK]               |
-//   |   ######  (INTERNET on: the pair link as a QR, for a device    |
-//   |   ######   on another network: scan it, then type the code)   |
-//   |   Type this code on the other device. It changes after...     |
 //   | -- PAIRED DEVICES ------------------------------------------- |
 //   |   ANA'S PHONE  9c77-3332-311c-4017  CONNECTED                 |
-//   |   [GAMEPAD][STREAM][FULL]  [FORGET]                           |
+//   |   [GAMEPAD][STREAM][SHARE][FULL]  [FORGET]                    |
 //   +--------------------------------------------------------------+
 //
 // The settings rows edit piccolo's global settings; main.cpp restarts the
-// listener when ALLOW CONNECTIONS or PORT change. Pairing and the device
-// list act on the running NetAccess directly.
+// listener when ALLOW CONNECTIONS or PORT change. The device list acts on the
+// running NetAccess directly. Pairing isn't here (Andrés, 2026-11-22: SETTINGS
+// holds configuration, not actions): a device asks, and the pairing request
+// dialog below (shown over anything, the game paused) takes the code.
 
 #include <cstdint>
 #include <string>
@@ -54,22 +48,29 @@ struct NetSpeedSummary
     bool     up_tested = false;
 };
 
-// What the tab keeps between frames: OWNER is given only after its
-// confirmation, to the device with this key (the list may change meanwhile).
-// The pair link's QR (qrcodegen) is made again only when the link changes.
-constexpr int32_t  NET_WINDOW_QR_MAX_VERSION = 10;   // 57 x 57 modules; the link needs about version 6
-constexpr uint32_t NET_WINDOW_QR_BUFFER =
-    ((NET_WINDOW_QR_MAX_VERSION * 4 + 17) * (NET_WINDOW_QR_MAX_VERSION * 4 + 17) + 7) / 8 + 1;
+// A device asking to pair (NetAccessEventType::pairing_requested): the code
+// its screen shows is typed here, with the level to give it.
+struct NetPairingRequest
+{
+    bool        active = false;
+    bool        waiting = false;   // ALLOW pressed: until paired, or a new request (wrong code)
+    bool        retry = false;     // the last code typed was wrong
+    bool        focus = false;     // the code field takes the keyboard next frame
+    uint32_t    peer = 0;
+    NetPairKind kind = NetPairKind::piccolo;
+    char        name[NET_DEVICE_NAME_MAX + 1] = {};
+    char        code[NET_PAIR_CODE_DIGITS + 1] = {};
+    uint32_t    level = 0;         // NetAccessLevel
+};
 
+// What the tab keeps between frames: SHARE / FULL are given only after their
+// confirmation, to the device with this key (the list may change meanwhile).
 struct NetWindowState
 {
     uint8_t owner_key[NET_KEY_SIZE] = {};
     bool    confirm_owner = false;
-    std::string qr_link;             // the pair link `qr` encodes ("" = nothing yet)
-    std::string qr_beacon;           // made for this beacon setting
-    uint8_t qr_key[NET_KEY_SIZE] = {};   // and this host key
-    bool    qr_ok = false;
-    uint8_t qr[NET_WINDOW_QR_BUFFER] = {};
+    NetAccessLevel confirm_level = NetAccessLevel::share;   // what the confirmation gives
+    NetPairingRequest request;
 };
 
 struct NetWindowContext
@@ -88,3 +89,10 @@ struct NetWindowContext
 // settings (networking isn't per core or game), with labels `label_width`
 // wide like the other tabs'.
 void net_window_draw_tab(const NetWindowContext* context, float label_width);
+
+// The pairing request dialog (drawn every frame while one is active).
+void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event);
+void net_pairing_request_close(NetPairingRequest* request);
+void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings);
+// The four port LEDs lit in turn, then `label`: something being waited for.
+void net_window_waiting_leds(const char* label);
