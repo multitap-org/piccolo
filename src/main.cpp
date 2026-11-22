@@ -4586,8 +4586,11 @@ static bool app_frame(App* app)
     // good, and the router ignores what's held as it enters a layer until
     // it's let go (Escape opened the menu, then neither Escape nor the
     // hotkey closed it: the browser, and the desktop whenever the menu pauses).
+    // The DVR's window the same: the game waits (no pause cause), so a
+    // LEFT let go stayed "held" and the cursor kept stepping (Andrés,
+    // 2026-11-22). It reads its keys in app_update_input, earlier this loop.
     bool minimized = (SDL_GetWindowFlags(app->shell.window) & SDL_WINDOW_MINIMIZED) != 0;
-    bool frame_coming = game_running(app) && !app->session.paused && !minimized;
+    bool frame_coming = game_running(app) && !app->session.paused && !app->dvr.open && !minimized;
     if (ran != CoreSessionFrame::skipped || !frame_coming)
     {
         input_devices_end_frame(&app->input.devices);
