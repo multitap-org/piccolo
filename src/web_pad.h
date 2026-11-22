@@ -4,7 +4,8 @@
 // core page (web/page/piccolo-pad.js) under or beside the picture, so the
 // picture keeps the whole canvas. A controller like any other in the input
 // router ("SCREEN PAD", a device that hands a RetroPad, as the on-screen pad
-// and phones' pads do): START joins a port; remaps, turbo, DEVICES work on it.
+// and phones' pads do), on port 1 from the moment it shows; remaps, turbo,
+// DEVICES work on it.
 // In the menus it moves and accepts like any pad (input_bindings: a RetroPad
 // device's interface).
 //
