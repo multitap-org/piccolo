@@ -47,7 +47,8 @@ struct PortsWidget
     uint64_t  board_out_summary = 0;
 };
 
-// Every frame, after input_update. `port_count` 0 = no game. `net` may be
+// Every frame, after input_update. `port_count` 0 = none shown (piccolo gives
+// its PORTS setting without a game, so a join at the menu shows). `net` may be
 // nullptr: its pads are the ones with ping bars.
 void ports_widget_update(PortsWidget* widget, const InputSystem* input, const InputNet* net, const InputFrame* frame,
                          uint32_t port_count, uint64_t now_ms);

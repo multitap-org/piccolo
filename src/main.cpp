@@ -2340,7 +2340,10 @@ static void app_update_input(App* app)
     // its own buttons), then who is where.
     bool board_was_open = app->ports_widget.open;
     ports_widget_board_update(&app->ports_widget, &app->input);
-    uint32_t shown_ports = game_running(app) ? piccolo_settings_ports(&app->settings, app->session.host->input_info.port_count) : 0;
+    // Without a game, the PORTS setting's: a pad joining at the menu (START)
+    // makes the tabs rise too, as in a game (Andrés: that's what shows a join).
+    uint32_t shown_ports = game_running(app) ? piccolo_settings_ports(&app->settings, app->session.host->input_info.port_count)
+                                             : piccolo_settings_ports(&app->settings, 0);
     ports_widget_update(&app->ports_widget, &app->input, &app->input_net, &frame, shown_ports, SDL_GetTicks());
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
