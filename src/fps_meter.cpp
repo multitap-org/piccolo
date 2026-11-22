@@ -19,7 +19,7 @@ void fps_meter_reset(FpsMeter* meter)
     *meter = FpsMeter{};
 }
 
-void fps_meter_loop(FpsMeter* meter, uint64_t now_ns, bool ran_core_frame, uint64_t work_ns)
+void fps_meter_loop(FpsMeter* meter, uint64_t now_ns, uint32_t core_frames, uint64_t work_ns)
 {
     if (meter->second_start_ns == 0 || now_ns < meter->second_start_ns)
     {
@@ -30,10 +30,7 @@ void fps_meter_loop(FpsMeter* meter, uint64_t now_ns, bool ran_core_frame, uint6
         return;
     }
     meter->loops++;
-    if (ran_core_frame)
-    {
-        meter->core_frames++;
-    }
+    meter->core_frames += core_frames;
     meter->work_ns += work_ns;
     uint64_t elapsed = now_ns - meter->second_start_ns;
     if (elapsed < NS_PER_SECOND)

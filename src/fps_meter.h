@@ -31,9 +31,10 @@ struct FpsMeter
     bool     has_numbers = false;
 };
 
-// One loop of the frontend: `ran_core_frame` = the core ran a frame in it,
-// `work_ns` = the loop's own work. `now_ns` from SDL_GetTicksNS().
-void fps_meter_loop(FpsMeter* meter, uint64_t now_ns, bool ran_core_frame, uint64_t work_ns);
+// One loop of the frontend: `core_frames` = core frames run in it (more than
+// one when a late loop caught up), `work_ns` = the loop's own work. `now_ns`
+// from SDL_GetTicksNS().
+void fps_meter_loop(FpsMeter* meter, uint64_t now_ns, uint32_t core_frames, uint64_t work_ns);
 
 // Forgets what was counted (a game started or stopped, the meter was shown).
 void fps_meter_reset(FpsMeter* meter);

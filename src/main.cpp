@@ -4809,7 +4809,9 @@ static bool app_frame(App* app)
         quick_menu_upload(&app->quick_menu, &app->shell);
         // The loop's work, before the display may make it wait (acquire / present).
         uint64_t now_ns = SDL_GetTicksNS();
-        fps_meter_loop(&app->fps_meter, now_ns, ran == CoreSessionFrame::ran, now_ns - loop_start_ns);
+        // (Catch-up frames count: a late loop runs them too.)
+        uint32_t core_frames = ran == CoreSessionFrame::ran ? 1 + app->session.timing.catch_up_frames : 0;
+        fps_meter_loop(&app->fps_meter, now_ns, core_frames, now_ns - loop_start_ns);
         if (app_shell_acquire(&app->shell))
         {
             video_output_record(&app->video, &app->shader_library, &app->shell, &app->session.texture);

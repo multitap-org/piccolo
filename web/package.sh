@@ -52,7 +52,8 @@ dist="$build/dist/$name"
 rm -rf "$dist" "$build/dist/$name.zip"
 mkdir -p "$dist/LICENSES"
 
-cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-pad.js" "$here/page/manifest.webmanifest" \
+cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-pad.js" "$here/page/piccolo-gl-state.js" \
+   "$here/page/manifest.webmanifest" \
    "$here/page/.htaccess" "$here/page/_headers" "$here/page/nginx.conf.example" "$here/page/README.txt" "$dist/"
 # The page's shared half (frontends-common's web/: the start, the folder on
 # OPFS, the service worker), shared with piccoletto's page.
