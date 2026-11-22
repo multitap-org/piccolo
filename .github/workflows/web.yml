@@ -41,8 +41,10 @@ jobs:
             deps/common/hosts-common deps/common/frontends-common deps/common/retroui \
             deps/libretro/host-libretro deps/libretro/frontend-libretro
           git submodule update --init --depth 1 deps/librashader
-          # The cores' recipes (web/build-core.sh); its own submodules aren't needed.
+          # The cores' recipes (web/build-core.sh), and of its own submodules
+          # libretro-common: piccobots (built from source here) needs its libretro.h.
           git submodule update --init --checkout deps/cores
+          git -C deps/cores submodule update --init --depth 1 deps/libretro-common
 
       # Ninja; the Vulkan headers (web/build.sh: frontends-common's headers name
       # Vulkan types even with Vulkan off); bison + libpng for the cores repo to
