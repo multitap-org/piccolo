@@ -1,6 +1,8 @@
 package site.multitap.piccolo;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
@@ -24,6 +26,38 @@ public class PiccoloActivity extends SDLActivity {
     @Override
     protected String[] getLibraries() {
         return new String[] { "main" };
+    }
+
+    // A piccolo:// link that opened the app (StartActivity passes it on):
+    // the native side finds it among the arguments (app_links_from_args).
+    @Override
+    protected String[] getArguments() {
+        String link = link(getIntent());
+        return link != null ? new String[] { link } : new String[0];
+    }
+
+    // Already running (singleInstance): the link comes as a dropped file
+    // (SDL_EVENT_DROP_FILE; main.cpp hands it to app_links).
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String link = link(intent);
+        if (link != null) {
+            SDLActivity.onNativeDropFile(link);
+        }
+    }
+
+    // The intent's piccolo:// link, or null.
+    private static String link(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return null;
+        }
+        Uri data = intent.getData();
+        if (data == null || !"piccolo".equalsIgnoreCase(data.getScheme())) {
+            return null;
+        }
+        return data.toString();
     }
 
     @Override

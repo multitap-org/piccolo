@@ -106,7 +106,14 @@ public class StartActivity extends Activity {
     }
 
     private void startPiccolo() {
-        startActivity(new Intent(this, PiccoloActivity.class));
+        Intent start = new Intent(this, PiccoloActivity.class);
+        // Opened by a piccolo:// link: PiccoloActivity takes it on.
+        Intent opened = getIntent();
+        if (opened != null && Intent.ACTION_VIEW.equals(opened.getAction()) && opened.getData() != null) {
+            start.setAction(Intent.ACTION_VIEW);
+            start.setData(opened.getData());
+        }
+        startActivity(start);
         finish();
     }
 }

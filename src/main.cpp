@@ -21,6 +21,7 @@
 #include "imgui.h"
 
 #include "app_icon.h"
+#include "app_links.h"
 #include "app_loop.h"
 #include "app_paths.h"
 #include "app_shell.h"
@@ -93,6 +94,7 @@ constexpr uint64_t PICCOLO_CONTENT_CACHE_MAX_BYTES = 4ull * 1024ull * 1024ull * 
 struct App
 {
     AppShell shell = {};
+    AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     InputSystem input = {};       // controllers, ports, hotkeys (input_bindings.h)
     InputSdl    input_sdl = {};   // the keyboard and gamepads, from SDL
     bool        ui_keys_down[5] = {};   // gamepad interface actions given to ImGui as keys (drive_ui_with_gamepads)
@@ -2654,11 +2656,32 @@ static void app_update_input(App* app)
     }
 }
 
+// piccolo:// links (app_links.h; Andrés, 2026-11-22: for links to come, such
+// as joining a game from the lobby: piccolo://join/<room> is kept for that).
+// Nothing opens one yet: the window comes forward and says so.
+static void handle_links(App* app)
+{
+    std::string link;
+    while (app_links_next(&app->links, &link))
+    {
+        SDL_Log("Link: %s", link.c_str());
+        SDL_RaiseWindow(app->shell.window);
+        std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " + link;
+        set_status(app, text.c_str());
+    }
+}
+
 static void app_handle_events(App* app)
 {
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        // A link dropped on the window, or Android's (PiccoloActivity hands a
+        // link to the running app as a dropped file).
+        if ((event.type == SDL_EVENT_DROP_TEXT || event.type == SDL_EVENT_DROP_FILE) && event.drop.data != nullptr)
+        {
+            app_links_push(&app->links, event.drop.data);
+        }
         // The keyboard's Escape always cancels an input grab (SET, MAP
         // CONTROLLER, the macro recorder), before anything else sees it:
         // the router is off or reading raw controls meanwhile.
@@ -4757,6 +4780,7 @@ static bool app_frame(App* app)
 {
     uint64_t loop_start_ns = SDL_GetTicksNS();   // SHOW FPS: the loop's own work
     app_handle_events(app);
+    handle_links(app);
     net_update(app);
     if (app->pending_close_game)
     {
@@ -5406,14 +5430,21 @@ static void app_save_on_leave(void* data, bool unloading)
 
 int main(int argc, char** argv)
 {
-    (void)argc;
-    (void)argv;
 
     SDL_Log("piccolo %s, host-libretro %s", PICCOLO_VERSION, HOST_LIBRETRO_VERSION);
     app_storage_init(bundled_files_folder_name());   // the browser: piccolo's folder on OPFS
 
     // The session, catalog and file picker are large (paths, file lists): off the stack.
     App* app = new App{};
+
+    // A launch with a piccolo:// link hands it to the copy already running
+    // and quits before any window; otherwise this copy takes the links.
+    if (!app_links_start(&app->links, "piccolo", app_links_from_args(argc, argv, "piccolo")))
+    {
+        delete app;
+        return 0;
+    }
+    app_links_register("piccolo", "piccolo");   // Windows: this program opens piccolo:// links (per user)
 
     AppShellConfig config = {};
     config.name       = "piccolo";
@@ -5619,6 +5650,7 @@ int main(int argc, char** argv)
     onscreen_pad_shutdown(&app->onscreen_pad);
     net_shutdown_all(app);
     app_shell_destroy(&app->shell);
+    app_links_stop(&app->links);
     delete app;
     return 0;
 }

@@ -858,6 +858,7 @@ action_pause = PAUSE
 action_reset = RESET
 status_paused_remotely = PAUSED FROM
 status_resumed = RESUMED
+status_link_unknown = NOTHING OPENS THIS LINK YET:
 status_screenshot_saved = SCREENSHOT SAVED: %s
 status_screenshot_failed = THE SCREENSHOT COULD NOT BE SAVED (SEE THE LOG)
 status_screenshot_busy = STILL SAVING THE LAST SCREENSHOT

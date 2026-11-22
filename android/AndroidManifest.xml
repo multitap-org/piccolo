@@ -69,6 +69,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- piccolo:// links (app_links.h; Andrés, 2026-11-22: links to
+                 come, such as joining a game from the lobby). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="piccolo" />
+            </intent-filter>
         </activity>
 
         <!-- preferMinimalPostProcessing: ask the TV for its game mode (ALLM). -->
