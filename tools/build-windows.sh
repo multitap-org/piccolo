@@ -9,6 +9,9 @@
 #   tools/build-windows.sh --test           also run the tests (ctest)
 #   tools/build-windows.sh --no-librashader skip librashader (no Rust needed)
 #
+# Submodules not checked out yet are fetched (the ones of compilation.md step
+# 2); the ones already there are left as they are.
+#
 # Environment, all optional:
 #   PICCOLO_DIR  where to deploy (default $USERPROFILE/piccolo)
 #   BUILD_DIR    CMake build folder (default build, or build-debug with --debug)
@@ -32,7 +35,7 @@ for arg in "$@"; do
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-windows.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -42,7 +45,7 @@ case "${MSYSTEM:-}" in
     *) echo "build-windows.sh: run it from the MSYS2 UCRT64 (or CLANGARM64) shell, not '${MSYSTEM:-none}'" >&2; exit 1 ;;
 esac
 
-for tool in cmake ninja ntldd cygpath; do
+for tool in git cmake ninja ntldd cygpath; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "build-windows.sh: $tool not found (packages: docs/compilation.md, step 1)" >&2
         exit 1
@@ -52,15 +55,41 @@ done
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
 
-if [ ! -f deps/SDL/CMakeLists.txt ]; then
-    echo "build-windows.sh: submodules missing (docs/compilation.md, step 2)" >&2
-    exit 1
-fi
-if [ "$with_librashader" = 1 ]; then
-    if [ ! -f deps/librashader/Cargo.toml ]; then
-        echo "build-windows.sh: deps/librashader missing: git submodule update --init deps/librashader (or --no-librashader)" >&2
-        exit 1
+# The submodules of compilation.md step 2, only the ones not checked out yet
+# (no .git in their folder): one already there may be on a branch being
+# worked on, and `git submodule update` would move it back to the pinned
+# commit.
+submodules="deps/SDL deps/imgui deps/libretro-common deps/libsamplerate
+    deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon
+    deps/piccolo-shaders deps/piccolo-shaders-legacy
+    deps/common/hosts-common deps/common/frontends-common
+    deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro
+    deps/libdatachannel"
+missing=""
+for submodule in $submodules; do
+    if [ ! -e "$submodule/.git" ]; then
+        missing="$missing $submodule"
     fi
+done
+if [ -n "$missing" ]; then
+    echo "== submodules:$missing"
+    # shellcheck disable=SC2086 # missing is a list
+    git submodule update --init --recursive $missing
+fi
+# Without --recursive: its own submodules are only its tests.
+if [ "$with_librashader" = 1 ] && [ ! -e deps/librashader/.git ]; then
+    echo "== submodule: deps/librashader"
+    git submodule update --init deps/librashader
+fi
+# The Test libretro core's nested submodules have SSH URLs: over HTTPS, so no
+# GitHub SSH key is needed.
+if [ ! -e deps/test-libretro/.git ]; then
+    echo "== submodule: deps/test-libretro"
+    git -c url."https://github.com/".insteadOf="git@github.com:" \
+        submodule update --init --recursive --checkout deps/test-libretro
+fi
+
+if [ "$with_librashader" = 1 ]; then
     if ! command -v cargo >/dev/null 2>&1; then
         echo "build-windows.sh: cargo not found: pacman -S --needed \${MINGW_PACKAGE_PREFIX}-rust (or --no-librashader)" >&2
         exit 1

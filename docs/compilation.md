@@ -95,10 +95,11 @@ statically, so the resulting `piccolo.exe` needs only Windows' own DLLs,
 `libcrypto` from MSYS2 (WebRTC; step 4 copies them). The same steps are what CI runs
 (`.github/workflows/windows.yml`).
 
-Once the packages and the source are there (steps 1 and 2),
-`tools/build-windows.sh` does steps 3 to 6 in one go: it builds piccolo and
-librashader and deploys them to `%USERPROFILE%\piccolo` with the DLLs they
-need (`--debug`, `--test`, `--no-librashader`; `--help` lists them).
+Once the packages are there and the repository is cloned (steps 1 and 2),
+`tools/build-windows.sh` does the rest in one go: it fetches the submodules
+not checked out yet, builds piccolo and librashader and deploys them to
+`%USERPROFILE%\piccolo` with the DLLs they need (`--debug`, `--test`,
+`--no-librashader`; `--help` lists them).
 
 ### 1. Install MSYS2 and the packages
 
