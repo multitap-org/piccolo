@@ -22,6 +22,7 @@ struct WebPad
     bool         told         = false;   // the page has heard once
     bool         told_playing = false;
     double       told_aspect  = 0.0;
+    int32_t      told_vibrate = -1;   // -1: not told yet
 };
 
 static WebPad g_pad = {};
@@ -31,6 +32,13 @@ static WebPad g_pad = {};
 EM_JS(void, page_game, (int32_t playing, double aspect), {
     if (typeof multitap_page_game === 'function') {
         multitap_page_game(playing !== 0, aspect);
+    }
+});
+
+// The page pad's buzz on a press (web/page/piccolo-pad.js), if the page has it.
+EM_JS(void, page_vibrate, (int32_t on), {
+    if (typeof piccolo_pad_set_vibrate === 'function') {
+        piccolo_pad_set_vibrate(on !== 0);
     }
 });
 
@@ -121,4 +129,15 @@ void web_pad_tell_page(bool playing, double aspect)
     g_pad.told_playing = playing;
     g_pad.told_aspect = aspect;
     page_game(playing ? 1 : 0, aspect);
+}
+
+void web_pad_set_vibrate(bool on)
+{
+    int32_t value = on ? 1 : 0;
+    if (value == g_pad.told_vibrate)
+    {
+        return;
+    }
+    g_pad.told_vibrate = value;
+    page_vibrate(value);
 }

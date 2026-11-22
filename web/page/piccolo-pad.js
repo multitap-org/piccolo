@@ -25,11 +25,14 @@ const PICCOLO_PAD_BIT = { B: 0, Y: 1, SELECT: 2, START: 3, UP: 4, DOWN: 5, LEFT:
                           QUICK: 16, MENU: 17 };
 const PICCOLO_PAD_SHOWN_KEY = 'piccolo-pad-shown';
 const PICCOLO_PAD_DEADZONE = 0.3;   // of the d-pad's half size: closer to its middle is no direction
+const PICCOLO_PAD_BUZZ_MS = 20;   // a press's buzz (piccolo's own touch pad: haptics.cpp BUZZ_MS)
+const PICCOLO_PAD_BOTH_REACH = 0.62;   // A + B: closer than this share of the distance between their centres to each
 
 const piccolo_pad = {
   shown: false,
   fingers: new Map(),   // pointerId -> bits that finger holds
   sent: 0,              // the bits piccolo has
+  vibrate: true,        // SETTINGS' touch pad VIBRATE (piccolo says: piccolo_pad_set_vibrate)
   attached: false,      // piccolo took the show / hide (its router exists)
   targets: null,        // [{ element, bits, dpad, left, top, right, bottom }] (null: measure again)
   lit: 0,               // the bits drawn as held
@@ -113,6 +116,27 @@ function piccolo_pad_measure() {
       left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
     });
   }
+  // A and B side by side (Game Boy): a thumb between them presses both, as
+  // on the real thing. Tried first: a point near both centres (closer than
+  // PICCOLO_PAD_BOTH_REACH of the distance between them to each) is both,
+  // anywhere else each button is its own.
+  const face = document.querySelector('#main .face.two');
+  const a = face !== null ? face.querySelector('.a') : null;
+  const b = face !== null ? face.querySelector('.b') : null;
+  if (a !== null && b !== null) {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    const rf = face.getBoundingClientRect();
+    if (ra.width > 0 && rb.width > 0) {
+      const ax = ra.left + ra.width / 2, ay = ra.top + ra.height / 2;
+      const bx = rb.left + rb.width / 2, by = rb.top + rb.height / 2;
+      targets.unshift({
+        element: face, bits: Number(a.dataset.bits) | Number(b.dataset.bits), dpad: false, both: true,
+        ax: ax, ay: ay, bx: bx, by: by, reach: PICCOLO_PAD_BOTH_REACH * Math.hypot(ax - bx, ay - by),
+        left: rf.left, top: rf.top, right: rf.right, bottom: rf.bottom,
+      });
+    }
+  }
   piccolo_pad.targets = targets;
 }
 
@@ -142,6 +166,13 @@ function piccolo_pad_bits_at(x, y) {
   }
   for (const target of piccolo_pad.targets) {
     if (x >= target.left && x < target.right && y >= target.top && y < target.bottom) {
+      if (target.both) {
+        if (Math.hypot(x - target.ax, y - target.ay) < target.reach &&
+            Math.hypot(x - target.bx, y - target.by) < target.reach) {
+          return target.bits;
+        }
+        continue;
+      }
       return target.dpad ? piccolo_pad_dpad_bits(target, x, y) : target.bits;
     }
   }
@@ -161,13 +192,18 @@ function piccolo_pad_update() {
   if (bits === piccolo_pad.sent) {
     return;
   }
-  if ((bits & ~piccolo_pad.sent) !== 0 && navigator.vibrate) {
-    navigator.vibrate(12);
+  if ((bits & ~piccolo_pad.sent) !== 0 && piccolo_pad.vibrate && navigator.vibrate) {
+    navigator.vibrate(PICCOLO_PAD_BUZZ_MS);
   }
   piccolo_pad.sent = bits;
   if (typeof Module !== 'undefined' && Module.ccall && piccolo_pad.attached) {
     Module.ccall('piccolo_web_pad_state', null, ['number'], [bits]);
   }
+}
+
+// piccolo's touch pad VIBRATE setting (src/web_pad.h: web_pad_set_vibrate).
+function piccolo_pad_set_vibrate(on) {
+  piccolo_pad.vibrate = on;
 }
 
 // Draws what's held (only called when it changed).

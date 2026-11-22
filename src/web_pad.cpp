@@ -27,3 +27,8 @@ void web_pad_tell_page(bool playing, double aspect)
     (void)playing;
     (void)aspect;
 }
+
+void web_pad_set_vibrate(bool on)
+{
+    (void)on;
+}
