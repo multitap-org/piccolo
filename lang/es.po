@@ -3514,6 +3514,10 @@ msgctxt "touch_pad_menu"
 msgid "MENU"
 msgstr "MENÚ"
 
+msgctxt "touch_pad_quick"
+msgid "QUICK"
+msgstr "RÁPIDO"
+
 msgctxt "setting_menu_backdrop"
 msgid "BACKDROP"
 msgstr "FONDO"

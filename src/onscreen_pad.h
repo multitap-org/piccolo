@@ -52,7 +52,8 @@ struct OnscreenPad
     uint32_t     device = 0;    // in the router while plugged
     bool         hidden = false;   // AUTO: a real gamepad played (a tap shows it again)
     bool         touch_screen = false;   // there is one (at start, or a finger came since)
-    bool         menu_pressed = false;   // MENU this frame
+    bool         menu_pressed = false;   // MENU this frame (MAIN MENU)
+    bool         quick_pressed = false;  // QUICK this frame (QUICK MENU)
     bool         edit_done = false;      // EDIT LAYOUT's DONE this frame
     // Where it goes this frame (onscreen_pad_place): under the picture
     // (`below`, the picture keeps `picture_height` window pixels at the top)
@@ -87,9 +88,11 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
 // height) in a `width` x `height` window.
 void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float width, float height);
 
-// The pad (or EDIT LAYOUT), over the game. `opacity` 0.1..1 (the layouts not
+// The pad (or EDIT LAYOUT), over the game. `menu_label` / `quick_label`: the
+// MAIN MENU and QUICK MENU buttons. `opacity` 0.1..1 (the layouts not
 // changed in EDIT LAYOUT); `vibrate`: a buzz on each press.
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, float opacity, bool vibrate);
+void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
+                       bool vibrate);
 
 // After the frame: the fingers' frame ends.
 void onscreen_pad_end_frame(OnscreenPad* pad);

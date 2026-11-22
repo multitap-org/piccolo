@@ -4441,11 +4441,17 @@ static bool app_frame(App* app)
         draw_game(app);   // background, behind everything
         // The touch gamepad over the game, a GAME-mode device (it takes touches
         // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
-        // the overlay); MENU opens the QUICK MENU.
+        // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
+        // web page's pad: without a keyboard they're the way to the menus).
         onscreen_pad_draw(&app->onscreen_pad, app->pixel_font, piccolo_text(&app->strings, Str::touch_pad_menu),
+                          piccolo_text(&app->strings, Str::touch_pad_quick),
                           static_cast<float>(settings_get_int(&app->settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f,
                           settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
         if (app->onscreen_pad.menu_pressed && game_has_keyboard(app))
+        {
+            app_enter_main_menu(app);
+        }
+        if (app->onscreen_pad.quick_pressed && game_has_keyboard(app))
         {
             app_open_quick_menu(app);
         }

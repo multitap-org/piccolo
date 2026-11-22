@@ -154,9 +154,11 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
     pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
 }
 
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, float opacity, bool vibrate)
+void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
+                       bool vibrate)
 {
     pad->menu_pressed = false;
+    pad->quick_pressed = false;
     pad->edit_done = false;
     pad->pad = RetroPad{};
     if (!pad->shown)
@@ -175,7 +177,8 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
         pad_layout_set_default_alpha(&pad->layouts.layouts[i], opacity);   // (a layout's own, from EDIT LAYOUT, wins)
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
-    layout->action_label = menu_label;   // retroui's action button: the QUICK MENU
+    layout->menu_label = menu_label;     // retroui's menu button: the MAIN MENU
+    layout->action_label = quick_label;  // its action button: the QUICK MENU
     float width = touch_ui_width(&ui);
     float height = touch_ui_height(&ui);
     PadFrame frame = pad->placement.frame;
@@ -202,7 +205,8 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     else
     {
         pad_layout_draw(&ui, &frame, layout);
-        pad->menu_pressed = layout->action_pressed;
+        pad->menu_pressed = layout->menu_pressed;
+        pad->quick_pressed = layout->action_pressed;
         if (vibrate && pad->fingers.presses > 0)
         {
             haptics_buzz(&pad->haptics);
