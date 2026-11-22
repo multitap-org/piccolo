@@ -15,7 +15,8 @@
 //     own button (A / Escape, or clicked) since UP / DOWN switch lanes.
 //       UP / DOWN      two lanes (Andrés, 2026-11-22, "Timelines: two for
 //                      now"): PLAY FROM HERE keeps the future it leaves as
-//                      the kept lane, drawn above; UP goes to it, DOWN back
+//                      the kept lane (a history of its own, as big as the
+//                      recorded one), drawn above; UP goes to it, DOWN back
 //                      to the recorded lane, at the same frame (or the
 //                      lane's newest). PLAY FROM HERE on the kept lane plays
 //                      on there and keeps the other one instead.
@@ -64,7 +65,7 @@ struct DvrWidget
     uint64_t              preview_frames = 1;   // frames between two previews
     VideoTexture          thumbs[DVR_VIEW_MAX_THUMBS];
     uint64_t              thumb_frame[DVR_VIEW_MAX_THUMBS] = {};   // the preview each holds
-    RewindLane            thumb_lane[DVR_VIEW_MAX_THUMBS] = {};    // on which lane (frames before the fork: both)
+    bool                  thumb_kept[DVR_VIEW_MAX_THUMBS] = {};    // made on the kept lane (frames before the fork: both)
     bool                  thumb_used[DVR_VIEW_MAX_THUMBS] = {};
 
     // LEFT / RIGHT: the last one pressed and since when (SCRUB: 2x while
