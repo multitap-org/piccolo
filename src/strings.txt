@@ -920,12 +920,17 @@ setting_touch_pad = SHOW
 setting_touch_pad_help = The touch gamepad over the game. AUTO: on a touch screen, hidden while a real gamepad plays (touch the screen to bring it back). It joins a port with its START, like any controller.
 setting_touch_pad_opacity = OPACITY
 setting_touch_pad_opacity_help = How see-through the touch gamepad is over the game (a layout's own opacity from EDIT LAYOUT wins).
+setting_touch_pad_style = STYLE
+setting_touch_pad_style_help = Which controller the touch gamepad looks like: RETROPAD has every button and both sticks; the others only the buttons that controller has, with its names (SUPER NINTENDO: no sticks, no L2 / R2). Set it for a core or a game with SCOPE.
+touch_pad_style_retropad = RETROPAD
+touch_pad_style_missing = (GONE)
 setting_touch_pad_vibrate = VIBRATE ON PRESS
 setting_touch_pad_vibrate_help = A short buzz each time a button of the touch gamepad is pressed (phones with a vibrator).
 input_section_touch_pad = ON-SCREEN GAMEPAD
 input_touch_pad_edit = EDIT LAYOUT
 input_touch_pad_edit_help = Move and resize the touch gamepad's buttons (drag a group, pinch or SIZE, RESET, DONE). Upright and sideways have their own layouts.
 touch_pad_menu = MENU
+touch_pad_quick = QUICK
 setting_menu_backdrop = BACKDROP
 setting_menu_backdrop_help = While a menu or a window is open over a game, the game is darkened this much so the text reads well over any picture (0: not darkened).
 
@@ -985,7 +990,13 @@ dvr_play_here = PLAY FROM HERE
 dvr_watch = WATCH
 dvr_pause = PAUSE
 dvr_back_to_now = BACK TO NOW
-dvr_hud_from = ◀◀ PLAYING FROM
 dvr_hud_nothing = REWIND: NOTHING RECORDED YET
 dvr_hud_unsupported = REWIND: THIS CORE HAS NO SAVESTATES
 dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)
+
+# Widgets
+input_action_hotkey_remap = REMAP (HOLD)
+remap_card_port = PORT %u
+remap_card_hold = HOLD
+remap_card_to_remap = TO REMAP
+input_conflict_also = ALSO %s: both fire together. Bind one of them elsewhere.

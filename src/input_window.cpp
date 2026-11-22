@@ -42,7 +42,7 @@ static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
     Str::input_action_hotkey_enable, Str::input_action_hotkey_menu, Str::input_action_hotkey_quick_menu,
     Str::input_action_hotkey_save_state, Str::input_action_hotkey_load_state, Str::input_action_hotkey_fast_forward,
     Str::input_action_hotkey_grab_mouse, Str::input_action_hotkey_ports, Str::input_action_hotkey_pause,
-    Str::input_action_hotkey_dvr,
+    Str::input_action_hotkey_dvr, Str::input_action_hotkey_remap,
 };
 
 static const char* with_id(char* buffer, size_t size, const char* text, const char* id)
@@ -364,6 +364,26 @@ static void draw_settings(InputWindow* window, const InputWindowContext* context
     retro_ui_separator_text(piccolo_text(context->strings, Str::input_section_touch_pad));
     static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
     draw_scoped_settings(window, context, TOUCH_KEYS, sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]));
+    // STYLE: the controller layouts (layouts/), by name; "" = RETROPAD.
+    if (context->layouts != nullptr)
+    {
+        constexpr uint32_t MAX_STYLES = 64;
+        const char* names[MAX_STYLES] = {};
+        uint32_t name_count = 0;
+        for (size_t i = 0; i < context->layouts->layouts.size() && name_count < MAX_STYLES; i++)
+        {
+            names[name_count] = context->layouts->layouts[i].name.c_str();
+            name_count++;
+        }
+        SettingsUiContext ui = {};
+        ui.settings = context->settings;
+        ui.strings = context->strings;
+        ui.scope = window->scope;
+        ui.label_width = settings_ui_label_width(context->settings, context->strings);
+        settings_ui_text_choice_row(&ui, PICCOLO_TOUCH_PAD_STYLE, names, name_count,
+                                    piccolo_text(context->strings, Str::touch_pad_style_retropad),
+                                    piccolo_text(context->strings, Str::touch_pad_style_missing));
+    }
     if (retro_ui_button(piccolo_text(context->strings, Str::input_touch_pad_edit)))
     {
         window->edit_touch_layout = true;
@@ -475,6 +495,7 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
     uint32_t index = static_cast<uint32_t>(action);
     InputSource* sources = controller->bindings.sources[index];
     bool changed = !same_sources(sources, defaults->sources[index]);
+    InputAction clash = input_binding_conflict_with(&controller->bindings, action);
     bool waiting = window->capturing && window->capture_action == action && window->capture_controller == controller_index;
     uint32_t count = input_sources_count(sources);
     uint32_t rows = count > 0 ? count : 1;   // an action with nothing still has its row
@@ -503,6 +524,16 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
                 retro_ui_push_section_text();   // the one being bound stands out
                 ImGui::TextUnformatted(piccolo_text(strings, ACTION_LABELS[index]));
                 retro_ui_pop_section_text();
+            }
+            else if (clash != InputAction::count)
+            {
+                // Shares a control with an action that fires with it
+                // (input_binding_conflicts): red, and the other one named.
+                ImGui::TextColored(ImVec4(0.88f, 0.31f, 0.31f, 1.0f), "%s", piccolo_text(strings, ACTION_LABELS[index]));
+                char also[160] = {};
+                std::snprintf(also, sizeof(also), piccolo_text(strings, Str::input_conflict_also),
+                              piccolo_text(strings, ACTION_LABELS[static_cast<uint32_t>(clash)]));
+                retro_ui_item_tooltip(also);
             }
             else if (changed)
             {
@@ -1305,7 +1336,7 @@ void input_window_draw(InputWindow* window, const InputWindowContext* context, I
             if (begin_tab(window, piccolo_text(strings, Str::input_section_hotkeys), "hotkeys", 2, target))
             {
                 window->tab = 2;
-                draw_bindings(window, context, InputAction::hotkey_enable, InputAction::hotkey_dvr,
+                draw_bindings(window, context, InputAction::hotkey_enable, InputAction::hotkey_remap,
                               Str::input_column_action, label_width);
                 ImGui::EndTabItem();
             }

@@ -59,16 +59,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE int32_t piccolo_web_pad_show(int32_t on)
         {
             device->retropad = true;            // hands a RetroPad (the page's buttons)
             device->ignore = InputIgnore::no;   // (a finger held down isn't a stuck receiver)
+            // On port 1 from the start, as the touch pad is, without taking it
+            // from a gamepad that joins later (InputDevice::shares_port1): the
+            // first press plays or moves in the menus instead of only joining.
+            device->shares_port1 = true;
         }
         input_add_controllers_for_device(g_pad.input, g_pad.device);
-        // On port 1 at once, with whatever is there (the keyboard): the
-        // player's first press plays or moves in the menus instead of only
-        // joining (a joining START is swallowed), and port 1 drives the menus.
-        int32_t controller = input_first_controller(g_pad.input, g_pad.device);
-        if (controller >= 0 && input_controller_port(g_pad.input, static_cast<uint32_t>(controller)) == INPUT_NO_PORT)
-        {
-            input_port_add(g_pad.input, 0, static_cast<uint32_t>(controller));
-        }
         g_pad.plugged = true;
         SDL_Log("Screen pad: plugged in");
     }

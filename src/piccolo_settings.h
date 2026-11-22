@@ -57,6 +57,7 @@ constexpr const char* PICCOLO_INPUT_OSK = "input_osk";
 // touch screen, hidden while a real gamepad plays), OPACITY (percent, the
 // layouts not changed in EDIT LAYOUT), VIBRATE ON PRESS. Global only.
 constexpr const char* PICCOLO_TOUCH_PAD = "touch_pad";
+constexpr const char* PICCOLO_TOUCH_PAD_STYLE = "touch_pad_style";   // a layout's name ("" = the RetroPad)
 constexpr const char* PICCOLO_TOUCH_PAD_OPACITY = "touch_pad_opacity";
 constexpr const char* PICCOLO_TOUCH_PAD_VIBRATE = "touch_pad_vibrate";
 constexpr const char* PICCOLO_INPUT_PORTS = "input_ports";                // CONTROLS: how many ports it shows (of the core's)

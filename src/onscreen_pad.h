@@ -23,6 +23,7 @@
 
 #include "haptics.h"
 #include "input_bindings.h"
+#include "input_layouts.h"
 #include "pad_editor.h"
 #include "pad_layouts.h"
 #include "retropad.h"
@@ -52,7 +53,8 @@ struct OnscreenPad
     uint32_t     device = 0;    // in the router while plugged
     bool         hidden = false;   // AUTO: a real gamepad played (a tap shows it again)
     bool         touch_screen = false;   // there is one (at start, or a finger came since)
-    bool         menu_pressed = false;   // MENU this frame
+    bool         menu_pressed = false;   // MENU this frame (MAIN MENU)
+    bool         quick_pressed = false;  // QUICK this frame (QUICK MENU)
     bool         edit_done = false;      // EDIT LAYOUT's DONE this frame
     // Where it goes this frame (onscreen_pad_place): under the picture
     // (`below`, the picture keeps `picture_height` window pixels at the top)
@@ -62,7 +64,17 @@ struct OnscreenPad
     float        picture_height = 0.0f;
     PadLayoutId  layout = PadLayoutId::remote_overlay_landscape;   // the one shown
     PadPlacement placement;     // retroui's pad_layouts_place: the layout, its frame, the picture's room
+    // STYLE (touch_pad_style): the controller it looks like; its labels point
+    // into the InputLayouts it came from, which live as long as the app.
+    PadStyle     style;
+    bool         styled = false;   // false: the whole RetroPad
+    std::string  style_name;       // the setting's value it was made from
 };
+
+// STYLE: look like `layout` (a controller layout from layouts/: only its
+// buttons, with its names; its sticks only if it has them); nullptr = the
+// whole RetroPad. `name` is the setting's value, kept to see it change.
+void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const char* name);
 
 // Loads the layouts (`settings_dir` "" = nothing saved) and opens the vibrator.
 void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir);
@@ -87,9 +99,11 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
 // height) in a `width` x `height` window.
 void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float width, float height);
 
-// The pad (or EDIT LAYOUT), over the game. `opacity` 0.1..1 (the layouts not
+// The pad (or EDIT LAYOUT), over the game. `menu_label` / `quick_label`: the
+// MAIN MENU and QUICK MENU buttons. `opacity` 0.1..1 (the layouts not
 // changed in EDIT LAYOUT); `vibrate`: a buzz on each press.
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, float opacity, bool vibrate);
+void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
+                       bool vibrate);
 
 // After the frame: the fingers' frame ends.
 void onscreen_pad_end_frame(OnscreenPad* pad);
