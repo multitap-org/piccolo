@@ -106,14 +106,6 @@ jobs:
             done
           done
 
-      # TEMPORARY (branch rtc-test-flake, not for main): frontend_net_rtc
-      # repeated until it fails, with libdatachannel's debug log, to see why
-      # it hung once on this runner.
-      - name: net_rtc repeated (temporary)
-        env:
-          MULTITAP_RTC_LOG: verbose
-        run: ctest --test-dir build -R "^frontend_net_rtc$" --repeat until-fail:1000 --output-on-failure
-
       # MULTITAP_NET_HTTP_ONLINE_URL: net_http_test also downloads over the
       # network (WinHTTP, TLS by Schannel) from the cores site.
       - name: Test
