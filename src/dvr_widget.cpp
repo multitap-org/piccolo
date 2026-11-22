@@ -111,7 +111,8 @@ void dvr_widget_game_started(DvrWidget* widget, CoreSession* session, const Sett
 #endif
     }
     // Never more than a quarter of the device's memory (Andrés: "el techo
-    // que el dispositivo permita").
+    // que el dispositivo permita"). After a PLAY FROM HERE the kept lane
+    // takes as much again (its own history, the same size).
     int ram = SDL_GetSystemRAM();
     if (ram > 0 && megabytes > static_cast<uint64_t>(ram) / 4)
     {
@@ -147,8 +148,7 @@ static void set_hud(DvrWidget* widget, const char* text, uint64_t now_ms)
 // state of each 5 s.
 static void build_previews(DvrWidget* widget)
 {
-    const RewindBuffer* buffer = &widget->rewind.recorder.buffer;
-    RewindLane lane = widget->rewind.cursor.lane;
+    const RewindBuffer* buffer = core_rewind_dvr_buffer(&widget->rewind);
     bool scrub = widget->rewind.state != CoreRewindState::snapshots;
     widget->preview_frames = scrub ? static_cast<uint64_t>(PREVIEW_SECONDS * fps_of(widget))
                                    : widget->rewind.state_every;
@@ -161,8 +161,7 @@ static void build_previews(DvrWidget* widget)
     for (uint32_t i = 0; i < buffer->count; i++)
     {
         const RewindRecord* record = rewind_buffer_record(buffer, i);
-        if (record->kind != RewindRecordKind::state || !rewind_buffer_on_lane(buffer, i, lane) ||
-            (scrub && record->frame < next))
+        if (record->kind != RewindRecordKind::state || (scrub && record->frame < next))
         {
             continue;
         }
@@ -544,7 +543,7 @@ static bool thumb_fits(const DvrWidget* widget, uint32_t i, uint64_t frame)
 {
     const CoreRewind* rewind = &widget->rewind;
     return widget->thumb_used[i] && widget->thumb_frame[i] == frame &&
-           (widget->thumb_lane[i] == rewind->cursor.lane || !rewind->lanes || frame < rewind->fork_frame);
+           (widget->thumb_kept[i] == rewind->on_kept || !rewind->has_kept || frame < rewind->fork_frame);
 }
 
 static int32_t thumb_for(const DvrWidget* widget, uint64_t frame)
@@ -623,7 +622,7 @@ void dvr_widget_upload(DvrWidget* widget, CoreSession* session, AppShell* shell)
     {
         widget->thumb_used[slot] = true;
         widget->thumb_frame[slot] = frame;
-        widget->thumb_lane[slot] = widget->rewind.cursor.lane;
+        widget->thumb_kept[slot] = widget->rewind.on_kept;
     }
     core_rewind_dvr_seek(&widget->rewind, position.cursor);
     uint64_t cost = SDL_GetTicksNS() - started;
