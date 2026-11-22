@@ -297,6 +297,45 @@ static void draw_beacon_status(const NetWindowContext* context, float label_widt
     }
 }
 
+// The piccolos we connect to (paired with TOOLS > PAIR / SHARE): FORGET only;
+// their access is the other side's to give (Andrés, 2026-11-22).
+static void draw_hosts(const NetWindowContext* context)
+{
+    const Localization* strings = context->strings;
+    if (context->hosts == nullptr || context->hosts->empty())
+    {
+        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_no_hosts));
+        return;
+    }
+    for (size_t i = 0; i < context->hosts->size(); i++)
+    {
+        ImGui::PushID(static_cast<int>(5000 + i));
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted((*context->hosts)[i].empty() ? "?" : (*context->hosts)[i].c_str());
+        if (context->hosts_online != nullptr && i < context->hosts_online->size())
+        {
+            ImGui::SameLine();
+            if ((*context->hosts_online)[i] != 0)
+            {
+                retro_ui_push_section_text();
+                ImGui::TextUnformatted(piccolo_text(strings, Str::net_online));
+                retro_ui_pop_section_text();
+            }
+            else
+            {
+                ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_offline));
+            }
+        }
+        ImGui::SameLine();
+        if (retro_ui_button(piccolo_text(strings, Str::net_device_forget)) && context->forget_host != nullptr)
+        {
+            *context->forget_host = static_cast<int32_t>(i);
+        }
+        retro_ui_item_tooltip(piccolo_text(strings, Str::net_host_forget_help));
+        ImGui::PopID();
+    }
+}
+
 void net_window_draw_tab(const NetWindowContext* context, float label_width)
 {
     const Localization* strings = context->strings;
@@ -339,6 +378,8 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
     draw_connected(context);
     retro_ui_separator_text(piccolo_text(strings, Str::net_section_devices));
     draw_devices(context);
+    retro_ui_separator_text(piccolo_text(strings, Str::net_section_hosts));
+    draw_hosts(context);
 }
 
 // --- The pairing request (host) ----------------------------------------------
