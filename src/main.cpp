@@ -56,6 +56,9 @@
 #include "content_cache.h"
 #include "core_session.h"
 #include "dvr_widget.h"
+#include "hud_view.h"
+#include "remap_widget.h"
+#include "state_widget.h"
 #include "debug_ui.h"
 #include "input_bindings.h"
 #include "input_config.h"
@@ -325,6 +328,9 @@ struct App
     uint64_t    ports_ping_ms = 0;     // when the tabs' pings were last read
     OnscreenPad onscreen_pad;          // the touch gamepad over the game (onscreen_pad.h)
     DvrWidget   dvr;                   // the rewind DVR: its history and its GUI (dvr_widget.h)
+    RemapWidget remap;                 // HOLD START TO REMAP: a card per undecided controller (remap_widget.h)
+    StateWidget state_icons;           // PAUSED, REWINDING, PLAY, FAST FORWARD in the top right (state_widget.h)
+    HudStack    hud;                   // what the HUD widgets show this frame (retroui's hud_view)
     char        rewind_note[96] = {};  // SETTINGS > GENERAL: what AUTO chose for this game
     bool      pending_close_game = false;   // CLOSE GAME: done at the top of the next loop (like starts)
 
@@ -803,6 +809,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     if (started)
     {
         dvr_widget_game_started(&app->dvr, &app->session, &app->settings);   // the game's REWIND settings
+        remap_widget_game_started(&app->remap);   // nothing asked yet for this game
         // The emulated device on each port, as kept for this core (or game).
         for (unsigned port = 0; port < LIBRETRO_MAX_PORTS; port++)
         {
@@ -1706,6 +1713,10 @@ static void ui_follow_changes(App* app)
     }
     app->ui_changes_seen = app->ui.changes;
     release_input(app);
+    if (app->ui.mode == UiMode::game)
+    {
+        remap_widget_rescan(&app->remap);   // a remap may have been decided meanwhile
+    }
     for (uint32_t w = 1; w < UI_WINDOW_MAX; w++)
     {
         UiWindow window = static_cast<UiWindow>(w);
@@ -2345,11 +2356,28 @@ static void app_update_input(App* app)
     uint32_t shown_ports = game_running(app) ? piccolo_settings_ports(&app->settings, app->session.host->input_info.port_count)
                                              : piccolo_settings_ports(&app->settings, 0);
     ports_widget_update(&app->ports_widget, &app->input, &app->input_net, &frame, shown_ports, SDL_GetTicks());
+    // HOLD START TO REMAP: its cards watch REMAP held (in GAME); holding it
+    // opens QUICK MENU on that controller's remap.
+    RemapWidgetResult remap = remap_widget_update(&app->remap, &app->input, &app->input_sdl, &app->layouts,
+                                                  game_running(app), app->ui.mode == UiMode::game, app->headless.on,
+                                                  SDL_GetTicks());
+    if (remap.save && !app->input_config_path.empty())
+    {
+        input_config_save(&app->input, app->input_config_path.c_str());   // a RetroPad remembered as decided
+    }
+    if (remap.open_remap)
+    {
+        app_open_quick_menu(app);
+        if (app->ui.mode == UiMode::quick_menu)
+        {
+            quick_menu_open_remap(&app->quick_menu, app->session.state_slot, remap.port, remap.controller);
+        }
+    }
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
     // opens it doesn't act in it the same frame).
     bool dvr_was_open = app->dvr.open;
-    dvr_widget_update(&app->dvr, &frame, &app->strings, SDL_GetTicks());
+    dvr_widget_update(&app->dvr, &frame, SDL_GetTicks());
     app_handle_hotkeys(app, &frame);
     // DEVICES reads the pads itself: they don't drive ImGui meanwhile, and
     // its BACK (Escape too) only closes it. The DVR the same.
@@ -2982,6 +3010,101 @@ static void save_after_options_windows(App* app)
     app->options_window_was_open = open;
 }
 
+// The debug window's text box answers here (a fake TEXT request).
+static void debug_text_done(const char* text)
+{
+    SDL_Log("Debug text box: %s", text != nullptr ? text : "(cancelled)");
+}
+
+// WIDGETS: every widget on demand, to see and try them without the
+// situation that brings them up (Andrés, 2026-11-21).
+static void draw_debug_widgets(App* app)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    ImGui::TextUnformatted("Widgets (HUD)");
+    if (ImGui::Button("Remap card: port 1's first controller"))
+    {
+        if (!remap_widget_debug_card(&app->remap, &app->input, &app->input_sdl, &app->layouts, now_ms))
+        {
+            SDL_Log("Debug: no controller on port 1 for a remap card");
+        }
+    }
+    ImGui::Checkbox("PAUSED icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::pause)]);
+    ImGui::SameLine();
+    ImGui::Checkbox("REWINDING icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::rewind)]);
+    ImGui::Checkbox("PLAY icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::play)]);
+    ImGui::SameLine();
+    ImGui::Checkbox("FAST FORWARD icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::fast_forward)]);
+    if (ImGui::Button("PLAY icon as after PLAY FROM HERE (2.5 s)"))
+    {
+        app->dvr.played_from_ms = now_ms;
+    }
+    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
+    static const char* const DVR_CARD_NAMES[3] = {"DVR card: OFF", "DVR card: NO SAVESTATES", "DVR card: NOTHING YET"};
+    for (uint32_t i = 0; i < 3; i++)
+    {
+        if (i > 0)
+        {
+            ImGui::SameLine();
+        }
+        if (ImGui::Button(DVR_CARD_NAMES[i]))
+        {
+            std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[i]));
+            app->dvr.hud_since_ms = now_ms;
+        }
+    }
+    if (ImGui::Button("Ports' tabs rise"))
+    {
+        bool changed[PORTS_VIEW_MAX_PORTS] = {};
+        for (uint32_t p = 0; p < PORTS_VIEW_MAX_PORTS; p++)
+        {
+            changed[p] = true;
+        }
+        ports_view_pop(&app->ports_widget.view, changed, now_ms);
+    }
+
+    ImGui::TextUnformatted("Widgets (windows; a game must run)");
+    ImGui::BeginDisabled(!game_running(app));
+    // Asked for by the user: they replace what's up, this window included.
+    if (ImGui::Button("DEVICES") && app->ports_widget.port_count > 0)
+    {
+        app_open_widget(app, UiWidget::ports);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("DVR"))
+    {
+        app_open_widget(app, UiWidget::dvr);
+    }
+    // Asked for by the game: they wait until the menu is closed.
+    ImGui::SameLine();
+    if (ImGui::Button("Text box") && !text_input_pending(app))
+    {
+        LibretroTextInput* request = &app->session.host->text_input;
+        request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
+        request->type = RETRO_EXT_TEXT_INPUT_TYPE_TEXT;
+        std::snprintf(request->prompt, sizeof(request->prompt), "%s", "NAME (DEBUG)");
+        std::snprintf(request->initial, sizeof(request->initial), "%s", "PICCOLO");
+        request->max_length = 8;
+        request->done = debug_text_done;
+        request->serial++;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("KEEP / REVERT") && !shader_check_asking(app))
+    {
+        // REVERT goes back to the preset in use now: nothing changes.
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            app->shader_revert_set[i] = app->shader_layer_set[i];
+            app->shader_revert_value[i] = app->shader_layer_value[i];
+        }
+        app->shader_check.state = ShaderCheckState::asking;
+        app->shader_check.measured_ns = 1e9 / 41.0;
+        app->shader_check_asked_ms = now_ms;
+    }
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("Text box and KEEP / REVERT show once the menu is closed.");
+}
+
 static void app_draw_debug_ui(App* app)
 {
     const ImGuiIO& io = ImGui::GetIO();
@@ -3011,6 +3134,8 @@ static void app_draw_debug_ui(App* app)
                     static_cast<unsigned long long>(session->timing.missed_total),
                     static_cast<unsigned long long>(session->timing.caught_up_total), app->frame_delay_ms);
     }
+    ImGui::Separator();
+    draw_debug_widgets(app);
     ImGui::Separator();
     ImGui::Checkbox("Dear ImGui demo window", &app->show_imgui_demo);
 
@@ -4302,6 +4427,38 @@ static void draw_menu_backdrop(App* app)
 // False when piccolo should end (QUIT, or a fatal rendering error). Called
 // by app_loop_run: a plain loop on desktop, the browser's animation frames
 // in the web build (app_loop.h).
+// The HUD widgets' state icons and notification cards (retroui's hud_view),
+// behind every window. The cards stand above the status line's row and the
+// DVR's strip while it's open.
+constexpr float HUD_STATUS_ROW = 16.0f;   // retro pixels at the bottom: the status line and a gap
+
+static void draw_hud(App* app)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    hud_view_clear(&app->hud);
+    StateFacts facts = {};
+    facts.paused = game_running(app) && app->session.paused;
+    facts.rewinding = app->dvr.open;
+    facts.fast_forwarding = game_running(app) && core_session_fast_forwarding(&app->session);
+    facts.played_from_ms = app->dvr.played_from_ms;
+    state_widget_add_hud(&app->state_icons, &facts, &app->hud, now_ms);
+    dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
+    remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
+
+    const ImGuiIO& io = ImGui::GetIO();
+    float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
+    HudArea area = {};
+    area.right = io.DisplaySize.x / block;
+    area.top = 0.0f;
+    area.bottom = io.DisplaySize.y / block - HUD_STATUS_ROW;
+    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
+    if (strip > 0.0f && io.DisplaySize.y / block - strip - HUD_VIEW_GAP < area.bottom)
+    {
+        area.bottom = io.DisplaySize.y / block - strip - HUD_VIEW_GAP;
+    }
+    hud_view_draw(&app->hud, &area, app->pixel_font, app->ui_scale, now_ms);
+}
+
 static bool app_frame(App* app)
 {
     app_handle_events(app);
@@ -4484,7 +4641,7 @@ static bool app_frame(App* app)
         bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
         // The ports' tabs, behind every window (they peek while the menu is up).
         ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
-        dvr_widget_draw_hud(&app->dvr, app->pixel_font, app->ui_scale, SDL_GetTicks());
+        draw_hud(app);
         draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
         // The status line: with the menu bar, or alone over a paused game
         // (it says why: "PAUSED: ...").
@@ -4906,6 +5063,7 @@ int main(int argc, char** argv)
     config.icons      = app_icon_images;
     config.icon_count = app_icon_image_count;
 
+    remap_widget_create(&app->remap);
     if (!pixel_font_init() || !core_session_create(&app->session))
     {
         delete app;

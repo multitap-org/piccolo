@@ -3798,9 +3798,6 @@ msgctxt "dvr_back_to_now"
 msgid "BACK TO NOW"
 msgstr "VOLVER AL PRESENTE"
 
-msgctxt "dvr_hud_from"
-msgid "◀◀ PLAYING FROM"
-msgstr "◀◀ JUGANDO DESDE"
 
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
@@ -3813,3 +3810,23 @@ msgstr "REBOBINAR: ESTE CORE NO TIENE SAVESTATES"
 msgctxt "dvr_hud_off"
 msgid "REWIND IS OFF (SETTINGS > GENERAL)"
 msgstr "EL REBOBINADO ESTÁ APAGADO (AJUSTES > GENERAL)"
+
+msgctxt "input_action_hotkey_remap"
+msgid "REMAP (HOLD)"
+msgstr "REMAPEAR (MANTENER)"
+
+msgctxt "remap_card_port"
+msgid "PORT %u"
+msgstr "PUERTO %u"
+
+msgctxt "remap_card_hold"
+msgid "HOLD"
+msgstr "MANTÉN"
+
+msgctxt "remap_card_to_remap"
+msgid "TO REMAP"
+msgstr "PARA REMAPEAR"
+
+msgctxt "input_conflict_also"
+msgid "ALSO %s: both fire together. Bind one of them elsewhere."
+msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
