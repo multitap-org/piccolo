@@ -11,16 +11,20 @@
 //     opening it closes the QUICK MENU) and the game stops while it's open
 //     (its own logic, not a pause cause). Drawn with retroui's dvr_view: the
 //     game shrinks into the space above the strip.
-//     No navigation but one (Andrés, 2026-11-21): UP focuses the exit
-//     button (BACK TO NOW), DOWN or any move leaves it. Every other button
-//     acts at once.
+//     No navigation: every button acts at once. BACK TO NOW keeps only its
+//     own button (A / Escape, or clicked) since UP / DOWN switch lanes.
+//       UP / DOWN      two lanes (Andrés, 2026-11-22, "Timelines: two for
+//                      now"): PLAY FROM HERE keeps the future it leaves as
+//                      the kept lane, drawn above; UP goes to it, DOWN back
+//                      to the recorded lane, at the same frame (or the
+//                      lane's newest). PLAY FROM HERE on the kept lane plays
+//                      on there and keeps the other one instead.
 //       LEFT / RIGHT   SCRUB: plays that way at 1x (back: silent), until
 //                      the other way, Y or an end; held, 2x while held.
 //                      SNAPSHOTS: a snapshot; held, one a second
 //                      (Andrés, 2026-11-22)
 //       L / R          5 s (SCRUB) or a snapshot
-//       B (accept)     PLAY FROM HERE: play on from the cursor (the exit
-//                      button focused: BACK TO NOW)
+//       B (accept)     PLAY FROM HERE: play on from the cursor
 //       Y              WATCH = RIGHT; while it plays either way, pauses
 //                      (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
@@ -60,6 +64,7 @@ struct DvrWidget
     uint64_t              preview_frames = 1;   // frames between two previews
     VideoTexture          thumbs[DVR_VIEW_MAX_THUMBS];
     uint64_t              thumb_frame[DVR_VIEW_MAX_THUMBS] = {};   // the preview each holds
+    RewindLane            thumb_lane[DVR_VIEW_MAX_THUMBS] = {};    // on which lane (frames before the fork: both)
     bool                  thumb_used[DVR_VIEW_MAX_THUMBS] = {};
 
     // LEFT / RIGHT: the last one pressed and since when (SCRUB: 2x while
@@ -78,8 +83,6 @@ struct DvrWidget
 
     // The keyboard was used last (the hints show its keys, Space is WATCH).
     bool keyboard = false;
-    // UP went to the exit button: ACCEPT is BACK TO NOW.
-    bool exit_focused = false;
 
     // A move hit an end of the history: the selected thumbnail bounces.
     int32_t  bump_direction = 0;   // -1 the oldest, 1 the newest
