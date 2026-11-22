@@ -3212,7 +3212,32 @@ static NetRemoteGame net_remote_game(const App* app)
     NetRemoteGame game;
     game.running = game_running(app);
     game.slot = app->session.state_slot;
-    game.paused = app->ui.user_paused;
+    game.pause = 0;
+    if (game.running)
+    {
+        // The wire's bits (net_settings.h), not UiPause's: a device reads them.
+        const uint32_t pause = app->ui_derived.pause;
+        if (app->ui.user_paused)
+        {
+            game.pause |= NET_PAUSE_USER;
+        }
+        if ((pause & ui_pause_bit(UiPause::menu)) != 0)
+        {
+            game.pause |= NET_PAUSE_MENU;
+        }
+        if ((pause & ui_pause_bit(UiPause::focus)) != 0)
+        {
+            game.pause |= NET_PAUSE_FOCUS;
+        }
+        if ((pause & ui_pause_bit(UiPause::controllers)) != 0)
+        {
+            game.pause |= NET_PAUSE_CONTROLLERS;
+        }
+        if ((pause & ui_pause_bit(UiPause::background)) != 0)
+        {
+            game.pause |= NET_PAUSE_BACKGROUND;
+        }
+    }
     return game;
 }
 
@@ -3594,7 +3619,7 @@ static void net_follow_remote(App* app)
     }
     NetRemoteGame game = net_remote_game(app);
     if (game.running != app->net_actions_sent.running || game.slot != app->net_actions_sent.slot ||
-        game.paused != app->net_actions_sent.paused)
+        game.pause != app->net_actions_sent.pause)
     {
         app->net_actions_sent = game;
         net_send_actions(app, NET_NO_PEER, 0);
