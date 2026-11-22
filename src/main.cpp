@@ -1024,10 +1024,21 @@ static void share_update(App* app, ShareTransferLine* line)
     if (window->connect)
     {
         window->connect = false;
+        // Across the internet through BEACON SERVER (whatever INTERNET says:
+        // that switch is about being reachable here, not reaching others).
+        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < app->share_status.found.size())
         {
             net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->found_selected)].address,
                                    window->code);
+        }
+        else if (window->paired_selected >= 0)
+        {
+            net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
+        }
+        else if (window->pair_link[0] != '\0')
+        {
+            net_share_link_pair_link(link, window->pair_link, window->code);
         }
     }
     if (window->disconnect)

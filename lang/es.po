@@ -3342,6 +3342,34 @@ msgctxt "share_refused_connection"
 msgid "COULDN'T CONNECT."
 msgstr "NO SE PUDO CONECTAR."
 
+msgctxt "share_internet"
+msgid "PAIRED, ACROSS THE INTERNET"
+msgstr "VINCULADOS, POR INTERNET"
+
+msgctxt "share_internet_help"
+msgid "Through the beacon (SETTINGS > NETWORK > BEACON SERVER). The other piccolo needs INTERNET on."
+msgstr "A través del beacon (AJUSTES > RED > SERVIDOR BEACON). El otro piccolo necesita INTERNET activado."
+
+msgctxt "share_pair_link"
+msgid "PAIR LINK"
+msgstr "ENLACE PARA VINCULAR"
+
+msgctxt "share_pair_link_help"
+msgid "Not paired yet and not on this network: paste the link the other piccolo copies in PAIR A DEVICE (with INTERNET on), and type its code."
+msgstr "Sin vincular y fuera de esta red: pega el enlace que copia el otro piccolo en VINCULAR UN DISPOSITIVO (con INTERNET activado) y escribe su código."
+
+msgctxt "share_refused_host_offline"
+msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."
+msgstr "NO ESTÁ EN LÍNEA (¿TIENE INTERNET ACTIVADO?)."
+
+msgctxt "share_refused_no_route"
+msgid "THE NETWORKS DIDN'T LET US THROUGH."
+msgstr "LAS REDES NO NOS DEJARON PASAR."
+
+msgctxt "share_refused_beacon"
+msgid "NO ANSWER FROM THE BEACON SERVER."
+msgstr "EL SERVIDOR BEACON NO RESPONDE."
+
 msgctxt "share_done_exists"
 msgid "ALREADY THERE"
 msgstr "YA ESTÁ AHÍ"

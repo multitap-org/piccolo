@@ -505,6 +505,12 @@ static Str refusal_text(NetClientRefusal refusal)
         return Str::share_refused_wrong_code;
     case NetClientRefusal::unknown_host:
         return Str::share_refused_unknown_host;
+    case NetClientRefusal::host_offline:
+        return Str::share_refused_host_offline;
+    case NetClientRefusal::no_route:
+        return Str::share_refused_no_route;
+    case NetClientRefusal::beacon_unreachable:
+        return Str::share_refused_beacon;
     default:
         return Str::share_refused_connection;
     }
@@ -554,6 +560,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
             if (ImGui::Selectable(label, window->found_selected == static_cast<int32_t>(i)))
             {
                 window->found_selected = static_cast<int32_t>(i);
+                window->paired_selected = -1;
             }
             ImGui::PopID();
         }
@@ -561,6 +568,37 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         {
             ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_found_none));
         }
+        // The piccolos paired before, reached through the beacon when they
+        // aren't on this network (Andrés, 2026-11-21).
+        if (window->paired_selected >= static_cast<int32_t>(link->paired.size()))
+        {
+            window->paired_selected = -1;
+        }
+        if (!link->paired.empty())
+        {
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_internet));
+            retro_ui_item_tooltip(piccolo_text(strings, Str::share_internet_help));
+            for (size_t i = 0; i < link->paired.size(); i++)
+            {
+                ImGui::PushID(static_cast<int>(1000 + i));
+                if (ImGui::Selectable(link->paired[i].c_str(), window->paired_selected == static_cast<int32_t>(i)))
+                {
+                    window->paired_selected = static_cast<int32_t>(i);
+                    window->found_selected = -1;
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::Spacing();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(piccolo_text(strings, Str::share_pair_link));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        retro_ui_push_field_text();
+        ImGui::InputText("##pair_link", window->pair_link, sizeof(window->pair_link));
+        retro_ui_pop_field_text();
+        retro_ui_item_tooltip(piccolo_text(strings, Str::share_pair_link_help));
         ImGui::Spacing();
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
@@ -571,7 +609,9 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         retro_ui_pop_field_text();
         retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
         bool connecting = link->state == NetShareLinkState::connecting;
-        ImGui::BeginDisabled(window->found_selected < 0 || connecting);
+        bool by_link = window->found_selected < 0 && window->paired_selected < 0 && window->pair_link[0] != '\0' &&
+                       std::strlen(window->code) == 6;
+        ImGui::BeginDisabled((window->found_selected < 0 && window->paired_selected < 0 && !by_link) || connecting);
         if (retro_ui_button(piccolo_text(strings, Str::share_connect)))
         {
             window->connect = true;
