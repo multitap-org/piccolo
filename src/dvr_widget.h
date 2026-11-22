@@ -14,11 +14,15 @@
 //     No navigation but one (Andrés, 2026-11-21): UP focuses the exit
 //     button (BACK TO NOW), DOWN or any move leaves it. Every other button
 //     acts at once.
-//       LEFT / RIGHT   a frame (SCRUB) or a snapshot; held, faster
+//       LEFT / RIGHT   SCRUB: plays that way at 1x (back: silent), until
+//                      the other way, Y or an end; held, 2x while held.
+//                      SNAPSHOTS: a snapshot; held, one a second
+//                      (Andrés, 2026-11-22)
 //       L / R          5 s (SCRUB) or a snapshot
 //       B (accept)     PLAY FROM HERE: play on from the cursor (the exit
 //                      button focused: BACK TO NOW)
-//       Y              WATCH: the recording plays / pauses (keyboard: Space)
+//       Y              WATCH = RIGHT; while it plays either way, pauses
+//                      (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
 //     A move that can't go further (the oldest or newest frame) lands on
 //     the end and the selected thumbnail bounces, its border blinking.
@@ -58,10 +62,19 @@ struct DvrWidget
     uint64_t              thumb_frame[DVR_VIEW_MAX_THUMBS] = {};   // the preview each holds
     bool                  thumb_used[DVR_VIEW_MAX_THUMBS] = {};
 
-    // LEFT / RIGHT held: steps repeat, then faster.
+    // LEFT / RIGHT: the last one pressed and since when (SCRUB: 2x while
+    // held; SNAPSHOTS: the next repeat).
     int32_t  held_direction = 0;
     uint64_t held_since_ms  = 0;
     uint64_t next_step_ms   = 0;
+
+    // SCRUB: which way it plays (-1 back, 0 still, 1 forward). Forward at 1x
+    // is the history's own playback (heard); back and 2x step through the
+    // states, `play_frames` keeping the part of a frame that's due.
+    int32_t  play_direction = 0;
+    double   play_frames    = 0.0;
+    uint64_t play_last_ms   = 0;
+    bool     play_stepping  = false;   // forward, stepped at 2x (back to the playback when let go)
 
     // The keyboard was used last (the hints show its keys, Space is WATCH).
     bool keyboard = false;
