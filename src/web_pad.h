@@ -5,11 +5,13 @@
 // picture keeps the whole canvas. A controller like any other in the input
 // router ("SCREEN PAD", a device that hands a RetroPad, as the on-screen pad
 // and phones' pads do): START joins a port; remaps, turbo, DEVICES work on it.
+// In the menus it moves and accepts like any pad (input_bindings: a RetroPad
+// device's interface).
 //
 // The page calls the exported piccolo_web_pad_show(on) when it shows or hides
 // the pad (it answers 0 until main() attached the router: the page retries)
 // and piccolo_web_pad_state(buttons) with the RetroPad buttons held
-// (RETRO_DEVICE_ID_JOYPAD bits) plus WEB_PAD_MENU_BIT for its MENU button, on
+// (RETRO_DEVICE_ID_JOYPAD bits) plus its QUICK and MENU buttons' bits, on
 // the main thread between frames. While it shows, the on-screen pad drawn in
 // the canvas stays off.
 //
@@ -24,8 +26,9 @@
 
 struct InputSystem;
 
-// The page's MENU button, above the RetroPad's 16 buttons (never sent to a core).
-constexpr int32_t WEB_PAD_MENU_BIT = 16;
+// The page's QUICK and MENU buttons, above the RetroPad's 16 buttons (never sent to a core).
+constexpr int32_t WEB_PAD_QUICK_MENU_BIT = 16;
+constexpr int32_t WEB_PAD_MAIN_MENU_BIT  = 17;
 
 // Once the router exists: where the device goes.
 void web_pad_attach(InputSystem* input);
@@ -33,8 +36,9 @@ void web_pad_attach(InputSystem* input);
 // The page shows its pad (the in-canvas one stays off then).
 bool web_pad_active();
 
-// MENU was pressed on the page's pad since the last call.
-bool web_pad_take_menu();
+// QUICK / MENU was pressed on the page's pad since the last call.
+bool web_pad_take_quick_menu();
+bool web_pad_take_main_menu();
 
 // What the page shows around the game: `playing` = a game in GAME mode,
 // `aspect` = the shown picture's width / height (0: none). Only a change

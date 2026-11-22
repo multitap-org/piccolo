@@ -17,8 +17,8 @@ struct WebPad
     InputSystem* input   = nullptr;
     bool         plugged = false;
     uint32_t     device  = 0;   // in the router while plugged
-    bool         menu_held    = false;   // the page's MENU button
-    bool         menu_pressed = false;   // went down since web_pad_take_menu
+    uint32_t     menus_held    = 0;   // the page's QUICK and MENU buttons (their bits)
+    uint32_t     menus_pressed = 0;   // went down since taken
     bool         told         = false;   // the page has heard once
     bool         told_playing = false;
     double       told_aspect  = 0.0;
@@ -79,21 +79,29 @@ extern "C" EMSCRIPTEN_KEEPALIVE void piccolo_web_pad_state(int32_t buttons)
     {
         return;
     }
-    bool menu = (buttons & (1 << WEB_PAD_MENU_BIT)) != 0;
-    if (menu && !g_pad.menu_held)
-    {
-        g_pad.menu_pressed = true;
-    }
-    g_pad.menu_held = menu;
+    uint32_t menus = static_cast<uint32_t>(buttons) & ((1u << WEB_PAD_QUICK_MENU_BIT) | (1u << WEB_PAD_MAIN_MENU_BIT));
+    g_pad.menus_pressed |= menus & ~g_pad.menus_held;
+    g_pad.menus_held = menus;
     const int16_t centered[2][2] = {};
     input_devices_set_retropad(&g_pad.input->devices, g_pad.device, static_cast<uint16_t>(buttons & 0xffff), centered);
 }
 
-bool web_pad_take_menu()
+static bool take(int32_t bit)
 {
-    bool pressed = g_pad.menu_pressed;
-    g_pad.menu_pressed = false;
+    uint32_t mask = 1u << bit;
+    bool pressed = (g_pad.menus_pressed & mask) != 0;
+    g_pad.menus_pressed &= ~mask;
     return pressed;
+}
+
+bool web_pad_take_quick_menu()
+{
+    return take(WEB_PAD_QUICK_MENU_BIT);
+}
+
+bool web_pad_take_main_menu()
+{
+    return take(WEB_PAD_MAIN_MENU_BIT);
 }
 
 void web_pad_tell_page(bool playing, double aspect)

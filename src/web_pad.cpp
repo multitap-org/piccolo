@@ -12,7 +12,12 @@ bool web_pad_active()
     return false;
 }
 
-bool web_pad_take_menu()
+bool web_pad_take_quick_menu()
+{
+    return false;
+}
+
+bool web_pad_take_main_menu()
 {
     return false;
 }

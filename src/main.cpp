@@ -2087,8 +2087,8 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     }
     app->ui_back_down = back_down;
 
-    // OPEN MENU (START on a gamepad): the menu bar's first menu, when the bar
-    // is up and nothing else is open on top of it.
+    // OPEN MENU (Y on a gamepad, START too on a RetroPad device): the menu
+    // bar's first menu, when the bar is up and nothing else is open on top of it.
     // Not for the START that just joined a port.
     bool bar_alone = app->ui.mode == UiMode::main_menu && app->ui.window_count == 0 &&
                      !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
@@ -4462,9 +4462,21 @@ static bool app_frame(App* app)
         {
             app_open_quick_menu(app);
         }
-        // The page pad's MENU (the browser, no keyboard needed): like the QUICK
-        // MENU hotkey in a game, back from anything else.
-        if (web_pad_take_menu() && game_running(app))
+        // The page pad's MENU and QUICK (the browser, no keyboard needed): like
+        // the MAIN MENU hotkey; like the QUICK MENU hotkey in a game, back from
+        // anything else.
+        if (web_pad_take_main_menu())
+        {
+            if (app->ui.mode == UiMode::main_menu)
+            {
+                ui_do_back(app);   // its top window, then the game
+            }
+            else
+            {
+                app_enter_main_menu(app);
+            }
+        }
+        if (web_pad_take_quick_menu() && game_running(app))
         {
             if (app->ui.mode == UiMode::game)
             {
