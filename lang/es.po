@@ -3850,6 +3850,14 @@ msgctxt "dvr_back_to_now"
 msgid "BACK TO NOW"
 msgstr "VOLVER AL PRESENTE"
 
+msgctxt "dvr_hint_lane"
+msgid "OTHER LANE"
+msgstr "OTRA LÍNEA"
+
+msgctxt "dvr_lane_kept"
+msgid "KEPT LANE"
+msgstr "LÍNEA GUARDADA"
+
 
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
