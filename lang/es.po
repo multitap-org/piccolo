@@ -3794,6 +3794,10 @@ msgctxt "dvr_watching"
 msgid "▶ WATCHING"
 msgstr "▶ VIENDO"
 
+msgctxt "dvr_playing_back"
+msgid "◀◀ PLAYING BACK"
+msgstr "◀◀ HACIA ATRÁS"
+
 msgctxt "dvr_mode_scrub"
 msgid "SCRUB"
 msgstr "SCRUB"
@@ -3806,9 +3810,9 @@ msgctxt "dvr_kept"
 msgid "KEPT"
 msgstr "GUARDADO"
 
-msgctxt "dvr_hint_frame"
-msgid "FRAME"
-msgstr "FRAME"
+msgctxt "dvr_hint_play"
+msgid "PLAY (HOLD: 2X)"
+msgstr "REPRODUCIR (MANTÉN: 2X)"
 
 msgctxt "dvr_hint_snapshot"
 msgid "SNAPSHOT"
