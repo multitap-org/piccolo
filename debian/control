@@ -52,6 +52,6 @@ Description: small retro libretro frontend
  piccolo plays games through libretro cores, with the look of the classic
  emulator frontends of the 90s: pick a core, pick a game, play. It has
  shader presets (librashader), controller mapping, save states, rewind and
- netplay, and downloads cores from cores.get-piccolo.app.
+ netplay. The Test libretro core comes with it.
  .
- Settings, saves and downloaded cores live in ~/.local/share/piccolo.
+ Settings and saves live in ~/.local/share/piccolo.
