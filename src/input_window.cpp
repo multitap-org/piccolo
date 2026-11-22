@@ -364,6 +364,26 @@ static void draw_settings(InputWindow* window, const InputWindowContext* context
     retro_ui_separator_text(piccolo_text(context->strings, Str::input_section_touch_pad));
     static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
     draw_scoped_settings(window, context, TOUCH_KEYS, sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]));
+    // STYLE: the controller layouts (layouts/), by name; "" = RETROPAD.
+    if (context->layouts != nullptr)
+    {
+        constexpr uint32_t MAX_STYLES = 64;
+        const char* names[MAX_STYLES] = {};
+        uint32_t name_count = 0;
+        for (size_t i = 0; i < context->layouts->layouts.size() && name_count < MAX_STYLES; i++)
+        {
+            names[name_count] = context->layouts->layouts[i].name.c_str();
+            name_count++;
+        }
+        SettingsUiContext ui = {};
+        ui.settings = context->settings;
+        ui.strings = context->strings;
+        ui.scope = window->scope;
+        ui.label_width = settings_ui_label_width(context->settings, context->strings);
+        settings_ui_text_choice_row(&ui, PICCOLO_TOUCH_PAD_STYLE, names, name_count,
+                                    piccolo_text(context->strings, Str::touch_pad_style_retropad),
+                                    piccolo_text(context->strings, Str::touch_pad_style_missing));
+    }
     if (retro_ui_button(piccolo_text(context->strings, Str::input_touch_pad_edit)))
     {
         window->edit_touch_layout = true;

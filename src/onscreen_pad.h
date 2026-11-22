@@ -23,6 +23,7 @@
 
 #include "haptics.h"
 #include "input_bindings.h"
+#include "input_layouts.h"
 #include "pad_editor.h"
 #include "pad_layouts.h"
 #include "retropad.h"
@@ -63,7 +64,17 @@ struct OnscreenPad
     float        picture_height = 0.0f;
     PadLayoutId  layout = PadLayoutId::remote_overlay_landscape;   // the one shown
     PadPlacement placement;     // retroui's pad_layouts_place: the layout, its frame, the picture's room
+    // STYLE (touch_pad_style): the controller it looks like; its labels point
+    // into the InputLayouts it came from, which live as long as the app.
+    PadStyle     style;
+    bool         styled = false;   // false: the whole RetroPad
+    std::string  style_name;       // the setting's value it was made from
 };
+
+// STYLE: look like `layout` (a controller layout from layouts/: only its
+// buttons, with its names; its sticks only if it has them); nullptr = the
+// whole RetroPad. `name` is the setting's value, kept to see it change.
+void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const char* name);
 
 // Loads the layouts (`settings_dir` "" = nothing saved) and opens the vibrator.
 void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir);

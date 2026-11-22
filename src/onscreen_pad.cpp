@@ -142,6 +142,53 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
     }
 }
 
+// A controller layout's labels by SDL position (InputMapControl) onto the
+// RetroPad: the bottom face button is B, the right one A, and so on (the
+// same places input_bindings maps a real gamepad to).
+struct StyleButton
+{
+    InputMapControl control;
+    RetroPadButton  button;
+};
+
+static const StyleButton STYLE_BUTTONS[] = {
+    {InputMapControl::south, RetroPadButton::b},           {InputMapControl::east, RetroPadButton::a},
+    {InputMapControl::west, RetroPadButton::y},            {InputMapControl::north, RetroPadButton::x},
+    {InputMapControl::left_shoulder, RetroPadButton::l},   {InputMapControl::right_shoulder, RetroPadButton::r},
+    {InputMapControl::left_trigger, RetroPadButton::l2},   {InputMapControl::right_trigger, RetroPadButton::r2},
+    {InputMapControl::back, RetroPadButton::select},       {InputMapControl::start, RetroPadButton::start},
+    {InputMapControl::left_stick, RetroPadButton::l3},     {InputMapControl::right_stick, RetroPadButton::r3},
+};
+
+void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const char* name)
+{
+    pad->style_name = name;
+    pad->style = PadStyle{};
+    pad->styled = layout != nullptr;
+    if (layout == nullptr)
+    {
+        return;
+    }
+    for (size_t i = 0; i < sizeof(STYLE_BUTTONS) / sizeof(STYLE_BUTTONS[0]); i++)
+    {
+        const std::string* label = &layout->labels[static_cast<int32_t>(STYLE_BUTTONS[i].control)];
+        if (!label->empty())
+        {
+            pad->style.labels[static_cast<int32_t>(STYLE_BUTTONS[i].button)] = label->c_str();
+        }
+    }
+    if (layout->dpad)
+    {
+        // The arrows stay ("": the part's own label).
+        pad->style.labels[static_cast<int32_t>(RetroPadButton::up)] = "";
+        pad->style.labels[static_cast<int32_t>(RetroPadButton::down)] = "";
+        pad->style.labels[static_cast<int32_t>(RetroPadButton::left)] = "";
+        pad->style.labels[static_cast<int32_t>(RetroPadButton::right)] = "";
+    }
+    pad->style.sticks = layout->sticks > 0;
+    pad->style.six_face = layout->six_face;
+}
+
 void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float width, float height)
 {
     pad->shown = pad->editor.active || (pad->plugged && playing && !pad->hidden);
@@ -175,6 +222,7 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
     {
         pad_layout_set_default_alpha(&pad->layouts.layouts[i], opacity);   // (a layout's own, from EDIT LAYOUT, wins)
+        pad->layouts.layouts[i].style = pad->styled ? &pad->style : nullptr;
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
     layout->menu_label = menu_label;     // retroui's menu button: the MAIN MENU

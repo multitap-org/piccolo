@@ -232,6 +232,8 @@ static const SettingDescriptor SETTINGS[] = {
      .value_count = OSK_COUNT, .label = text_id(Str::setting_input_osk), .help = text_id(Str::setting_input_osk_help)},
     {.key = PICCOLO_TOUCH_PAD, .type = SettingType::enumeration, .default_value = "auto", .values = TOUCH_PAD_VALUES,
      .value_count = TOUCH_PAD_COUNT, .label = text_id(Str::setting_touch_pad), .help = text_id(Str::setting_touch_pad_help)},
+    {.key = PICCOLO_TOUCH_PAD_STYLE, .type = SettingType::text, .default_value = "", .overridable = true,
+     .label = text_id(Str::setting_touch_pad_style), .help = text_id(Str::setting_touch_pad_style_help)},
     {.key = PICCOLO_TOUCH_PAD_OPACITY, .type = SettingType::integer, .default_value = "20", .min = 10, .max = 100, .step = 10,
      .label = text_id(Str::setting_touch_pad_opacity), .help = text_id(Str::setting_touch_pad_opacity_help)},
     {.key = PICCOLO_TOUCH_PAD_VIBRATE, .type = SettingType::boolean, .default_value = "true",

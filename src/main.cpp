@@ -1891,6 +1891,20 @@ static UiDerived app_derive(const App* app)
 // The game has the keyboard and the controllers (GAME mode): its keys go
 // to the core. Anything else up (QUICK MENU, a window widget, MAIN MENU)
 // stops the core's input; HUD widgets don't.
+// A controller layout by its shown name (touch_pad_style keeps the name),
+// or nullptr ("" or a layout that's gone: the RetroPad).
+static const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* name)
+{
+    for (size_t i = 0; name[0] != '\0' && i < layouts->layouts.size(); i++)
+    {
+        if (layouts->layouts[i].name == name)
+        {
+            return &layouts->layouts[i];
+        }
+    }
+    return nullptr;
+}
+
 static bool game_has_keyboard(const App* app)
 {
     return game_running(app) && app->ui.mode == UiMode::game;
@@ -4443,6 +4457,14 @@ static bool app_frame(App* app)
         // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
         // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
         // web page's pad: without a keyboard they're the way to the menus).
+        // STYLE (per core / game): made again only when the setting changes.
+        {
+            const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
+            if (app->onscreen_pad.style_name != style)
+            {
+                onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
+            }
+        }
         onscreen_pad_draw(&app->onscreen_pad, app->pixel_font, piccolo_text(&app->strings, Str::touch_pad_menu),
                           piccolo_text(&app->strings, Str::touch_pad_quick),
                           static_cast<float>(settings_get_int(&app->settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f,
