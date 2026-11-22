@@ -3258,6 +3258,10 @@ static NetRemoteGame net_remote_game(const App* app)
         {
             game.pause |= NET_PAUSE_BACKGROUND;
         }
+        if ((pause & ui_pause_bit(UiPause::pairing)) != 0)
+        {
+            game.pause |= NET_PAUSE_PAIRING;
+        }
     }
     return game;
 }
