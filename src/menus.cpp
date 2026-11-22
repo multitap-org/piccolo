@@ -31,9 +31,12 @@ static const MenuItem CONFIG_ITEMS[] = {
     { Str::menu_network, MenuAction::network },
 };
 
-// Tools: the core downloader and the options manager.
+// Tools: the core downloader and the options manager. The browser has no
+// CORES: its core is linked into the page's program.
 static const MenuItem TOOLS_ITEMS[] = {
+#if !defined(__EMSCRIPTEN__)
     { Str::menu_cores,           MenuAction::cores },
+#endif
     { Str::menu_share,           MenuAction::share },
     { Str::menu_invite,          MenuAction::invite },
     { Str::menu_options_manager, MenuAction::options_manager },

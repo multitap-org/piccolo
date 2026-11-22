@@ -32,3 +32,8 @@ std::string bundled_files_data_folder();
 // cores live in its own private storage and a shared folder would list paths
 // the other package can't open (core cache, RECENT).
 const char* bundled_files_folder_name();
+
+// The browser (bundled_files_web.cpp): the file name of the core linked into
+// this page's program ("sameboy_libretro.so"); its folder is shared with the
+// other cores' pages, so RECENT shows only this core's games. Elsewhere "".
+const char* bundled_files_linked_core();

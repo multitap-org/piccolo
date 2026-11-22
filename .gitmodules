@@ -62,6 +62,9 @@
 	path = deps/cores
 	url = https://github.com/multitap-org/cores.git
 	update = none
+[submodule "deps/qrcodegen"]
+	path = deps/qrcodegen
+	url = https://github.com/nayuki/QR-Code-generator.git
 [submodule "deps/common/retroui"]
 	path = deps/common/retroui
 	url = https://github.com/multitap-org/retroui.git
@@ -71,3 +74,6 @@
 	url = https://github.com/multitap-org/piccolo-shaders-legacy.git
 	branch = main
 	shallow = true
+[submodule "deps/mbedtls"]
+	path = deps/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git

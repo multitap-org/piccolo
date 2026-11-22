@@ -8,7 +8,7 @@
 # The recipe is multitap-org/cores' (deps/cores, a submodule): the core's
 # pinned source, patches and build, its web platform (Emscripten, -pthread).
 # This only runs it and picks up what it writes. Cores with a web build
-# there: sameboy, snes9x.
+# there: sameboy, snes9x, piccobots.
 #
 # Needs: deps/cores checked out (git submodule update --init deps/cores),
 # Emscripten in the environment (see web/build.sh), and what the core's

@@ -34,12 +34,14 @@
   #strip .short { display: none; }
   #main { flex: 1; min-height: 0; display: flex; }
   /* The canvas fills its stage; SDL takes the window's size from the canvas's
-     CSS size (multitap-page.js sends a resize event when the stage changes). */
+     CSS size (multitap-page.js sends a resize event when the stage changes),
+     and piccolo places and scales the picture inside it. */
   #stage { position: relative; flex: 1; min-width: 0; background: #000; display: flex; align-items: center; justify-content: center; }
   canvas { display: block; width: 100%; height: 100%; outline: none; flex: none; }
-  /* A 16:9 window in steps (the script below): the page around it. */
-  #stage.framed { background: var(--bg); }
-  #stage.framed canvas { box-shadow: 6px 6px 0 var(--shadow); }
+  /* While a game is played (piccolo says so: multitap_page_game), the strip
+     steps aside; the menu (MENU, Esc) brings it back. */
+  body.playing #strip { display: none; }
+  body.playing #files { top: 0; }
   #overlay { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
              background: var(--bg); text-transform: uppercase; letter-spacing: 1px; text-align: center; padding: 16px; }
   #overlay.gone { display: none; }
@@ -106,15 +108,26 @@
   body.has-pad #stage { grid-area: stage; }
   body.has-pad #pad-left { grid-area: padl; }
   body.has-pad #pad-right { grid-area: padr; }
+  /* SELECT / START: in the halves sideways, a row of their own upright. */
+  body.has-pad #pad-meta, .pad-button.meta.upright { display: none; }
   body.has-pad .pad { display: flex; flex-direction: column; align-items: center; justify-content: space-around; gap: 3vmin;
                       padding: 3vmin; background: var(--band); touch-action: none; user-select: none; -webkit-user-select: none;
-                      -webkit-touch-callout: none; --unit: min(9vmin, 56px); }
+                      -webkit-touch-callout: none; --unit: min(15vh, 9vw, 72px); }
   body.has-pad #files { position: fixed; inset: 38px 0 0 auto; width: min(100%, 360px); height: auto; z-index: 4;
                         border-top: 0; border-left: 2px solid var(--shadow); }
   @media (orientation: portrait) {
-    body.has-pad #main { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto;
-                         grid-template-areas: "stage stage" "padl padr"; }
-    body.has-pad .pad { --unit: min(12vw, 64px); padding: 4vw 3vw; border-top: 2px solid var(--shadow); }
+    /* Like a Game Boy: the picture on top, as tall as its shape needs once a
+       game is running (piccolo tells its aspect: --picture-aspect), the pad
+       takes all the rest. */
+    body.has-pad #main { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto auto;
+                         grid-template-areas: "stage stage" "padl padr" "padm padm"; }
+    body.has-pad.has-picture #main { grid-template-rows: min(calc(100vw / var(--picture-aspect)), 62%) minmax(0, 1fr) auto; }
+    /* (Two halves of 2.6 units: all of it fits 100vw.) */
+    body.has-pad .pad { --unit: min(13vw, 72px); padding: 4vw 3vw; border-top: 2px solid var(--shadow); }
+    body.has-pad #pad-meta { display: flex; grid-area: padm; flex-direction: row; justify-content: center; gap: 5vw;
+                             padding: 2vw 3vw 7vw; border-top: 0; }
+    body.has-pad .pad-button.meta.sideways { display: none; }
+    body.has-pad .pad-button.meta.upright { display: flex; }
   }
   .pad-button { display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text);
                 border: 2px solid var(--edge); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700; letter-spacing: 0.06em; }
@@ -137,8 +150,11 @@
   .face.four .y { left: 0; top: calc(var(--unit) * 0.8); }
   .face.four .a { right: 0; top: calc(var(--unit) * 0.8); }
   .face.four .b { left: calc(var(--unit) * 0.8); bottom: 0; }
-  .face.two .b { left: 0; bottom: calc(var(--unit) * 0.4); }
-  .face.two .a { right: 0; top: calc(var(--unit) * 0.4); }
+  /* A and B close together, on a slant (as on a Game Boy). */
+  /* (As tall as the d-pad, so both halves line up.) */
+  .face.two { width: calc(var(--unit) * 2.15); }
+  .face.two .b { left: 0; bottom: calc(var(--unit) * 0.35); }
+  .face.two .a { right: 0; top: calc(var(--unit) * 0.35); }
 </style>
 </head>
 <body data-channel="@CHANNEL@" data-pad="@PAD@">
@@ -158,6 +174,7 @@
       <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
     </div>
     <div class="pad" id="pad-right"></div>
+    <div class="pad" id="pad-meta"></div>
     <aside id="files" class="closed">
       <header>
         <span class="title">Files</span>
@@ -175,13 +192,13 @@
 </div>
 <div id="overlay"><div class="box"><div id="message">LOADING PICCOLO</div><progress id="progress" max="1" value="0"></progress></div></div>
 <input id="file" type="file" hidden>
+<script src="../piccolo-gl-state.js"></script>   <!-- before piccolo makes its WebGL context -->
 <script src="../multitap-storage.js"></script>
 <script src="../multitap-page.js"></script>
 <script src="../piccolo-files.js"></script>
 <script src="../piccolo-page.js"></script>
 <script src="../piccolo-pad.js"></script>
 <script>piccolo_pad_start();</script>
-<script>multitap_page_frame_16x9();   // the picture as a 16:9 window (multitap-page.js)</script>
 <script>piccolo_page_start();</script>
 </body>
 </html>

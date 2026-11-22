@@ -1,8 +1,10 @@
 #include "web_pad.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include <SDL3/SDL_log.h>
+#include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
 
 #include "input_bindings.h"
@@ -15,9 +17,30 @@ struct WebPad
     InputSystem* input   = nullptr;
     bool         plugged = false;
     uint32_t     device  = 0;   // in the router while plugged
+    uint32_t     menus_held    = 0;   // the page's QUICK and MENU buttons (their bits)
+    uint32_t     menus_pressed = 0;   // went down since taken
+    bool         told         = false;   // the page has heard once
+    bool         told_playing = false;
+    double       told_aspect  = 0.0;
+    int32_t      told_vibrate = -1;   // -1: not told yet
 };
 
 static WebPad g_pad = {};
+
+// The page's multitap_page_game (frontends-common web/multitap-page.js), on
+// the main thread (the loop runs there), if the page has it.
+EM_JS(void, page_game, (int32_t playing, double aspect), {
+    if (typeof multitap_page_game === 'function') {
+        multitap_page_game(playing !== 0, aspect);
+    }
+});
+
+// The page pad's buzz on a press (web/page/piccolo-pad.js), if the page has it.
+EM_JS(void, page_vibrate, (int32_t on), {
+    if (typeof piccolo_pad_set_vibrate === 'function') {
+        piccolo_pad_set_vibrate(on !== 0);
+    }
+});
 
 void web_pad_attach(InputSystem* input)
 {
@@ -44,6 +67,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE int32_t piccolo_web_pad_show(int32_t on)
         {
             device->retropad = true;            // hands a RetroPad (the page's buttons)
             device->ignore = InputIgnore::no;   // (a finger held down isn't a stuck receiver)
+            // On port 1 from the start, as the touch pad is, without taking it
+            // from a gamepad that joins later (InputDevice::shares_port1): the
+            // first press plays or moves in the menus instead of only joining.
+            device->shares_port1 = true;
         }
         input_add_controllers_for_device(g_pad.input, g_pad.device);
         g_pad.plugged = true;
@@ -64,6 +91,53 @@ extern "C" EMSCRIPTEN_KEEPALIVE void piccolo_web_pad_state(int32_t buttons)
     {
         return;
     }
+    uint32_t menus = static_cast<uint32_t>(buttons) & ((1u << WEB_PAD_QUICK_MENU_BIT) | (1u << WEB_PAD_MAIN_MENU_BIT));
+    g_pad.menus_pressed |= menus & ~g_pad.menus_held;
+    g_pad.menus_held = menus;
     const int16_t centered[2][2] = {};
-    input_devices_set_retropad(&g_pad.input->devices, g_pad.device, static_cast<uint16_t>(buttons), centered);
+    input_devices_set_retropad(&g_pad.input->devices, g_pad.device, static_cast<uint16_t>(buttons & 0xffff), centered);
+}
+
+static bool take(int32_t bit)
+{
+    uint32_t mask = 1u << bit;
+    bool pressed = (g_pad.menus_pressed & mask) != 0;
+    g_pad.menus_pressed &= ~mask;
+    return pressed;
+}
+
+bool web_pad_take_quick_menu()
+{
+    return take(WEB_PAD_QUICK_MENU_BIT);
+}
+
+bool web_pad_take_main_menu()
+{
+    return take(WEB_PAD_MAIN_MENU_BIT);
+}
+
+void web_pad_tell_page(bool playing, double aspect)
+{
+    // A tiny change of shape (a core's geometry wobbling) isn't worth a new layout.
+    bool same_shape = aspect == g_pad.told_aspect ||
+                      (aspect > 0.0 && g_pad.told_aspect > 0.0 && std::fabs(aspect - g_pad.told_aspect) < 0.001);
+    if (g_pad.told && playing == g_pad.told_playing && same_shape)
+    {
+        return;
+    }
+    g_pad.told = true;
+    g_pad.told_playing = playing;
+    g_pad.told_aspect = aspect;
+    page_game(playing ? 1 : 0, aspect);
+}
+
+void web_pad_set_vibrate(bool on)
+{
+    int32_t value = on ? 1 : 0;
+    if (value == g_pad.told_vibrate)
+    {
+        return;
+    }
+    g_pad.told_vibrate = value;
+    page_vibrate(value);
 }

@@ -308,7 +308,10 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
     settings_ui_row(&rows, PICCOLO_NET_ENABLED, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_NAME, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_PORT, nullptr);
+    // The browser: the beacon is its only way (no UDP), INTERNET shows checked and greyed.
+    ImGui::BeginDisabled(PICCOLO_BROWSER);
     settings_ui_row(&rows, PICCOLO_NET_INTERNET, nullptr);
+    ImGui::EndDisabled();
     settings_ui_row(&rows, PICCOLO_NET_BEACON, nullptr);
 
     // As a row: the marker column, then the label column.

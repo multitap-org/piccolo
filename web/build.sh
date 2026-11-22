@@ -5,7 +5,7 @@
 #   web/build-core.sh [core]   -> web/build/cores/<core>_libretro_emscripten.a
 #   web/build.sh [core]        -> web/build/wasm/<core>/piccolo.{js,wasm,data}, the core linked in
 #
-# core: sameboy (the default) or snes9x (web/build-core.sh). Each core is its
+# core: sameboy (the default), snes9x or piccobots (web/build-core.sh). Each core is its
 # own build folder (the same piccolo, a different core linked in).
 #
 # Needs Emscripten in the environment (emcc on PATH), the version CI pins:

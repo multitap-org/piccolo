@@ -56,6 +56,7 @@
 #include "content_cache.h"
 #include "core_session.h"
 #include "dvr_widget.h"
+#include "fps_meter.h"
 #include "hud_view.h"
 #include "remap_widget.h"
 #include "state_widget.h"
@@ -145,6 +146,8 @@ struct App
     bool            stream_tuning_told[NET_MAX_PEERS] = {};
     uint32_t   stream_loop = 0;          // the loop number the stream carries
     uint64_t   stream_serial = 0;        // the core frame last handed over (a repeat isn't sent again)
+    bool       stream_frame_owed = false;   // a stream started or asked for a keyframe: the shown frame goes again
+                                            // even if no core frame runs (paused), or that device gets nothing
     NetService net_service;              // the listener on its own thread (net_service.h); its NetAccess:
                                          // net_service.access, used between net_service_lock / _unlock
     InputNet   input_net = {};           // paired devices' pads, in the input router
@@ -219,6 +222,9 @@ struct App
     // whole frame), and the ports' cursors for the core (mouse, pointer, lightgun).
     uint32_t           view_source[4] = {};      // x, y, width, height in core pixels
     uint32_t           view_frame[2] = {};       // the frame's width, height
+    double             shown_aspect = 0.0;       // the picture's width / height on screen (0: none)
+    FpsMeter           fps_meter = {};           // SHOW FPS (fps_meter.h)
+    bool               fps_from_env = false;     // PICCOLO_SHOW_FPS=1 (the page's DEV channel)
     LibretroInputState cursor_input = {};
     bool               mouse_grabbed = false;
     bool               mouse_released = false;   // MOUSE GRAB let it go
@@ -242,6 +248,7 @@ struct App
     std::string              recent_path;
     std::vector<std::string> recent_labels;
     std::vector<const char*> recent_label_pointers;
+    std::vector<size_t>      recent_shown;   // RECENT's items: their index in recent.games
     // The menu bar as retroui draws it (rebuilt with the labels: language, RECENT).
     std::vector<std::string>     menu_texts;   // the translated labels the items point to
     std::vector<RetroUiMenuItem> menu_items;   // every menu's items, back to back
@@ -551,9 +558,21 @@ static void refresh_recent_labels(App* app)
 {
     app->recent_labels.clear();
     app->recent_label_pointers.clear();
+    app->recent_shown.clear();
     const char* no_game = piccolo_text(&app->strings, Str::recent_no_game);
+    // The browser: one page per core over one shared folder, so only the
+    // games of the core this page has (the others can't start here).
+    std::string linked_core = bundled_files_linked_core();
     for (size_t i = 0; i < app->recent.games.size(); i++)
     {
+        const std::string* core = &app->recent.games[i].core_path;
+        if (!linked_core.empty() &&
+            (core->size() < linked_core.size() ||
+             core->compare(core->size() - linked_core.size(), linked_core.size(), linked_core) != 0))
+        {
+            continue;
+        }
+        app->recent_shown.push_back(i);
         char label[600] = {};
         recent_games_label(&app->recent.games[i], no_game, label, sizeof(label));
         app->recent_labels.push_back(label);
@@ -1005,6 +1024,9 @@ static void share_update(App* app, ShareTransferLine* line)
     if (window->connect)
     {
         window->connect = false;
+        // Across the internet through BEACON SERVER (whatever INTERNET says:
+        // that switch is about being reachable here, not reaching others).
+        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < app->share_status.found.size())
         {
             // Always with a fresh code: a piccolo that knows us welcomes us
@@ -1012,6 +1034,17 @@ static void share_update(App* app, ShareTransferLine* line)
             net_pair_code_generate(window->code);
             net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->found_selected)].address,
                                    window->code);
+        }
+        else if (window->paired_selected >= 0)
+        {
+            net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
+        }
+        else if (window->invite_selected)
+        {
+            // Across the internet to a piccolo that doesn't know us: our code,
+            // which its user types in TOOLS > INVITE.
+            net_pair_code_generate(window->code);
+            net_share_link_pair_beacon(link, window->code);
         }
     }
     if (window->disconnect)
@@ -2103,8 +2136,8 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     }
     app->ui_back_down = back_down;
 
-    // OPEN MENU (START on a gamepad): the menu bar's first menu, when the bar
-    // is up and nothing else is open on top of it.
+    // OPEN MENU (Y on a gamepad, START too on a RetroPad device): the menu
+    // bar's first menu, when the bar is up and nothing else is open on top of it.
     // Not for the START that just joined a port.
     bool bar_alone = app->ui.mode == UiMode::main_menu && app->ui.window_count == 0 &&
                      !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
@@ -2629,6 +2662,7 @@ static void draw_game(App* app)
     CoreSession* session = &app->session;
     video_output_skip(&app->video);
     app->input.view_width = 0.0f;   // (until it is drawn)
+    app->shown_aspect = 0.0;
     if (!game_running(app) || !session->texture.has_content || session->texture.imgui_id == 0)
     {
         return;
@@ -2674,6 +2708,10 @@ static void draw_game(App* app)
         app->view_source[3] = viewport.source_height;
         app->view_frame[0] = input.frame_width;
         app->view_frame[1] = input.frame_height;
+        if (viewport.height > 0)
+        {
+            app->shown_aspect = static_cast<double>(viewport.width) / static_cast<double>(viewport.height);
+        }
         // The background draw list is behind every window, menu bar included.
         video_output_draw(&app->video, ImGui::GetBackgroundDrawList(), &session->texture, 0.0f, 0.0f);
     }
@@ -2837,7 +2875,7 @@ static void draw_settings(App* app)
     network.listen_failed = app->net_listen_failed;
     network.this_device = app->net_fingerprint;
     network.speed = &app->net_speed_results;
-    network.internet = settings_get_bool(&app->settings, PICCOLO_NET_INTERNET);
+    network.internet = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET);
     context.network = &network;
     // Text with numbers: the translated part, then the numbers (no formats in translations).
     const char* window_label = piccolo_text(&app->strings, Str::section_window);
@@ -3195,7 +3233,32 @@ static NetRemoteGame net_remote_game(const App* app)
     NetRemoteGame game;
     game.running = game_running(app);
     game.slot = app->session.state_slot;
-    game.paused = app->ui.user_paused;
+    game.pause = 0;
+    if (game.running)
+    {
+        // The wire's bits (net_settings.h), not UiPause's: a device reads them.
+        const uint32_t pause = app->ui_derived.pause;
+        if (app->ui.user_paused)
+        {
+            game.pause |= NET_PAUSE_USER;
+        }
+        if ((pause & ui_pause_bit(UiPause::menu)) != 0)
+        {
+            game.pause |= NET_PAUSE_MENU;
+        }
+        if ((pause & ui_pause_bit(UiPause::focus)) != 0)
+        {
+            game.pause |= NET_PAUSE_FOCUS;
+        }
+        if ((pause & ui_pause_bit(UiPause::controllers)) != 0)
+        {
+            game.pause |= NET_PAUSE_CONTROLLERS;
+        }
+        if ((pause & ui_pause_bit(UiPause::background)) != 0)
+        {
+            game.pause |= NET_PAUSE_BACKGROUND;
+        }
+    }
     return game;
 }
 
@@ -3577,7 +3640,7 @@ static void net_follow_remote(App* app)
     }
     NetRemoteGame game = net_remote_game(app);
     if (game.running != app->net_actions_sent.running || game.slot != app->net_actions_sent.slot ||
-        game.paused != app->net_actions_sent.paused)
+        game.pause != app->net_actions_sent.pause)
     {
         app->net_actions_sent = game;
         net_send_actions(app, NET_NO_PEER, 0);
@@ -3915,6 +3978,7 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
     if (net_stream_read_start(event->data, event->size, &flags))
     {
         net_service_set_stream(&app->net_service, event->peer, flags);
+        app->stream_frame_owed = true;
         SDL_Log("Network: %s started remote play%s%s", device, (flags & NET_STREAM_WANT_VIDEO) != 0 ? " (video)" : "",
                 (flags & NET_STREAM_WANT_AUDIO) != 0 ? " (audio)" : "");
     }
@@ -3935,6 +3999,7 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
     else if (type == NET_STREAM_KEYFRAME_REQUEST && event->size == 1)
     {
         net_service_request_keyframe(&app->net_service, event->peer);
+        app->stream_frame_owed = true;
     }
     else if (net_stream_read_go_headless(event->data, event->size, &headless_on))
     {
@@ -3972,12 +4037,22 @@ static void net_stream_message(App* app, const NetAccessEvent* event, const char
 // to the network thread (it codes and sends; this loop never waits for it).
 // With run-ahead (later) this stays the shown frame and the real timeline's
 // audio, numbered by this loop.
+// Also called when no frame ran but one is owed (a stream started or asked
+// for a keyframe while paused): the network thread codes keyframes only
+// from a frame handed over after the request, so the last shown frame goes
+// again, or a paused game would show that device nothing until it resumes.
 static void net_stream_frame(App* app)
 {
+    bool owed = app->stream_frame_owed;
+    app->stream_frame_owed = false;
     if (!app->net_streaming || !game_running(app))
     {
         app->session.captured_audio.clear();
         return;
+    }
+    if (owed)
+    {
+        app->stream_serial = 0;   // the same core frame again (serials start at 1)
     }
     app->stream_loop++;
     const LibretroHost* host = app->session.host;
@@ -4195,7 +4270,7 @@ static void net_update(App* app)
     }
     // INTERNET and BEACON SERVER: the service resolves the name on its own
     // thread. Only when they change (an empty name is off too).
-    std::string beacon = settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
+    std::string beacon = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
                              ? settings_get_text(&app->settings, PICCOLO_NET_BEACON)
                              : "";
     if (beacon != app->net_beacon_applied)
@@ -4502,6 +4577,7 @@ static void draw_hud(App* app)
 
 static bool app_frame(App* app)
 {
+    uint64_t loop_start_ns = SDL_GetTicksNS();   // SHOW FPS: the loop's own work
     app_handle_events(app);
     net_update(app);
     if (app->pending_close_game)
@@ -4597,6 +4673,10 @@ static bool app_frame(App* app)
         net_stream_frame(app);
         measure_shader_check(app);
     }
+    else if (app->stream_frame_owed)
+    {
+        net_stream_frame(app);   // paused (or the frame not due yet): the shown frame for a new viewer
+    }
     // Taps (a key down and up inside one loop) are kept through a loop whose
     // core frame wasn't due yet, so that frame still sees them; otherwise
     // they're done. A paused game (the menu, focus loss) or a minimized
@@ -4604,8 +4684,11 @@ static bool app_frame(App* app)
     // good, and the router ignores what's held as it enters a layer until
     // it's let go (Escape opened the menu, then neither Escape nor the
     // hotkey closed it: the browser, and the desktop whenever the menu pauses).
+    // The DVR's window the same: the game waits (no pause cause), so a
+    // LEFT let go stayed "held" and the cursor kept stepping (Andrés,
+    // 2026-11-22). It reads its keys in app_update_input, earlier this loop.
     bool minimized = (SDL_GetWindowFlags(app->shell.window) & SDL_WINDOW_MINIMIZED) != 0;
-    bool frame_coming = game_running(app) && !app->session.paused && !minimized;
+    bool frame_coming = game_running(app) && !app->session.paused && !app->dvr.open && !minimized;
     if (ran != CoreSessionFrame::skipped || !frame_coming)
     {
         input_devices_end_frame(&app->input.devices);
@@ -4654,6 +4737,10 @@ static bool app_frame(App* app)
             onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, io.DisplaySize.x, io.DisplaySize.y);
         }
         draw_game(app);   // background, behind everything
+        // The browser's page: its strip hides while a game is played, and an
+        // upright phone gives the picture only the height its shape needs.
+        web_pad_tell_page(game_has_keyboard(app), app->shown_aspect);
+        web_pad_set_vibrate(settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
         // The touch gamepad over the game, a GAME-mode device (it takes touches
         // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
         // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
@@ -4677,6 +4764,35 @@ static bool app_frame(App* app)
         if (app->onscreen_pad.quick_pressed && game_has_keyboard(app))
         {
             app_open_quick_menu(app);
+        }
+        // The page pad's MENU and QUICK (the browser, no keyboard needed): like
+        // the MAIN MENU hotkey; like the QUICK MENU hotkey in a game, back from
+        // anything else.
+        if (web_pad_take_main_menu())
+        {
+            if (app->ui.mode == UiMode::main_menu)
+            {
+                ui_do_back(app);   // its top window, then the game
+            }
+            else
+            {
+                app_enter_main_menu(app);
+            }
+        }
+        if (web_pad_take_quick_menu() && game_running(app))
+        {
+            if (app->ui.mode == UiMode::game)
+            {
+                app_open_quick_menu(app);
+            }
+            else if (app->ui.mode == UiMode::quick_menu)
+            {
+                app_enter_game(app);
+            }
+            else
+            {
+                ui_do_back(app);
+            }
         }
         // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
         bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
@@ -4716,7 +4832,7 @@ static bool app_frame(App* app)
             if (action == MenuAction::recent_game && recent_picked >= 0)
             {
                 // Started at the top of the next loop, like LOAD GAME (see pending_start).
-                const RecentGame* game = &app->recent.games[static_cast<size_t>(recent_picked)];
+                const RecentGame* game = &app->recent.games[app->recent_shown[static_cast<size_t>(recent_picked)]];
                 app->pending_start = FilePickerChoice{};
                 std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
                               game->core_path.c_str());
@@ -4981,6 +5097,11 @@ static bool app_frame(App* app)
         {
             app_draw_debug_ui(app);
         }
+        if (app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS))
+        {
+            double target = game_running(app) ? app->session.host->av_info.timing.fps : 0.0;
+            fps_meter_draw(&app->fps_meter, target, app->pixel_font, app->ui_scale, ImGui::GetIO().DisplaySize.x);
+        }
 
         bool ui_up = ui_is_up(app);
         save_after_options_windows(app);
@@ -4991,6 +5112,11 @@ static bool app_frame(App* app)
         dvr_widget_upload(&app->dvr, &app->session, &app->shell);   // a thumbnail (moves the core and back)
         core_session_upload_video(&app->session, &app->shell);
         quick_menu_upload(&app->quick_menu, &app->shell);
+        // The loop's work, before the display may make it wait (acquire / present).
+        uint64_t now_ns = SDL_GetTicksNS();
+        // (Catch-up frames count: a late loop runs them too.)
+        uint32_t core_frames = ran == CoreSessionFrame::ran ? 1 + app->session.timing.catch_up_frames : 0;
+        fps_meter_loop(&app->fps_meter, now_ns, core_frames, now_ns - loop_start_ns);
         if (app_shell_acquire(&app->shell))
         {
             video_output_record(&app->video, &app->shader_library, &app->shell, &app->session.texture);
@@ -5270,6 +5396,8 @@ int main(int argc, char** argv)
     input_sdl_init(&app->input_sdl, &app->input, database_path.empty() ? nullptr : database_path.c_str());
     onscreen_pad_init(&app->onscreen_pad, app->paths.settings.c_str());
     web_pad_attach(&app->input);   // the browser: the page's gamepad goes into this router
+    const char* show_fps = SDL_getenv("PICCOLO_SHOW_FPS");
+    app->fps_from_env = show_fps != nullptr && show_fps[0] == '1';
     update_language(app);
     set_status(app, piccolo_text(&app->strings, Str::status_start));
 

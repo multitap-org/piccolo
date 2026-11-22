@@ -116,6 +116,8 @@ struct ShareWindow
     int32_t found_selected = -1;     // in the link's found list
     char    code[NET_PAIR_CODE_DIGITS + 1] = {};   // ours for this CONNECT (the other piccolo types it if it doesn't know us)
     bool    connect = false;         // CONNECT clicked: the caller connects
+    int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
+    bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
     bool    disconnect = false;      // DISCONNECT clicked
     std::vector<ShareCopy> copies;   // asked for, taken by the caller
     bool      cancel = false;        // CANCEL clicked: the caller stops the copy running
