@@ -1190,6 +1190,9 @@ static void handle_menu_action(App* app, MenuAction action)
         case MenuAction::share:
             open_share_window(app);
             break;
+        case MenuAction::invite:
+            net_invite_open(&app->net_window_state.invite);
+            break;
         case MenuAction::network:
             settings_window_open(&app->settings_window, SettingsTab::network);
             break;
@@ -4270,9 +4273,23 @@ static void net_update_locked(App* app)
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
+            // The dialog that waited for it closes by itself.
+            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_close(&app->net_window_state.request);
+            }
+            if (app->net_window_state.invite.answered && app->net_window_state.invite.peer == event.peer)
+            {
+                net_invite_close(&app->net_window_state.invite, &app->net_service.access);
+            }
             break;
         }
         case NetAccessEventType::closed:
+            if (event.device < 0 && app->net_window_state.request.active &&
+                app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_close(&app->net_window_state.request);   // it cancelled, or left
+            }
             if (app->headless.on && app->headless.peer == event.peer)
             {
                 headless_back(app, true);   // the device that had the game left
@@ -4316,7 +4333,11 @@ static void net_update_locked(App* app)
             // A device asks (Andrés, 2026-11-22): the dialog takes its code and
             // the level; the game pauses while it's up. One at a time: another
             // waits until this one is done (it asks again on its own if refused).
-            if (!app->net_window_state.request.active || app->net_window_state.request.peer == event.peer)
+            if (net_invite_take_request(&app->net_window_state.invite, &app->net_service.access, &event))
+            {
+                SDL_Log("Network: \"%s\" came with the invite's code", event.name);
+            }
+            else if (!app->net_window_state.request.active || app->net_window_state.request.peer == event.peer)
             {
                 net_pairing_request_open(&app->net_window_state.request, &event);
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
@@ -4821,12 +4842,18 @@ static bool app_frame(App* app)
             share_window_draw(&app->share_window, &share_context, app->pixel_font, app->ui_scale);
         }
         // A device asking to pair: over anything, the game paused (ui_derive).
-        // It answers on the NetAccess: the network thread waits meanwhile.
-        if (app->net_running && app->net_window_state.request.active)
+        // TOOLS > INVITE too. They answer on the NetAccess: the network thread
+        // waits meanwhile.
+        if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
         {
             net_service_lock(&app->net_service);
             net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings);
+            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings);
             net_service_unlock(&app->net_service);
+        }
+        else if (app->net_window_state.invite.open)
+        {
+            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings);   // says the network is off
         }
         if (app->cores_window.show_changed)
         {

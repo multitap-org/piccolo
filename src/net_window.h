@@ -63,6 +63,20 @@ struct NetPairingRequest
     uint32_t    level = 0;         // NetAccessLevel
 };
 
+// TOOLS > INVITE: a device across the internet shows a code; typed here with
+// the level, ALLOW waits in that code's pairing room on the beacon
+// (net_access_invite) and answers the request that comes from there.
+struct NetInvite
+{
+    bool     open = false;
+    bool     waiting = false;      // ALLOW pressed: in the pairing room
+    bool     answered = false;     // a request came and was answered with our code
+    uint32_t peer = 0;             // the one answered
+    char     code[NET_PAIR_CODE_DIGITS + 1] = {};
+    uint32_t level = 0;            // NetAccessLevel
+    bool     focus = false;
+};
+
 // What the tab keeps between frames: SHARE / FULL are given only after their
 // confirmation, to the device with this key (the list may change meanwhile).
 struct NetWindowState
@@ -71,6 +85,7 @@ struct NetWindowState
     bool    confirm_owner = false;
     NetAccessLevel confirm_level = NetAccessLevel::share;   // what the confirmation gives
     NetPairingRequest request;
+    NetInvite         invite;
 };
 
 struct NetWindowContext
@@ -96,3 +111,10 @@ void net_pairing_request_close(NetPairingRequest* request);
 void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings);
 // The four port LEDs lit in turn, then `label`: something being waited for.
 void net_window_waiting_leds(const char* label);
+
+// TOOLS > INVITE (drawn every frame while open). `access` nullptr = network off.
+void net_invite_open(NetInvite* invite);
+void net_invite_close(NetInvite* invite, NetAccess* access);
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings);
+// A pairing request while waiting: answered with the typed code (true), or not ours.
+bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event);

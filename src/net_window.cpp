@@ -461,3 +461,122 @@ void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, con
     }
     ImGui::End();
 }
+
+// --- TOOLS > INVITE ---------------------------------------------------------------
+
+void net_invite_open(NetInvite* invite)
+{
+    *invite = {};
+    invite->open = true;
+    invite->level = static_cast<uint32_t>(NetAccessLevel::gamepad);
+    invite->focus = true;
+}
+
+void net_invite_close(NetInvite* invite, NetAccess* access)
+{
+    if (access != nullptr && invite->waiting)
+    {
+        net_access_end_invite(access);
+    }
+    *invite = {};
+}
+
+bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event)
+{
+    if (!invite->open || !invite->waiting || invite->answered || event->retry)
+    {
+        return false;   // a wrong code's new request goes to the request dialog: its new code is typed there
+    }
+    if (!net_access_answer_pairing(access, event->peer, invite->code, static_cast<NetAccessLevel>(invite->level)))
+    {
+        return false;
+    }
+    invite->answered = true;
+    invite->peer = event->peer;
+    return true;
+}
+
+//   +- INVITE --------------------------------------------------+
+//   |  TYPE THE CODE THE OTHER DEVICE SHOWS (TOOLS > PAIR >      |
+//   |  INTERNET, OR PICCOLETTO'S PAIR).                          |
+//   |  [482193706]                                               |
+//   |  ACCESS [GAMEPAD][STREAM][SHARE][FULL]                     |
+//   |                                     [ALLOW] [CANCEL]       |
+//   +-----------------------------------------------------------+
+// After ALLOW: waiting (LEDs) until paired (it closes then).
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings)
+{
+    if (!invite->open)
+    {
+        return;
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    char title[96];
+    std::snprintf(title, sizeof(title), "%s###invite", piccolo_text(strings, Str::net_invite_title));
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoSavedSettings;
+    bool keep = true;
+    if (!ImGui::Begin(title, &keep, flags))
+    {
+        ImGui::End();
+        return;
+    }
+    if (access == nullptr)
+    {
+        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_off));
+    }
+    else
+    {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+        ImGui::TextUnformatted(piccolo_text(strings, Str::net_invite_text));
+        ImGui::PopTextWrapPos();
+        ImGui::BeginDisabled(invite->waiting);
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000000000").x);
+        if (invite->focus)
+        {
+            ImGui::SetKeyboardFocusHere();
+            invite->focus = false;
+        }
+        retro_ui_push_field_text();
+        bool enter = ImGui::InputText("##invite_code", invite->code, sizeof(invite->code),
+                                      ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+        retro_ui_pop_field_text();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(piccolo_text(strings, Str::net_request_access));
+        ImGui::SameLine();
+        const char* labels[NET_ACCESS_LEVEL_COUNT];
+        for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
+        {
+            labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
+        }
+        retro_ui_choice_buttons("##invite_access", labels, NET_ACCESS_LEVEL_COUNT, &invite->level);
+        ImGui::EndDisabled();
+        if (invite->waiting)
+        {
+            net_window_waiting_leds(piccolo_text(strings, invite->answered ? Str::net_request_waiting
+                                                                           : Str::net_invite_waiting));
+        }
+        else
+        {
+            bool complete = net_pair_code_valid(invite->code);
+            ImGui::BeginDisabled(!complete);
+            if ((retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete)) &&
+                net_access_invite(access, invite->code))
+            {
+                invite->waiting = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+        }
+        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        {
+            keep = false;
+        }
+    }
+    ImGui::End();
+    if (!keep)
+    {
+        net_invite_close(invite, access);
+    }
+}
