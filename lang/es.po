@@ -3519,8 +3519,8 @@ msgid "Move and resize the touch gamepad's buttons (drag a group, pinch or SIZE,
 msgstr "Mueve y cambia el tamaño de los botones del control táctil (arrastra un grupo, pellizca o SIZE, RESET, DONE). Vertical y horizontal tienen su propio layout."
 
 msgctxt "touch_pad_menu"
-msgid "MENU"
-msgstr "MENÚ"
+msgid "HOME"
+msgstr "INICIO"
 
 msgctxt "setting_touch_pad_style"
 msgid "STYLE"
@@ -3539,8 +3539,8 @@ msgid "(GONE)"
 msgstr "(NO ESTÁ)"
 
 msgctxt "touch_pad_quick"
-msgid "QUICK"
-msgstr "RÁPIDO"
+msgid "..."
+msgstr "..."
 
 msgctxt "setting_menu_backdrop"
 msgid "BACKDROP"
