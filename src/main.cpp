@@ -78,6 +78,8 @@
 #include "net_speed.h"
 #include "net_trust.h"
 #include "net_window.h"
+#include "guest_window.h"
+#include "net_guest.h"
 #include "file_picker.h"
 #include "headless.h"
 #include "pixel_font.h"
@@ -177,6 +179,7 @@ struct App
     NetSpeedReceiver net_speed_receiver;   // a speed test, up
     bool             net_speed_reporting = false;   // the sender finished: its report goes out
     NetWindowState net_window_state;   // SETTINGS > NETWORK between frames (OWNER's confirmation)
+    GuestWindow    guest_window;       // TOOLS > REMOTE PLAY TOGETHER (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
     NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
     // What the devices were last told runs (game_state): sent again when it changes.
@@ -685,6 +688,124 @@ static bool raw_screenshot(App* app, const std::string& path)
     std::memcpy(image.pixels, video->pixels, size);
     image.path = path;
     return screenshot_writer_submit(&app->screenshot_writer, &image);
+}
+
+// --- REMOTE PLAY TOGETHER (guest links) ---------------------------------------
+
+// The beacon's host name for guest links: BEACON SERVER without a UDP port
+// ("beacon.get-piccolo.app:55430" -> "beacon.get-piccolo.app"), the default
+// when it's empty. The link and the card live on the same name.
+static std::string guest_beacon_host(const App* app)
+{
+    std::string name = settings_get_text(&app->settings, PICCOLO_NET_BEACON);
+    if (name.empty())
+    {
+        name = NET_BEACON_DEFAULT_SERVER;
+    }
+    size_t scheme = name.find("://");
+    if (scheme != std::string::npos)
+    {
+        name = name.substr(scheme + 3);
+    }
+    size_t slash = name.find('/');
+    if (slash != std::string::npos)
+    {
+        name.resize(slash);
+    }
+    if (!name.empty() && name[0] != '[')
+    {
+        size_t colon = name.find(':');
+        if (colon != std::string::npos && name.find(':', colon + 1) == std::string::npos)
+        {
+            name.resize(colon);
+        }
+    }
+    return name;
+}
+
+// The window opens with the game's name cleaned for the card and the frame
+// shown now as its picture (a link already open keeps its own).
+static void open_guest_window(App* app)
+{
+    GuestWindow* window = &app->guest_window;
+    if (!window->live)
+    {
+        net_guest_title_clean(app->game_name, window->title);
+        window->png.clear();
+        if (game_running(app) && app->session.host != nullptr)
+        {
+            const LibretroVideoFrame* video = &app->session.host->video;
+            GuestCardPixels format = GuestCardPixels::xrgb8888;
+            if (video->format == RETRO_PIXEL_FORMAT_RGB565)
+            {
+                format = GuestCardPixels::rgb565;
+            }
+            else if (video->format == RETRO_PIXEL_FORMAT_0RGB1555)
+            {
+                format = GuestCardPixels::xrgb1555;
+            }
+            if (!guest_card_png(video->pixels, video->width, video->height, video->width * video->bytes_per_pixel,
+                                format, &window->png))
+            {
+                SDL_Log("Guest link: no picture for the card");
+            }
+        }
+    }
+    guest_window_open(window);
+}
+
+// MAKE LINK (or NEW: a fresh link, the guests in stay). Under the network lock.
+static void guest_make_link(App* app)
+{
+    GuestWindow* window = &app->guest_window;
+    NetGuestLink link;
+    if (!net_guest_link_make(&link))
+    {
+        SDL_Log("Guest link: no randomness for a link");
+        return;
+    }
+    std::string beacon = guest_beacon_host(app);
+    net_access_guest_open(&app->net_service.access, &link, static_cast<uint32_t>(window->seats),
+                          static_cast<NetGuestLevel>(window->level));
+    window->link = link;
+    net_guest_link_url(&link, beacon.c_str(), window->link_text, sizeof(window->link_text));
+    net_guest_link_wipe(&link);
+    if (!window->live)
+    {
+        window->game_starts = app->game_starts;
+    }
+    window->live = true;
+    SDL_Log("Guest link: open for \"%s\", %d seats, %s", window->title, window->seats,
+            window->level == static_cast<uint32_t>(NetGuestLevel::play) ? "watch + play" : "watch");
+    if (!window->png.empty())
+    {
+        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+    }
+}
+
+// The session ends: END, the game closed or changed, networking off, quitting.
+// Under the network lock (or with the network stopped: `access` nullptr).
+static void guest_end(App* app, NetAccess* access)
+{
+    if (!app->guest_window.live)
+    {
+        return;
+    }
+    guest_window_end(&app->guest_window, access);
+    set_status(app, piccolo_text(&app->strings, Str::status_guests_ended));
+    SDL_Log("Guest link: the session ended");
+}
+
+// Once a frame under the network lock: the session follows its game, and
+// each guest learns its port.
+static void guest_update_locked(App* app)
+{
+    GuestWindow* window = &app->guest_window;
+    if (window->live && (!game_running(app) || app->game_starts != window->game_starts))
+    {
+        guest_end(app, &app->net_service.access);
+    }
+    guest_window_tell_ports(window, &app->net_service.access, &app->input_net, &app->input);
 }
 
 static void take_screenshot(App* app)
@@ -1400,6 +1521,9 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::invite:
             net_invite_open(&app->net_window_state.invite);
+            break;
+        case MenuAction::guests:
+            open_guest_window(app);
             break;
         case MenuAction::network:
             settings_window_open(&app->settings_window, SettingsTab::network);
@@ -2676,6 +2800,19 @@ static void handle_links(App* app)
     {
         SDL_Log("Link: %s", link.c_str());
         SDL_RaiseWindow(app->shell.window);
+        // A guest link (piccolo://join/...): guests play in piccoletto (Andrés,
+        // 2026-11-22), so it goes to piccoletto in the browser.
+        NetGuestLink guest;
+        char beacon[NET_GUEST_MAX_BEACON];
+        if (net_guest_link_parse(link.c_str(), &guest, beacon, sizeof(beacon)))
+        {
+            std::string web = std::string("https://get-piccolo.app/play/piccoletto/#join=") + guest.room + "." +
+                              guest.token + (beacon[0] != '\0' ? std::string("&b=") + beacon : std::string());
+            net_guest_link_wipe(&guest);
+            set_status(app, piccolo_text(&app->strings, Str::status_guest_link));
+            SDL_OpenURL(web.c_str());
+            continue;
+        }
         std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " + link;
         set_status(app, text.c_str());
     }
@@ -4468,6 +4605,9 @@ static void net_stop(App* app)
 {
     if (app->net_running)
     {
+        net_service_lock(&app->net_service);
+        guest_end(app, &app->net_service.access);   // guests told before the network goes
+        net_service_unlock(&app->net_service);
         for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
         {
             input_net_peer_gone(&app->input_net, &app->input, peer);   // their pads are unplugged
@@ -4481,6 +4621,7 @@ static void net_shutdown_all(App* app)
 {
     net_share_link_stop(&app->share_link);
     net_stop(app);
+    guest_card_finish(&app->guest_window.card);
     net_keypair_wipe(&app->net_identity);
     if (app->net_ready)
     {
@@ -4559,6 +4700,7 @@ static void net_update(App* app)
 
 static void net_update_locked(App* app)
 {
+    guest_update_locked(app);
     // GO HEADLESS ends from the tray, or when no game runs any more.
     if (app->headless.on && (app->headless.back_asked || !game_running(app)))
     {
@@ -4581,6 +4723,11 @@ static void net_update_locked(App* app)
         const char* device = event.device >= 0 && static_cast<size_t>(event.device) < app->net_service.access.trust.devices.size()
                                  ? app->net_service.access.trust.devices[static_cast<size_t>(event.device)].name.c_str()
                                  : "?";
+        const NetAccessPeer* guest = event.guest ? net_access_guest(&app->net_service.access, event.peer) : nullptr;
+        if (guest != nullptr)
+        {
+            device = guest->guest_name;
+        }
         switch (event.type)
         {
         case NetAccessEventType::authorized:
@@ -4667,6 +4814,20 @@ static void net_update_locked(App* app)
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
             }
             break;
+        case NetAccessEventType::guest_joined:
+        {
+            // A guest from the link: what runs at once (it starts the stream itself).
+            SDL_Log("Network: guest \"%s\" joined from %s", event.name, address);
+            char status[128];
+            std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_guest_joined),
+                          event.name);
+            set_status(app, status);
+            net_send_game_state(app, event.peer);
+            break;
+        }
+        case NetAccessEventType::guest_full:
+            SDL_Log("Network: guest \"%s\" turned away: every seat is taken", event.name);
+            break;
         case NetAccessEventType::granted_back:
             // The piccolo that just paired lets us come to it: it's a host we
             // may connect to now (SHARE lists it).
@@ -4690,6 +4851,14 @@ static void net_update_locked(App* app)
                 {
                     net_speed_receive(&app->net_speed_receiver, event.data, event.size, net_seconds());
                 }
+            }
+            else if (event.channel == NetChannel::input && guest != nullptr)
+            {
+                // A PLAY guest's pad (net_access let it through only at PLAY):
+                // game only, never the game's hotkeys; START joins a free port.
+                input_net_set_hotkeys(&app->input_net, &app->input, event.peer, false);
+                input_net_receive(&app->input_net, &app->input, event.peer, guest->key, guest->guest_name, event.data,
+                                  event.size);
             }
             else if (event.channel == NetChannel::input && event.device >= 0)
             {
@@ -5232,6 +5401,31 @@ static bool app_frame(App* app)
         else if (app->net_window_state.invite.open)
         {
             net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings);   // says the network is off
+        }
+        // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
+        if (app->guest_window.open)
+        {
+            NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
+            if (access != nullptr)
+            {
+                net_service_lock(&app->net_service);
+            }
+            guest_window_draw(&app->guest_window, access, &app->input_net, &app->input, game_running(app),
+                              !app->net_beacon_applied.empty(), &app->strings);
+            GuestWindowAction action = app->guest_window.action;
+            app->guest_window.action = GuestWindowAction::none;
+            if (access != nullptr && (action == GuestWindowAction::make_link || action == GuestWindowAction::new_link))
+            {
+                guest_make_link(app);
+            }
+            else if (access != nullptr && action == GuestWindowAction::end)
+            {
+                guest_end(app, access);
+            }
+            if (access != nullptr)
+            {
+                net_service_unlock(&app->net_service);
+            }
         }
         if (app->cores_window.show_changed)
         {

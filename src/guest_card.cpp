@@ -1,0 +1,157 @@
+#include "guest_card.h"
+
+#include <cstdio>
+#include <cstring>
+
+#include "host_log.h"
+#if defined(PICCOLO_GUEST_CARD)
+#include "net_http.h"
+#endif
+
+static SDL_PixelFormat sdl_format(GuestCardPixels format)
+{
+    switch (format)
+    {
+        case GuestCardPixels::rgb565:
+            return SDL_PIXELFORMAT_RGB565;
+        case GuestCardPixels::xrgb1555:
+            return SDL_PIXELFORMAT_XRGB1555;
+        default:
+            return SDL_PIXELFORMAT_XRGB8888;
+    }
+}
+
+// `surface` scaled by `factor` (nearest), saved as PNG into `png`.
+static bool encode(SDL_Surface* surface, uint32_t factor, std::vector<uint8_t>* png)
+{
+    int32_t width = surface->w * static_cast<int32_t>(factor);
+    int32_t height = surface->h * static_cast<int32_t>(factor);
+    SDL_Surface* scaled = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_RGB24);
+    if (scaled == nullptr)
+    {
+        return false;
+    }
+    bool ok = SDL_BlitSurfaceScaled(surface, nullptr, scaled, nullptr, SDL_SCALEMODE_NEAREST);
+    SDL_IOStream* stream = ok ? SDL_IOFromDynamicMem() : nullptr;
+    if (stream != nullptr && SDL_SavePNG_IO(scaled, stream, false))
+    {
+        Sint64 size = SDL_TellIO(stream);
+        const uint8_t* data = static_cast<const uint8_t*>(
+            SDL_GetPointerProperty(SDL_GetIOProperties(stream), SDL_PROP_IOSTREAM_DYNAMIC_MEMORY_POINTER, nullptr));
+        ok = data != nullptr && size > 0;
+        if (ok)
+        {
+            png->assign(data, data + size);
+        }
+    }
+    else
+    {
+        ok = false;
+    }
+    if (stream != nullptr)
+    {
+        SDL_CloseIO(stream);
+    }
+    SDL_DestroySurface(scaled);
+    return ok;
+}
+
+bool guest_card_png(const void* pixels, uint32_t width, uint32_t height, uint32_t pitch, GuestCardPixels format,
+                    std::vector<uint8_t>* png)
+{
+    png->clear();
+    if (pixels == nullptr || width == 0 || height == 0 || width > NET_GUEST_CARD_MAX_WIDTH ||
+        height > NET_GUEST_CARD_MAX_HEIGHT)
+    {
+        return false;
+    }
+    SDL_Surface* frame = SDL_CreateSurfaceFrom(static_cast<int32_t>(width), static_cast<int32_t>(height),
+                                               sdl_format(format), const_cast<void*>(pixels),
+                                               static_cast<int32_t>(pitch));
+    if (frame == nullptr)
+    {
+        return false;
+    }
+    // The biggest whole factor that fits; smaller ones if the PNG is too big.
+    uint32_t factor = NET_GUEST_CARD_MAX_WIDTH / width;
+    if (NET_GUEST_CARD_MAX_HEIGHT / height < factor)
+    {
+        factor = NET_GUEST_CARD_MAX_HEIGHT / height;
+    }
+    bool ok = false;
+    for (; factor >= 1 && !ok; factor--)
+    {
+        ok = encode(frame, factor, png) && png->size() <= NET_GUEST_CARD_MAX_PNG;
+    }
+    SDL_DestroySurface(frame);
+    if (!ok)
+    {
+        png->clear();
+    }
+    return ok;
+}
+
+std::string guest_card_url(const char* beacon, const NetGuestLink* link)
+{
+    return std::string("https://") + beacon + "/join/" + link->room + "/card";
+}
+
+static int upload_thread(void* user)
+{
+    GuestCardUpload* upload = static_cast<GuestCardUpload*>(user);
+    bool sent = false;
+#if defined(PICCOLO_GUEST_CARD)
+    sent = net_http_post(upload->url.c_str(), "application/octet-stream", upload->body.data(), upload->body.size(),
+                         &upload->status, upload->error, sizeof(upload->error)) &&
+           upload->status == 204;
+    if (!sent && upload->status != 0)
+    {
+        std::snprintf(upload->error, sizeof(upload->error), "the beacon answered HTTP %u",
+                      static_cast<unsigned>(upload->status));
+    }
+#else
+    std::snprintf(upload->error, sizeof(upload->error), "no HTTP in this build");
+#endif
+    if (!sent)
+    {
+        host_log(LogLevel::warning, "Guest link: the card wasn't sent: %s", upload->error);
+    }
+    SDL_SetAtomicInt(&upload->state, static_cast<int>(sent ? GuestCardState::sent : GuestCardState::failed));
+    return 0;
+}
+
+void guest_card_finish(GuestCardUpload* upload)
+{
+    if (upload->thread != nullptr)
+    {
+        SDL_WaitThread(upload->thread, nullptr);
+        upload->thread = nullptr;
+    }
+}
+
+bool guest_card_send(GuestCardUpload* upload, const char* beacon, const NetGuestLink* link, const char* title,
+                     const std::vector<uint8_t>* png)
+{
+    guest_card_finish(upload);
+    upload->status = 0;
+    upload->error[0] = '\0';
+    upload->url = guest_card_url(beacon, link);
+    if (!net_guest_card_body(link, title, png->data(), png->size(), &upload->body))
+    {
+        SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::failed));
+        return false;
+    }
+    SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::sending));
+    upload->thread = SDL_CreateThread(upload_thread, "guest card", upload);
+    if (upload->thread == nullptr)
+    {
+        SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::failed));
+        return false;
+    }
+    return true;
+}
+
+GuestCardState guest_card_state(GuestCardUpload* upload)
+{
+    return static_cast<GuestCardState>(SDL_GetAtomicInt(&upload->state));
+}
