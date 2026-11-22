@@ -114,10 +114,10 @@ struct ShareWindow
 
     // Connecting (the other side, while no piccolo is connected with OWNER).
     int32_t found_selected = -1;     // in the link's found list
-    char    code[8] = {};            // the 6 digits it shows, only the first time
+    char    code[NET_PAIR_CODE_DIGITS + 1] = {};   // ours for this CONNECT (the other piccolo types it if it doesn't know us)
     bool    connect = false;         // CONNECT clicked: the caller connects
     int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
-    char    pair_link[256] = {};     // a pair link pasted (with `code`): pairs across the internet
+    bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
     bool    disconnect = false;      // DISCONNECT clicked
     std::vector<ShareCopy> copies;   // asked for, taken by the caller
     bool      cancel = false;        // CANCEL clicked: the caller stops the copy running

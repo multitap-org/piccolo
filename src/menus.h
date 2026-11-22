@@ -29,6 +29,7 @@ enum class MenuAction
     options_manager,   // TOOLS > OPTIONS MANAGER (stored core options)
     cores,         // TOOLS > CORES (the core downloader)
     share,         // TOOLS > SHARE (files with another piccolo)
+    invite,        // TOOLS > INVITE (pair a device across the internet: type its code)
     network,       // CONFIG > NETWORK (listener, pairing, paired devices)
     core_config,   // GAME > CORE CONFIGURATION (the running core's options, controls, shader)
     separator,     // not an action: a line between items (its label isn't shown)

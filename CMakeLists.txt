@@ -200,6 +200,7 @@ set(PICCOLO_SOURCES
     src/settings_window.cpp
     src/input_window.cpp
     src/net_window.cpp
+    src/qr_view.cpp
     src/headless.cpp
     src/net_games.cpp
     src/net_remote.cpp
@@ -365,8 +366,9 @@ else()
     message(STATUS "piccolo: deps/piccolo-shaders-legacy not checked out, no OpenGL ES shader presets")
 endif()
 
-# Nayuki's QR Code generator (deps/qrcodegen, MIT): the pair link as a QR in
-# SETTINGS > NETWORK while pairing. Its C file only (no demo, no tests).
+# Nayuki's QR Code generator (deps/qrcodegen, MIT): src/qr_view.cpp. Not shown
+# anywhere since pairing went the other way (2026-11-22); kept for links to
+# come (a QR to join a game from the lobby). Its C file only (no demo, no tests).
 add_library(multitap_dep_qrcodegen STATIC "${MULTITAP_DEPS_DIR}/qrcodegen/c/qrcodegen.c")
 target_include_directories(multitap_dep_qrcodegen SYSTEM PUBLIC "${MULTITAP_DEPS_DIR}/qrcodegen/c")
 

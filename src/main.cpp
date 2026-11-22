@@ -1192,6 +1192,9 @@ static void share_update(App* app, ShareTransferLine* line)
         net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < app->share_status.found.size())
         {
+            // Always with a fresh code: a piccolo that knows us welcomes us
+            // and it's never used; one that doesn't asks its user to type it.
+            net_pair_code_generate(window->code);
             net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->found_selected)].address,
                                    window->code);
         }
@@ -1199,9 +1202,12 @@ static void share_update(App* app, ShareTransferLine* line)
         {
             net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
         }
-        else if (window->pair_link[0] != '\0')
+        else if (window->invite_selected)
         {
-            net_share_link_pair_link(link, window->pair_link, window->code);
+            // Across the internet to a piccolo that doesn't know us: our code,
+            // which its user types in TOOLS > INVITE.
+            net_pair_code_generate(window->code);
+            net_share_link_pair_beacon(link, window->code);
         }
     }
     if (window->disconnect)
@@ -1210,7 +1216,7 @@ static void share_update(App* app, ShareTransferLine* line)
         net_share_link_disconnect(link);
     }
     bool connected = app->share_status.state == NetShareLinkState::ready &&
-                     app->share_status.access == NetAccessLevel::owner;
+                     net_access_allows(app->share_status.access, NetAccessLevel::share);
     if (connected != app->share_connected)
     {
         app->share_connected = connected;
@@ -1391,6 +1397,9 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::share:
             open_share_window(app);
+            break;
+        case MenuAction::invite:
+            net_invite_open(&app->net_window_state.invite);
             break;
         case MenuAction::network:
             settings_window_open(&app->settings_window, SettingsTab::network);
@@ -2136,6 +2145,7 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
+    facts.pairing_request = app->net_window_state.request.active;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -3493,6 +3503,10 @@ static NetRemoteGame net_remote_game(const App* app)
         {
             game.pause |= NET_PAUSE_BACKGROUND;
         }
+        if ((pause & ui_pause_bit(UiPause::pairing)) != 0)
+        {
+            game.pause |= NET_PAUSE_PAIRING;
+        }
     }
     return game;
 }
@@ -4583,9 +4597,23 @@ static void net_update_locked(App* app)
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
+            // The dialog that waited for it closes by itself.
+            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_close(&app->net_window_state.request);
+            }
+            if (app->net_window_state.invite.answered && app->net_window_state.invite.peer == event.peer)
+            {
+                net_invite_close(&app->net_window_state.invite, &app->net_service.access);
+            }
             break;
         }
         case NetAccessEventType::closed:
+            if (event.device < 0 && app->net_window_state.request.active &&
+                app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_close(&app->net_window_state.request);   // it cancelled, or left
+            }
             if (app->headless.on && app->headless.peer == event.peer)
             {
                 headless_back(app, true);   // the device that had the game left
@@ -4620,9 +4648,29 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
+            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_close(&app->net_window_state.request);
+            }
             break;
-        case NetAccessEventType::pairing_closed:
-            set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_closed));
+        case NetAccessEventType::pairing_requested:
+            // A device asks (Andrés, 2026-11-22): the dialog takes its code and
+            // the level; the game pauses while it's up. One at a time: another
+            // waits until this one is done (it asks again on its own if refused).
+            if (net_invite_take_request(&app->net_window_state.invite, &app->net_service.access, &event))
+            {
+                SDL_Log("Network: \"%s\" came with the invite's code", event.name);
+            }
+            else if (!app->net_window_state.request.active || app->net_window_state.request.peer == event.peer)
+            {
+                net_pairing_request_open(&app->net_window_state.request, &event);
+                SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
+            }
+            break;
+        case NetAccessEventType::granted_back:
+            // The piccolo that just paired lets us come to it: it's a host we
+            // may connect to now (SHARE lists it).
+            SDL_Log("Network: \"%s\" lets us connect to it (%s)", device, net_access_level_name(event.access));
             break;
         case NetAccessEventType::unpaired:
         {
@@ -4688,7 +4736,7 @@ static void net_update_locked(App* app)
 static void status_line_text(const App* app, char* out, size_t size)
 {
     static const Str CAUSES[] = {Str::pause_cause_menu, Str::pause_cause_focus, Str::pause_cause_controllers,
-                                 Str::pause_cause_user, Str::pause_cause_background};
+                                 Str::pause_cause_user, Str::pause_cause_background, Str::pause_cause_pairing};
     static_assert(sizeof(CAUSES) / sizeof(CAUSES[0]) == static_cast<size_t>(UiPause::count), "a name per cause");
     out[0] = '\0';
     if (!game_running(app) || app->ui_derived.pause == 0)
@@ -5170,6 +5218,20 @@ static bool app_frame(App* app)
             share_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
             share_context.line = &share_line;
             share_window_draw(&app->share_window, &share_context, app->pixel_font, app->ui_scale);
+        }
+        // A device asking to pair: over anything, the game paused (ui_derive).
+        // TOOLS > INVITE too. They answer on the NetAccess: the network thread
+        // waits meanwhile.
+        if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
+        {
+            net_service_lock(&app->net_service);
+            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings);
+            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings);
+            net_service_unlock(&app->net_service);
+        }
+        else if (app->net_window_state.invite.open)
+        {
+            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings);   // says the network is off
         }
         if (app->cores_window.show_changed)
         {

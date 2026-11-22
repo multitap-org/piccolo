@@ -1,5 +1,7 @@
 #include "share_window.h"
 
+#include "net_window.h"
+
 #include <cfloat>
 #include <cstdio>
 #include <cstring>
@@ -561,6 +563,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
             {
                 window->found_selected = static_cast<int32_t>(i);
                 window->paired_selected = -1;
+                window->invite_selected = false;
             }
             ImGui::PopID();
         }
@@ -586,32 +589,42 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
                 {
                     window->paired_selected = static_cast<int32_t>(i);
                     window->found_selected = -1;
+                    window->invite_selected = false;
                 }
                 ImGui::PopID();
             }
         }
+        // Not paired yet and not on this network: our code, typed on the other
+        // piccolo in TOOLS > INVITE, which waits for us on the beacon.
         ImGui::Spacing();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(piccolo_text(strings, Str::share_pair_link));
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(-1.0f);
-        retro_ui_push_field_text();
-        ImGui::InputText("##pair_link", window->pair_link, sizeof(window->pair_link));
-        retro_ui_pop_field_text();
-        retro_ui_item_tooltip(piccolo_text(strings, Str::share_pair_link_help));
+        if (ImGui::Selectable(piccolo_text(strings, Str::share_pair_internet), window->invite_selected))
+        {
+            window->invite_selected = true;
+            window->found_selected = -1;
+            window->paired_selected = -1;
+        }
+        retro_ui_item_tooltip(piccolo_text(strings, Str::share_pair_internet_help));
         ImGui::Spacing();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000").x + ImGui::GetStyle().FramePadding.x * 2.0f);
-        retro_ui_push_field_text();
-        ImGui::InputText("##code", window->code, sizeof(window->code), ImGuiInputTextFlags_CharsDecimal);
-        retro_ui_pop_field_text();
-        retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
         bool connecting = link->state == NetShareLinkState::connecting;
-        bool by_link = window->found_selected < 0 && window->paired_selected < 0 && window->pair_link[0] != '\0' &&
-                       std::strlen(window->code) == 6;
-        ImGui::BeginDisabled((window->found_selected < 0 && window->paired_selected < 0 && !by_link) || connecting);
+        if (connecting && !link->code.empty())
+        {
+            // Ours: the other piccolo's user types it the first time (its
+            // pairing request dialog). A wrong try gives a new one.
+            ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
+            retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
+            char grouped[16] = {};
+            std::snprintf(grouped, sizeof(grouped), "%.3s %.3s %.3s", link->code.c_str(), link->code.c_str() + 3,
+                          link->code.c_str() + 6);
+            retro_ui_push_section_text();
+            ImGui::TextUnformatted(grouped);
+            retro_ui_pop_section_text();
+            if (link->waiting_host)
+            {
+                net_window_waiting_leds(piccolo_text(strings, Str::share_waiting));
+            }
+        }
+        ImGui::BeginDisabled((window->found_selected < 0 && window->paired_selected < 0 && !window->invite_selected) ||
+                             connecting);
         if (retro_ui_button(piccolo_text(strings, Str::share_connect)))
         {
             window->connect = true;
@@ -919,7 +932,8 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
     }
     const Localization* strings = context->strings;
     const NetShareLinkStatus* link = context->link;
-    bool connected = link != nullptr && link->state == NetShareLinkState::ready && link->access == NetAccessLevel::owner;
+    bool connected = link != nullptr && link->state == NetShareLinkState::ready &&
+                     net_access_allows(link->access, NetAccessLevel::share);
     if (window->local.stale && context->local_folders != nullptr)
     {
         window->local.stale = false;

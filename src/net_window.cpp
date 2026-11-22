@@ -4,151 +4,20 @@
 #include <cstdio>
 #include <cstring>
 
-#include "clipboard.h"
 #include "imgui.h"
-#include "net_pair_link.h"
-#include "qrcodegen.h"
+#include "port_indicators.h"
 
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
 #include "settings_ui.h"
 
-// The code in two groups of three ("482 915"), in the highlight color.
-static void draw_code(const NetAccess* access)
-{
-    char grouped[8] = {};
-    std::snprintf(grouped, sizeof(grouped), "%.3s %.3s", access->code, access->code + 3);
-    retro_ui_push_section_text();
-    ImGui::TextUnformatted(grouped);
-    retro_ui_pop_section_text();
-}
-
-//   CODE  482 915
-//   VALIDITY: 4:32  [REFRESH] [STOP]
-//   Type this code on the other device...
-static_assert(NET_WINDOW_QR_BUFFER == qrcodegen_BUFFER_LEN_FOR_VERSION(NET_WINDOW_QR_MAX_VERSION),
-              "the QR buffer size matches qrcodegen's");
-
-// The pair link as a QR code: dark modules on white with the quiet zone
-// scanners want (4 modules), each module a whole number of pixels.
-// The link and its QR are made again only when the key or the beacon change
-// (not every frame).
-static void update_link(NetWindowState* state, const uint8_t* host_key, const char* beacon)
-{
-    if (state->qr_beacon == beacon && std::memcmp(state->qr_key, host_key, NET_KEY_SIZE) == 0 &&
-        !state->qr_link.empty())
-    {
-        return;
-    }
-    state->qr_beacon = beacon;
-    std::memcpy(state->qr_key, host_key, NET_KEY_SIZE);
-    state->qr_link = net_pair_link(host_key, beacon);
-    uint8_t temp[NET_WINDOW_QR_BUFFER];
-    state->qr_ok = qrcodegen_encodeText(state->qr_link.c_str(), temp, state->qr, qrcodegen_Ecc_MEDIUM,
-                                        qrcodegen_VERSION_MIN, NET_WINDOW_QR_MAX_VERSION, qrcodegen_Mask_AUTO, true);
-}
-
-static void draw_qr(const NetWindowState* state)
-{
-    if (!state->qr_ok)
-    {
-        return;
-    }
-    int size = qrcodegen_getSize(state->qr);
-    float module = std::floor(ImGui::GetFontSize() / 3.0f);
-    if (module < 2.0f)
-    {
-        module = 2.0f;
-    }
-    const int quiet = 4;
-    float side = static_cast<float>(size + quiet * 2) * module;
-    ImVec2 origin = ImGui::GetCursorScreenPos();
-    origin.x = std::floor(origin.x);
-    origin.y = std::floor(origin.y);
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(origin, ImVec2(origin.x + side, origin.y + side), IM_COL32(255, 255, 255, 255));
-    for (int y = 0; y < size; y++)
-    {
-        // Runs of dark modules on a row as one rectangle each.
-        int x = 0;
-        while (x < size)
-        {
-            if (!qrcodegen_getModule(state->qr, x, y))
-            {
-                x++;
-                continue;
-            }
-            int start = x;
-            while (x < size && qrcodegen_getModule(state->qr, x, y))
-            {
-                x++;
-            }
-            float left = origin.x + static_cast<float>(start + quiet) * module;
-            float top = origin.y + static_cast<float>(y + quiet) * module;
-            draw->AddRectFilled(ImVec2(left, top),
-                                ImVec2(left + static_cast<float>(x - start) * module, top + module),
-                                IM_COL32(0, 0, 0, 255));
-        }
-    }
-    ImGui::Dummy(ImVec2(side, side));
-}
-
-static void draw_pairing(const NetWindowContext* context)
-{
-    NetAccess* access = context->access;
-    const Localization* strings = context->strings;
-    if (!access->pairing_open)
-    {
-        if (retro_ui_button(piccolo_text(strings, Str::net_pair_button)))
-        {
-            net_access_open_pairing(access);
-        }
-        retro_ui_item_tooltip(piccolo_text(strings, Str::net_pair_button_help));
-        return;
-    }
-    ImGui::TextUnformatted(piccolo_text(strings, Str::net_pair_code));
-    ImGui::SameLine();
-    draw_code(access);
-    uint32_t left = static_cast<uint32_t>(net_access_pairing_seconds_left(access));
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("%s: %u:%02u", piccolo_text(strings, Str::net_pair_validity), left / 60, left % 60);
-    ImGui::SameLine();
-    if (retro_ui_button(piccolo_text(strings, Str::net_pair_refresh)))
-    {
-        net_access_open_pairing(access);   // already open: a new code
-    }
-    ImGui::SameLine();
-    if (retro_ui_button(piccolo_text(strings, Str::net_pair_stop)))
-    {
-        net_access_close_pairing(access);
-    }
-    // Across the internet (INTERNET on): the pair link, for a device that
-    // can't find us on the LAN (mobile data, a browser). The code is still typed.
-    if (context->internet)
-    {
-        ImGui::SameLine();
-        update_link(context->state, access->host_key, settings_get_text(context->settings, PICCOLO_NET_BEACON));
-        if (retro_ui_button(piccolo_text(strings, Str::net_pair_copy_link)))
-        {
-            clipboard_set_text(context->state->qr_link.c_str());
-        }
-        retro_ui_item_tooltip(piccolo_text(strings, Str::net_pair_copy_link_help));
-        draw_qr(context->state);
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_pair_qr_help));
-        ImGui::PopTextWrapPos();
-    }
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_pair_instructions));
-    ImGui::PopTextWrapPos();
-}
-
 static const Str ACCESS_LABELS[NET_ACCESS_LEVEL_COUNT] = {Str::net_access_gamepad, Str::net_access_stream,
-                                                          Str::net_access_full, Str::net_access_owner};
+                                                          Str::net_access_share, Str::net_access_full};
 
-// ACCESS: GAMEPAD / STREAM / FULL / OWNER for one device, as a row of buttons
-// (applied and saved at once; OWNER only after its confirmation).
+// ACCESS: GAMEPAD / STREAM / SHARE / FULL for one device, as a row of buttons
+// (applied and saved at once; SHARE and FULL, which write files here, only
+// after their confirmation).
 static void draw_access(const NetWindowContext* context, uint32_t device)
 {
     NetAccess* access = context->access;
@@ -162,11 +31,13 @@ static void draw_access(const NetWindowContext* context, uint32_t device)
     if (retro_ui_choice_buttons("##access", labels, NET_ACCESS_LEVEL_COUNT, &current))
     {
         NetAccessLevel chosen = static_cast<NetAccessLevel>(current);
-        if (chosen == NetAccessLevel::owner)
+        if (net_access_allows(chosen, NetAccessLevel::share) &&
+            !net_access_allows(access->trust.devices[device].access, NetAccessLevel::share))
         {
             // Writing files on this machine: asked first (draw_owner_confirm).
             std::memcpy(context->state->owner_key, access->trust.devices[device].key, NET_KEY_SIZE);
             context->state->confirm_owner = true;
+            context->state->confirm_level = chosen;
         }
         else
         {
@@ -207,7 +78,7 @@ static void draw_owner_confirm(const NetWindowContext* context)
             {
                 if (std::memcmp(access->trust.devices[i].key, state->owner_key, NET_KEY_SIZE) == 0)
                 {
-                    net_access_set_level(access, static_cast<uint32_t>(i), NetAccessLevel::owner);
+                    net_access_set_level(access, static_cast<uint32_t>(i), state->confirm_level);
                 }
             }
             close = true;
@@ -464,10 +335,251 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
         ImGui::TextDisabled("%s", piccolo_text(strings, context->listen_failed ? Str::net_listen_failed : Str::net_off));
         return;
     }
-    retro_ui_separator_text(piccolo_text(strings, Str::net_section_pairing));
-    draw_pairing(context);
     retro_ui_separator_text(piccolo_text(strings, Str::net_section_connected));
     draw_connected(context);
     retro_ui_separator_text(piccolo_text(strings, Str::net_section_devices));
     draw_devices(context);
+}
+
+// --- The pairing request (host) ----------------------------------------------
+
+void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event)
+{
+    bool same = request->active && request->peer == event->peer;
+    request->active = true;
+    request->waiting = false;
+    request->retry = event->retry;
+    request->peer = event->peer;
+    request->kind = event->kind;
+    std::snprintf(request->name, sizeof(request->name), "%s", event->name);
+    if (!same)
+    {
+        request->level = static_cast<uint32_t>(event->access);   // what it asked for, until the user picks
+    }
+    std::memset(request->code, 0, sizeof(request->code));
+    request->focus = true;
+}
+
+void net_pairing_request_close(NetPairingRequest* request)
+{
+    *request = {};
+}
+
+// The four port LEDs lit one at a time, 1 2 3 4 3 2 1 ..., while waiting.
+void net_window_waiting_leds(const char* label)
+{
+    static const int32_t CYCLE[6] = {0, 1, 2, 3, 2, 1};
+    int32_t lit = CYCLE[static_cast<uint32_t>(ImGui::GetTime() * 6.0) % 6];
+    float block = std::floor(ImGui::GetTextLineHeight() / 7.0f);
+    block = block < 1.0f ? 1.0f : block;
+    ImVec2 at = ImGui::GetCursorScreenPos();
+    float top = at.y + std::floor((ImGui::GetTextLineHeight() - PORT_LED_SIZE * block) * 0.5f);
+    float width = port_indicators_draw_leds(at.x, top, block, 4, lit, retro_ui_palette()->panel_dark);
+    ImGui::Dummy(ImVec2(width, ImGui::GetTextLineHeight()));
+    ImGui::SameLine();
+    ImGui::TextUnformatted(label);
+}
+
+//   +- PAIRING REQUEST -------------------------------+
+//   |  BEDROOM PC (PICCOLO)                           |
+//   |  WANTS TO PAIR. TYPE THE CODE ON ITS SCREEN.    |
+//   |  [482193706]                                    |
+//   |  ACCESS [GAMEPAD][STREAM][SHARE][FULL]          |
+//   |                          [ALLOW] [REFUSE]       |
+//   +-------------------------------------------------+
+// After ALLOW: the same box, waiting (LEDs), until paired / gone.
+void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings)
+{
+    if (!request->active || access == nullptr)
+    {
+        return;
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    char title[96];
+    std::snprintf(title, sizeof(title), "%s###pairing_request", piccolo_text(strings, Str::net_request_title));
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
+    ImGui::SetNextWindowFocus();
+    if (!ImGui::Begin(title, nullptr, flags))
+    {
+        ImGui::End();
+        return;
+    }
+    retro_ui_push_section_text();
+    ImGui::Text("%s (%s)", request->name,
+                piccolo_text(strings, request->kind == NetPairKind::piccoletto ? Str::net_kind_piccoletto
+                                                                              : Str::net_kind_piccolo));
+    retro_ui_pop_section_text();
+    ImGui::TextDisabled("%s", piccolo_text(strings, request->retry ? Str::net_request_wrong : Str::net_request_text));
+    ImGui::BeginDisabled(request->waiting);
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000000000").x);
+    if (request->focus)
+    {
+        ImGui::SetKeyboardFocusHere();
+        request->focus = false;
+    }
+    retro_ui_push_field_text();
+    bool enter = ImGui::InputText("##code", request->code, sizeof(request->code),
+                                  ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+    retro_ui_pop_field_text();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(piccolo_text(strings, Str::net_request_access));
+    ImGui::SameLine();
+    const char* labels[NET_ACCESS_LEVEL_COUNT];
+    for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
+    {
+        labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
+    }
+    retro_ui_choice_buttons("##request_access", labels, NET_ACCESS_LEVEL_COUNT, &request->level);
+    ImGui::EndDisabled();
+    if (request->waiting)
+    {
+        net_window_waiting_leds(piccolo_text(strings, Str::net_request_waiting));
+        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        {
+            net_access_refuse_pairing(access, request->peer);
+            net_pairing_request_close(request);
+        }
+    }
+    else
+    {
+        bool complete = net_pair_code_valid(request->code);
+        ImGui::BeginDisabled(!complete);
+        if (retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete))
+        {
+            if (net_access_answer_pairing(access, request->peer, request->code,
+                                          static_cast<NetAccessLevel>(request->level)))
+            {
+                request->waiting = true;
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (retro_ui_button(piccolo_text(strings, Str::net_request_refuse)))
+        {
+            net_access_refuse_pairing(access, request->peer);
+            net_pairing_request_close(request);
+        }
+    }
+    ImGui::End();
+}
+
+// --- TOOLS > INVITE ---------------------------------------------------------------
+
+void net_invite_open(NetInvite* invite)
+{
+    *invite = {};
+    invite->open = true;
+    invite->level = static_cast<uint32_t>(NetAccessLevel::gamepad);
+    invite->focus = true;
+}
+
+void net_invite_close(NetInvite* invite, NetAccess* access)
+{
+    if (access != nullptr && invite->waiting)
+    {
+        net_access_end_invite(access);
+    }
+    *invite = {};
+}
+
+bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event)
+{
+    if (!invite->open || !invite->waiting || invite->answered || event->retry)
+    {
+        return false;   // a wrong code's new request goes to the request dialog: its new code is typed there
+    }
+    if (!net_access_answer_pairing(access, event->peer, invite->code, static_cast<NetAccessLevel>(invite->level)))
+    {
+        return false;
+    }
+    invite->answered = true;
+    invite->peer = event->peer;
+    return true;
+}
+
+//   +- INVITE --------------------------------------------------+
+//   |  TYPE THE CODE THE OTHER DEVICE SHOWS (TOOLS > PAIR >      |
+//   |  INTERNET, OR PICCOLETTO'S PAIR).                          |
+//   |  [482193706]                                               |
+//   |  ACCESS [GAMEPAD][STREAM][SHARE][FULL]                     |
+//   |                                     [ALLOW] [CANCEL]       |
+//   +-----------------------------------------------------------+
+// After ALLOW: waiting (LEDs) until paired (it closes then).
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings)
+{
+    if (!invite->open)
+    {
+        return;
+    }
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    char title[96];
+    std::snprintf(title, sizeof(title), "%s###invite", piccolo_text(strings, Str::net_invite_title));
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoSavedSettings;
+    bool keep = true;
+    if (!ImGui::Begin(title, &keep, flags))
+    {
+        ImGui::End();
+        return;
+    }
+    if (access == nullptr)
+    {
+        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_off));
+    }
+    else
+    {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+        ImGui::TextUnformatted(piccolo_text(strings, Str::net_invite_text));
+        ImGui::PopTextWrapPos();
+        ImGui::BeginDisabled(invite->waiting);
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000000000").x);
+        if (invite->focus)
+        {
+            ImGui::SetKeyboardFocusHere();
+            invite->focus = false;
+        }
+        retro_ui_push_field_text();
+        bool enter = ImGui::InputText("##invite_code", invite->code, sizeof(invite->code),
+                                      ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+        retro_ui_pop_field_text();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(piccolo_text(strings, Str::net_request_access));
+        ImGui::SameLine();
+        const char* labels[NET_ACCESS_LEVEL_COUNT];
+        for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
+        {
+            labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
+        }
+        retro_ui_choice_buttons("##invite_access", labels, NET_ACCESS_LEVEL_COUNT, &invite->level);
+        ImGui::EndDisabled();
+        if (invite->waiting)
+        {
+            net_window_waiting_leds(piccolo_text(strings, invite->answered ? Str::net_request_waiting
+                                                                           : Str::net_invite_waiting));
+        }
+        else
+        {
+            bool complete = net_pair_code_valid(invite->code);
+            ImGui::BeginDisabled(!complete);
+            if ((retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete)) &&
+                net_access_invite(access, invite->code))
+            {
+                invite->waiting = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+        }
+        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        {
+            keep = false;
+        }
+    }
+    ImGui::End();
+    if (!keep)
+    {
+        net_invite_close(invite, access);
+    }
 }

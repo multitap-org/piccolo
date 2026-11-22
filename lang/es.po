@@ -2983,50 +2983,6 @@ msgctxt "net_listen_failed"
 msgid "THE PORT COULD NOT BE OPENED (IN USE?)"
 msgstr "NO SE PUDO ABRIR EL PUERTO (¿EN USO?)"
 
-msgctxt "net_section_pairing"
-msgid "PAIRING"
-msgstr "VINCULAR"
-
-msgctxt "net_pair_button"
-msgid "PAIR A DEVICE"
-msgstr "VINCULAR UN DISPOSITIVO"
-
-msgctxt "net_pair_button_help"
-msgid "Shows a code to type on the other device."
-msgstr "Muestra un código para escribir en el otro dispositivo."
-
-msgctxt "net_pair_code"
-msgid "CODE"
-msgstr "CÓDIGO"
-
-msgctxt "net_pair_instructions"
-msgid "Type this code on the other device. It changes after a wrong try."
-msgstr "Escribe este código en el otro dispositivo. Cambia después de un intento fallido."
-
-msgctxt "net_pair_validity"
-msgid "VALIDITY"
-msgstr "VALIDEZ"
-
-msgctxt "net_pair_stop"
-msgid "STOP"
-msgstr "DETENER"
-
-msgctxt "net_pair_refresh"
-msgid "REFRESH"
-msgstr "RENOVAR"
-
-msgctxt "net_pair_copy_link"
-msgid "COPY LINK"
-msgstr "COPIAR ENLACE"
-
-msgctxt "net_pair_qr_help"
-msgid "From another network (mobile data, a browser): scan this code or open the link, then type the code above."
-msgstr "Desde otra red (datos móviles, un navegador): escanea este código o abre el enlace, y luego escribe el código de arriba."
-
-msgctxt "net_pair_copy_link_help"
-msgid "Copies the pair link: a device that isn't on this network (mobile data, a browser) opens it, then types the code."
-msgstr "Copia el enlace para emparejar: un dispositivo que no está en esta red (datos móviles, un navegador) lo abre y luego escribe el código."
-
 msgctxt "net_section_devices"
 msgid "PAIRED DEVICES"
 msgstr "DISPOSITIVOS VINCULADOS"
@@ -3054,12 +3010,8 @@ msgid "PAIRED WITH"
 msgstr "VINCULADO CON"
 
 msgctxt "status_net_pairing_failed"
-msgid "WRONG PAIRING CODE: A NEW ONE IS SHOWN"
-msgstr "CÓDIGO DE VINCULACIÓN INCORRECTO: SE MUESTRA UNO NUEVO"
-
-msgctxt "status_net_pairing_closed"
-msgid "PAIRING CLOSED"
-msgstr "VINCULACIÓN CERRADA"
+msgid "PAIRING FAILED: TOO MANY WRONG CODES"
+msgstr "VINCULACIÓN FALLIDA: DEMASIADOS CÓDIGOS ERRÓNEOS"
 
 
 msgctxt "net_device_access_help"
@@ -3078,21 +3030,21 @@ msgctxt "net_access_full"
 msgid "FULL"
 msgstr "COMPLETO"
 
-msgctxt "net_access_owner"
-msgid "OWNER"
-msgstr "DUEÑO"
+msgctxt "net_access_share"
+msgid "SHARE"
+msgstr "COMPARTIR"
 
 msgctxt "net_owner_confirm_title"
-msgid "OWNER ACCESS"
-msgstr "ACCESO DE DUEÑO"
+msgid "FILE ACCESS"
+msgstr "ACCESO A ARCHIVOS"
 
 msgctxt "net_owner_confirm_text"
-msgid "THIS DEVICE WILL BE ABLE TO COPY GAMES, SAVES AND STATES FROM THIS PICCOLO'S SHARED FOLDERS, AND TO WRITE FILES INTO THEM. GIVE IT OWNER ACCESS?"
-msgstr "ESTE DISPOSITIVO PODRÁ COPIAR JUEGOS, PARTIDAS Y ESTADOS DE LAS CARPETAS COMPARTIDAS DE ESTE PICCOLO, Y ESCRIBIR ARCHIVOS EN ELLAS. ¿DARLE ACCESO DE DUEÑO?"
+msgid "THIS DEVICE WILL BE ABLE TO COPY GAMES, SAVES AND STATES FROM THIS PICCOLO'S SHARED FOLDERS, AND TO WRITE FILES INTO THEM. GIVE IT THAT ACCESS?"
+msgstr "ESTE DISPOSITIVO PODRÁ COPIAR JUEGOS, PARTIDAS GUARDADAS Y ESTADOS DE LAS CARPETAS COMPARTIDAS DE ESTE PICCOLO, Y ESCRIBIR ARCHIVOS EN ELLAS. ¿LE DAS ESE ACCESO?"
 
 msgctxt "net_owner_confirm_yes"
-msgid "GIVE OWNER ACCESS"
-msgstr "DAR ACCESO DE DUEÑO"
+msgid "GIVE ACCESS"
+msgstr "DAR ACCESO"
 
 msgctxt "net_owner_cancel"
 msgid "CANCEL"
@@ -3307,8 +3259,8 @@ msgid "THE NETWORK COULDN'T START (SEE THE LOG)."
 msgstr "LA RED NO PUDO ARRANCAR (MIRA EL REGISTRO)."
 
 msgctxt "share_needs_owner"
-msgid "CONNECTED, BUT THIS PICCOLO DIDN'T GIVE US OWNER ACCESS. GIVE IT ON THAT PICCOLO: SETTINGS > NETWORK, THIS DEVICE, OWNER."
-msgstr "CONECTADO, PERO ESTE PICCOLO NO NOS DIO ACCESO DE DUEÑO. DALO EN ESE PICCOLO: AJUSTES > RED, ESTE DISPOSITIVO, DUEÑO."
+msgid "CONNECTED, BUT THAT PICCOLO DIDN'T GIVE US SHARE ACCESS. GIVE IT THERE: SETTINGS > NETWORK, THIS DEVICE, SHARE."
+msgstr "CONECTADO, PERO ESE PICCOLO NO NOS DIO ACCESO PARA COMPARTIR. DALO ALLÁ: AJUSTES > RED, ESTE DISPOSITIVO, COMPARTIR."
 
 msgctxt "share_disconnect"
 msgid "DISCONNECT"
@@ -3323,12 +3275,12 @@ msgid "LOOKING... (THE OTHER PICCOLO NEEDS NETWORK ON IN SETTINGS > NETWORK)"
 msgstr "BUSCANDO... (EL OTRO PICCOLO NECESITA LA RED ACTIVADA EN AJUSTES > RED)"
 
 msgctxt "share_code"
-msgid "CODE"
-msgstr "CÓDIGO"
+msgid "YOUR CODE"
+msgstr "TU CÓDIGO"
 
 msgctxt "share_code_help"
-msgid "The first time only: the 6 digits the other piccolo shows after SETTINGS > NETWORK > PAIR A DEVICE."
-msgstr "Sólo la primera vez: los 6 dígitos que muestra el otro piccolo tras AJUSTES > RED > VINCULAR UN DISPOSITIVO."
+msgid "The first time only: the other piccolo asks for this code; type it there."
+msgstr "Solo la primera vez: el otro piccolo pide este código; escríbelo allá."
 
 msgctxt "share_connect"
 msgid "CONNECT"
@@ -3366,13 +3318,13 @@ msgctxt "share_internet_help"
 msgid "Through the beacon (SETTINGS > NETWORK > BEACON SERVER). The other piccolo needs INTERNET on."
 msgstr "A través del beacon (AJUSTES > RED > SERVIDOR BEACON). El otro piccolo necesita INTERNET activado."
 
-msgctxt "share_pair_link"
-msgid "PAIR LINK"
-msgstr "ENLACE PARA VINCULAR"
+msgctxt "share_pair_internet"
+msgid "A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)"
+msgstr "UN PICCOLO EN OTRA RED (SIN VINCULAR)"
 
-msgctxt "share_pair_link_help"
-msgid "Not paired yet and not on this network: paste the link the other piccolo copies in PAIR A DEVICE (with INTERNET on), and type its code."
-msgstr "Sin vincular y fuera de esta red: pega el enlace que copia el otro piccolo en VINCULAR UN DISPOSITIVO (con INTERNET activado) y escribe su código."
+msgctxt "share_pair_internet_help"
+msgid "CONNECT shows YOUR CODE: type it on the other piccolo in TOOLS > INVITE. Both need the same BEACON SERVER."
+msgstr "CONECTAR muestra TU CÓDIGO: escríbelo en el otro piccolo en HERRAMIENTAS > INVITAR. Los dos necesitan el mismo SERVIDOR BEACON."
 
 msgctxt "share_refused_host_offline"
 msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."
@@ -3958,3 +3910,63 @@ msgstr "CONFIGURACIÓN DEL CORE"
 msgctxt "menu_core_config"
 msgid "CORE CONFIGURATION..."
 msgstr "CONFIGURACIÓN DEL CORE..."
+
+msgctxt "net_request_title"
+msgid "PAIRING REQUEST"
+msgstr "SOLICITUD DE VINCULACIÓN"
+
+msgctxt "net_request_text"
+msgid "WANTS TO PAIR. TYPE THE CODE ON ITS SCREEN."
+msgstr "QUIERE VINCULARSE. ESCRIBE EL CÓDIGO DE SU PANTALLA."
+
+msgctxt "net_request_wrong"
+msgid "WRONG CODE. TYPE THE NEW ONE ON ITS SCREEN."
+msgstr "CÓDIGO ERRÓNEO. ESCRIBE EL NUEVO DE SU PANTALLA."
+
+msgctxt "net_request_access"
+msgid "ACCESS"
+msgstr "ACCESO"
+
+msgctxt "net_request_allow"
+msgid "ALLOW"
+msgstr "PERMITIR"
+
+msgctxt "net_request_refuse"
+msgid "REFUSE"
+msgstr "RECHAZAR"
+
+msgctxt "net_request_waiting"
+msgid "CONNECTING..."
+msgstr "CONECTANDO..."
+
+msgctxt "net_kind_piccolo"
+msgid "PICCOLO"
+msgstr "PICCOLO"
+
+msgctxt "net_kind_piccoletto"
+msgid "PICCOLETTO"
+msgstr "PICCOLETTO"
+
+msgctxt "pause_cause_pairing"
+msgid "PAIRING REQUEST"
+msgstr "SOLICITUD DE VINCULACIÓN"
+
+msgctxt "share_waiting"
+msgid "WAITING FOR THE OTHER PICCOLO"
+msgstr "ESPERANDO AL OTRO PICCOLO"
+
+msgctxt "menu_invite"
+msgid "INVITE"
+msgstr "INVITAR"
+
+msgctxt "net_invite_title"
+msgid "INVITE"
+msgstr "INVITAR"
+
+msgctxt "net_invite_text"
+msgid "TYPE THE CODE THE OTHER DEVICE SHOWS (ANOTHER PICCOLO'S TOOLS > PAIR > INTERNET, OR PICCOLETTO'S PAIR), AND WHAT IT MAY DO HERE."
+msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA EL OTRO DISPOSITIVO (HERRAMIENTAS > VINCULAR > INTERNET DE OTRO PICCOLO, O VINCULAR DE PICCOLETTO) Y LO QUE PODRÁ HACER AQUÍ."
+
+msgctxt "net_invite_waiting"
+msgid "WAITING FOR IT THROUGH THE INTERNET..."
+msgstr "ESPERÁNDOLO POR INTERNET..."
