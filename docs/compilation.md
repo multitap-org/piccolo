@@ -4,7 +4,97 @@ How to build piccolo from source, one section per platform. Every dependency
 except the toolchain and the Vulkan SDK headers is a git submodule in `deps/`,
 so a checkout with its submodules builds on its own.
 
+- [Linux (Debian / Ubuntu)](#linux-debian--ubuntu)
 - [Windows (MSYS2)](#windows-msys2)
+
+## Linux (Debian / Ubuntu)
+
+piccolo builds with the distribution's GCC, CMake and Vulkan headers; SDL and
+every other library come from `deps/`. Other distributions work the same with
+their own package names (SDL's `deps/SDL/docs/README-linux.md` lists them for
+Fedora and others).
+
+`tools/build-linux.sh` does it all in one go once the source is there
+(step 2): with `--deps` it first installs the packages of step 1 (apt, with
+sudo), then builds piccolo and librashader, installs them to
+`~/.local/share/piccolo` and adds a menu entry and a `piccolo` command in
+`~/.local/bin` (`--debug`, `--test`, `--no-librashader`, `--no-desktop`;
+`--help` lists them).
+
+### 1. The packages
+
+```sh
+sudo apt-get install --no-install-recommends git build-essential pkg-config cmake ninja-build \
+    libvulkan-dev libssl-dev \
+    libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+    libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev \
+    libegl-dev libgl-dev libgles-dev libdrm-dev libgbm-dev \
+    libasound2-dev libpulse-dev libpipewire-0.3-dev \
+    libdbus-1-dev libudev-dev libibus-1.0-dev \
+    cargo
+```
+
+| Package        | What for |
+|----------------|----------|
+| `build-essential`, `cmake`, `ninja-build`, `pkg-config` | the build (CMake 3.25 or newer) |
+| `libvulkan-dev` | the Vulkan headers and loader to link against |
+| `libssl-dev`   | TLS / DTLS for WebRTC (`deps/libdatachannel`) |
+| `libx11-dev` ... `libibus-1.0-dev` | SDL's X11, Wayland, OpenGL, audio and input backends |
+| `cargo`        | only for `librashader.so` (shader presets, step 5); optional |
+
+librashader needs a recent Rust. If the distribution's `cargo` is too old
+(the build fails in step 5), install a current one with
+[rustup](https://rustup.rs/) instead.
+
+### 2. Get the source
+
+The same as on Windows ([step 2](#2-get-the-source) there, without the
+`core.autocrlf` line): the clone, the submodules and, optionally, the Test
+libretro core.
+
+### 3. Configure and build
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+After building, piccolo is copied to its folder, `~/.local/share/piccolo`
+(`$XDG_DATA_HOME/piccolo`): `piccolo`, `lang/`, `layouts/`, `themes/`,
+`shaders/` and `cores/test_libretro.so`. Files already there are left alone.
+The options are the ones of the Windows table below
+(`-DMULTITAP_PICCOLO_DIR`, `-DMULTITAP_COPY_FROM_WORKTREE=ON`, ...).
+
+### 4. Run the tests (optional)
+
+```sh
+ctest --test-dir build --output-on-failure
+```
+
+### 5. librashader (optional: shader presets)
+
+piccolo loads `librashader.so` at run time from its own folder (see the
+Windows [step 6](#6-librashader-optional-shader-presets) for the pinned
+commit):
+
+```sh
+CARGO_TARGET_DIR=build-librashader \
+    cargo build --manifest-path deps/librashader/Cargo.toml -p librashader-capi \
+    --release --locked --no-default-features --features runtime-vulkan
+cp build-librashader/release/liblibrashader_capi.so ~/.local/share/piccolo/librashader.so
+cp deps/librashader/LICENSE.md ~/.local/share/piccolo/librashader-LICENSE.md
+```
+
+### 6. Menu entry (optional)
+
+```sh
+sed "s|^Exec=.*|Exec=\"$HOME/.local/share/piccolo/piccolo\"|" assets/linux/site.multitap.piccolo.desktop \
+    > ~/.local/share/applications/site.multitap.piccolo.desktop
+cp assets/branding/piccolo-icon.svg ~/.local/share/icons/hicolor/scalable/apps/site.multitap.piccolo.svg
+```
+
+The file name is the app id piccolo gives its window, so the desktop shows
+its icon. With the Flatpak installed too, this entry hides the Flatpak's.
 
 ## Windows (MSYS2)
 
