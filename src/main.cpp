@@ -106,6 +106,7 @@ struct App
 
     ImFont* pixel_font = nullptr;   // piccolo's pixel font as an ImGui font
     int32_t ui_scale   = 1;         // window pixels per retro pixel
+    ImVec2  ui_display_size = ImVec2(0.0f, 0.0f);   // ImGui's display size last frame (a turn changes it)
     char    status[256] = "";   // set at startup, in the chosen language
 
     CoreSession session = {};
@@ -4414,6 +4415,18 @@ static bool app_frame(App* app)
     if (!app->headless.on && app_shell_begin_frame(&app->shell))
     {
         app->ui_scale = retro_ui_scale_for_window(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
+        // A phone turned (or the window resized): the open windows back to
+        // the middle, or they'd keep the old one, half off the screen. Not on
+        // the first frame (nothing is up yet).
+        {
+            const ImGuiIO& io = ImGui::GetIO();
+            bool resized = io.DisplaySize.x != app->ui_display_size.x || io.DisplaySize.y != app->ui_display_size.y;
+            if (resized && app->ui_display_size.x > 0.0f)
+            {
+                retro_ui_center_windows();
+            }
+            app->ui_display_size = io.DisplaySize;
+        }
 
         // Where the touch gamepad goes (under the picture upright, if it fits),
         // before the picture is placed.
