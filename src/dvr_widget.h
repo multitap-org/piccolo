@@ -20,6 +20,8 @@
 //                      button focused: BACK TO NOW)
 //       Y              WATCH: the recording plays / pauses (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
+//     A move that can't go further (the oldest or newest frame) lands on
+//     the end and the selected thumbnail bounces, its border blinking.
 //     Each action is logged (what it did to the cursor).
 //     The hints name the keyboard's keys when it was used last.
 //   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
@@ -65,6 +67,10 @@ struct DvrWidget
     bool keyboard = false;
     // UP went to the exit button: ACCEPT is BACK TO NOW.
     bool exit_focused = false;
+
+    // A move hit an end of the history: the selected thumbnail bounces.
+    int32_t  bump_direction = 0;   // -1 the oldest, 1 the newest
+    uint64_t bump_ms        = 0;
 
     // Thumbnails cost a load and a frame, twice: with slow loads (bsnes,
     // 20 ms) they're spaced out so stepping stays smooth.
