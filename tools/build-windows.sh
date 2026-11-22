@@ -5,6 +5,7 @@
 # Run from the MSYS2 UCRT64 shell, anywhere in the checkout:
 #
 #   tools/build-windows.sh                  Release, deployed
+#   tools/build-windows.sh --deps           first install the packages (pacman)
 #   tools/build-windows.sh --debug          Debug with warnings as errors (build-debug/)
 #   tools/build-windows.sh --test           also run the tests (ctest)
 #   tools/build-windows.sh --no-librashader skip librashader (no Rust needed)
@@ -28,14 +29,16 @@
 set -eu
 
 build_type=Release
+install_deps=0
 run_tests=0
 with_librashader=1
 for arg in "$@"; do
     case "$arg" in
+        --deps) install_deps=1 ;;
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-windows.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -45,9 +48,35 @@ case "${MSYSTEM:-}" in
     *) echo "build-windows.sh: run it from the MSYS2 UCRT64 (or CLANGARM64) shell, not '${MSYSTEM:-none}'" >&2; exit 1 ;;
 esac
 
+# The packages, the same list as docs/compilation.md step 1, for this
+# environment (MINGW_PACKAGE_PREFIX: mingw-w64-ucrt-x86_64 or
+# mingw-w64-clang-aarch64). Only -S --needed: never -Sy (MSYS2 doesn't
+# support partial upgrades), and not -Syu either (an update of MSYS2 itself
+# closes the shell): that one is left to the user.
+if [ "$install_deps" = 1 ]; then
+    if [ "$MSYSTEM" = CLANGARM64 ]; then
+        compiler=clang
+    else
+        compiler=gcc
+    fi
+    packages="git"
+    for package in $compiler cmake ninja vulkan-devel openssl ntldd; do
+        packages="$packages $MINGW_PACKAGE_PREFIX-$package"
+    done
+    if [ "$with_librashader" = 1 ]; then
+        packages="$packages $MINGW_PACKAGE_PREFIX-rust"
+    fi
+    echo "== packages (pacman)"
+    # shellcheck disable=SC2086 # packages is a list
+    if ! pacman -S --needed --noconfirm $packages; then
+        echo "build-windows.sh: pacman failed; update MSYS2 first with pacman -Syu (until nothing is left), then run this again" >&2
+        exit 1
+    fi
+fi
+
 for tool in git cmake ninja ntldd cygpath; do
     if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "build-windows.sh: $tool not found (packages: docs/compilation.md, step 1)" >&2
+        echo "build-windows.sh: $tool not found (tools/build-windows.sh --deps, or docs/compilation.md step 1)" >&2
         exit 1
     fi
 done
