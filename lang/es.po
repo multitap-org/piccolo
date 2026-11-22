@@ -3970,3 +3970,83 @@ msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA EL OTRO DISPOSITIVO (HERRAMIENTAS > VINCU
 msgctxt "net_invite_waiting"
 msgid "WAITING FOR IT THROUGH THE INTERNET..."
 msgstr "ESPERÁNDOLO POR INTERNET..."
+
+msgctxt "menu_pair"
+msgid "PAIR"
+msgstr "VINCULAR"
+
+msgctxt "pair_title"
+msgid "PAIR"
+msgstr "VINCULAR"
+
+msgctxt "pair_on_network"
+msgid "PICCOLOS ON THIS NETWORK"
+msgstr "PICCOLOS EN ESTA RED"
+
+msgctxt "pair_paired"
+msgid "PAIRED"
+msgstr "VINCULADO"
+
+msgctxt "pair_button"
+msgid "PAIR"
+msgstr "VINCULAR"
+
+msgctxt "pair_internet"
+msgid "INTERNET"
+msgstr "INTERNET"
+
+msgctxt "pair_failed"
+msgid "IT DIDN'T PAIR (REFUSED, OR NOBODY TYPED THE CODE). A NEW CODE IS SHOWN."
+msgstr "NO SE VINCULÓ (RECHAZADO, O NADIE ESCRIBIÓ EL CÓDIGO). SE MUESTRA UN CÓDIGO NUEVO."
+
+msgctxt "pair_type_code"
+msgid "TYPE THIS CODE ON THE OTHER PICCOLO: IT HAS JUST BEEN ASKED THERE."
+msgstr "ESCRIBE ESTE CÓDIGO EN EL OTRO PICCOLO: SE LO ACABA DE PEDIR."
+
+msgctxt "pair_give_code"
+msgid "GIVE THIS CODE TO THE OTHER PICCOLO (CHAT, VOICE...): ITS USER TYPES IT IN TOOLS > INVITE."
+msgstr "PASA ESTE CÓDIGO AL OTRO PICCOLO (CHAT, VOZ...): SU USUARIO LO ESCRIBE EN HERRAMIENTAS > INVITAR."
+
+msgctxt "pair_done"
+msgid "PAIRED WITH"
+msgstr "VINCULADO CON"
+
+msgctxt "pair_back_question"
+msgid "GIVE IT THE SAME ACCESS TO THIS PICCOLO:"
+msgstr "¿LE DAS EL MISMO ACCESO A ESTE PICCOLO?:"
+
+msgctxt "pair_back_off"
+msgid "TO LET IT COME HERE TOO, TURN ON ALLOW CONNECTIONS (SETTINGS > NETWORK) AND PAIR FROM THE OTHER SIDE."
+msgstr "PARA QUE TAMBIÉN PUEDA VENIR AQUÍ, ACTIVA PERMITIR CONEXIONES (AJUSTES > RED) Y VINCULA DESDE EL OTRO LADO."
+
+msgctxt "pair_yes"
+msgid "YES"
+msgstr "SÍ"
+
+msgctxt "pair_no"
+msgid "NO"
+msgstr "NO"
+
+msgctxt "pair_ok"
+msgid "OK"
+msgstr "OK"
+
+msgctxt "net_section_hosts"
+msgid "PICCOLOS I CONNECT TO"
+msgstr "PICCOLOS A LOS QUE ME CONECTO"
+
+msgctxt "net_no_hosts"
+msgid "NONE YET (TOOLS > PAIR)"
+msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
+
+msgctxt "net_host_forget_help"
+msgid "Forgets this piccolo here (and there too, if connected now)."
+msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."
+
+msgctxt "net_online"
+msgid "ONLINE"
+msgstr "EN LÍNEA"
+
+msgctxt "net_offline"
+msgid "OFFLINE"
+msgstr "DESCONECTADO"
