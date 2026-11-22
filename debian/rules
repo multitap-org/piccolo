@@ -74,3 +74,8 @@ override_dh_auto_install:
 override_dh_auto_clean:
 	dh_auto_clean
 	rm -rf $(RUST_TARGET_DIR) debian/cargo-home
+
+# dh_clean deletes every *.orig file, and each vendored crate has a
+# Cargo.toml.orig that cargo checks against .cargo-checksum.json.
+override_dh_clean:
+	dh_clean -XCargo.toml.orig
