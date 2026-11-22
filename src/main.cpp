@@ -4639,6 +4639,7 @@ static bool app_frame(App* app)
         // The browser's page: its strip hides while a game is played, and an
         // upright phone gives the picture only the height its shape needs.
         web_pad_tell_page(game_has_keyboard(app), app->shown_aspect);
+        web_pad_set_vibrate(settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
         // The touch gamepad over the game, a GAME-mode device (it takes touches
         // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
         // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the

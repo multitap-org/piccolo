@@ -45,3 +45,7 @@ bool web_pad_take_main_menu();
 // `aspect` = the shown picture's width / height (0: none). Only a change
 // reaches the page.
 void web_pad_tell_page(bool playing, double aspect);
+
+// SETTINGS' touch pad VIBRATE: the page's pad buzzes on a press only with it
+// on, as piccolo's own touch pad does. Only a change reaches the page.
+void web_pad_set_vibrate(bool on);
