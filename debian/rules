@@ -1,0 +1,76 @@
+#!/usr/bin/make -f
+# piccolo's Debian / Ubuntu package (the PPA). The source is the tarball of
+# tools/make-source-tarball.sh: every submodule inside deps/ and librashader's
+# crates in vendor/librashader, because Launchpad builds without network.
+#
+# The install layout is the Flatpak's (flatpak/site.multitap.piccolo.yml),
+# with /usr for /app: piccolo reads lang/, layouts/, themes/ and shaders/ next
+# to its program (SDL_GetBasePath, which follows the /usr/bin symlink), so
+# they all stay together in /usr/lib/piccolo. Settings, saves and cores are
+# in ~/.local/share/piccolo, as for a build from source.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/buildopts.mk
+
+BUILD_DIR = debian/build
+RUST_TARGET_DIR = $(CURDIR)/debian/build-librashader
+PKG_DIR = debian/piccolo
+APP_DIR = $(PKG_DIR)/usr/lib/piccolo
+APP_ID = site.multitap.piccolo
+
+# A series whose default Rust is too old (24.04 has 1.75) builds with a
+# versioned one (cargo-1.91, rustc-1.91: tools/make-ppa-source.sh changes the
+# Build-Depends for it), which lives in /usr/lib/rust-1.NN/bin. Newer series
+# have nothing there and use the default cargo.
+RUST_BIN_DIR = $(lastword $(sort $(wildcard /usr/lib/rust-1.*/bin)))
+ifneq ($(RUST_BIN_DIR),)
+RUST_PATH = PATH=$(RUST_BIN_DIR):$$PATH RUSTC=$(RUST_BIN_DIR)/rustc
+endif
+CARGO_JOBS =
+ifneq ($(DEB_BUILD_OPTION_PARALLEL),)
+CARGO_JOBS = -j$(DEB_BUILD_OPTION_PARALLEL)
+endif
+
+%:
+	dh $@ --buildsystem=cmake+ninja --builddirectory=$(BUILD_DIR)
+
+# Release like the Flatpak and build-linux.sh (NDEBUG, no Vulkan validation).
+# MULTITAP_PICCOLO_DIR empty: don't copy the build to ~/.local/share.
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DMULTITAP_PICCOLO_DIR= \
+		-DMULTITAP_BUILD_TESTS=OFF \
+		-DMULTITAP_WARNINGS_AS_ERRORS=OFF
+
+# piccolo and Test libretro (it ships in every package), then librashader:
+# only its C API with the Vulkan runtime, from the vendored crates.
+override_dh_auto_build:
+	cmake --build $(BUILD_DIR) --target piccolo test_libretro
+	$(RUST_PATH) CARGO_HOME=$(CURDIR)/debian/cargo-home CARGO_TARGET_DIR=$(RUST_TARGET_DIR) \
+		cargo build --offline --locked --release $(CARGO_JOBS) \
+		--manifest-path deps/librashader/Cargo.toml -p librashader-capi \
+		--no-default-features --features runtime-vulkan \
+		--config 'source.crates-io.replace-with="vendored-sources"' \
+		--config 'source.vendored-sources.directory="$(CURDIR)/vendor/librashader"'
+
+# No tests here: they need a display and a GPU.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -Dm755 $(BUILD_DIR)/piccolo $(APP_DIR)/piccolo
+	cp -r $(BUILD_DIR)/lang $(BUILD_DIR)/layouts $(BUILD_DIR)/themes $(BUILD_DIR)/shaders $(APP_DIR)/
+	install -Dm644 $(BUILD_DIR)/deps/test-libretro/test_libretro.so $(APP_DIR)/cores/test_libretro.so
+	install -Dm644 $(RUST_TARGET_DIR)/release/liblibrashader_capi.so $(APP_DIR)/librashader.so
+	install -Dm644 deps/librashader/LICENSE.md $(PKG_DIR)/usr/share/doc/piccolo/librashader-LICENSE.md
+	install -Dm644 assets/linux/$(APP_ID).desktop $(PKG_DIR)/usr/share/applications/$(APP_ID).desktop
+	install -Dm644 assets/linux/$(APP_ID).metainfo.xml $(PKG_DIR)/usr/share/metainfo/$(APP_ID).metainfo.xml
+	install -Dm644 assets/branding/piccolo-icon.svg $(PKG_DIR)/usr/share/icons/hicolor/scalable/apps/$(APP_ID).svg
+	for size in 16 24 32 48 64 128 256 512; do \
+		install -Dm644 assets/branding/png/piccolo-icon-$$size.png \
+			$(PKG_DIR)/usr/share/icons/hicolor/$${size}x$${size}/apps/$(APP_ID).png; \
+	done
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf $(RUST_TARGET_DIR) debian/cargo-home
