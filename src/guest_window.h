@@ -37,6 +37,8 @@
 #include "localization.h"
 #include "net_access.h"
 
+struct ImFont;
+
 enum class GuestWindowAction
 {
     none,
@@ -71,7 +73,7 @@ void guest_window_open(GuestWindow* window);
 // is off). `internet`: the beacon is on (a link needs it). `ports`: the
 // router, for who plays where.
 void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                       bool game, bool internet, const Localization* strings);
+                       bool game, bool internet, const Localization* strings, ImFont* pixel_font, int32_t scale);
 
 // The session is over (END, the game, quitting): guests told, link closed.
 void guest_window_end(GuestWindow* window, NetAccess* access);
