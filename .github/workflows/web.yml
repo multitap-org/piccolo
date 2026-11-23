@@ -113,11 +113,18 @@ jobs:
           curl -fsSI http://localhost:8080/sameboy/piccolo.wasm | tee wasm-headers.txt
           curl -fsSI http://localhost:8080/snes9x/piccolo.wasm > /dev/null
           curl -fsSI http://localhost:8080/_site/v1/site.css | tee css-headers.txt
+          # get-piccolo.app/play/ keeps the path: the same files under /play/.
+          curl -fsSI http://localhost:8080/play/sameboy/ | tee play-headers.txt
+          curl -fsSI http://localhost:8080/play/sameboy/piccolo.wasm > /dev/null
+          curl -fsSI http://localhost:8080/play/piccoletto/ > /dev/null
+          curl -sI http://localhost:8080/play/sameboy | tee play-redirect.txt
           docker stop piccolo-web
           grep -qi '^cross-origin-opener-policy: same-origin' page-headers.txt
           grep -qi '^cross-origin-embedder-policy: require-corp' page-headers.txt
           grep -qi '^content-type: application/wasm' wasm-headers.txt
           grep -qi '^content-type: text/css' css-headers.txt
+          grep -qi '^cross-origin-embedder-policy: require-corp' play-headers.txt
+          grep -qi '^location: /play/sameboy/' play-redirect.txt
 
       - name: Publish the image (GHCR)
         if: github.event_name == 'push'
@@ -143,3 +150,24 @@ jobs:
         with:
           name: piccolo-web
           path: web/build/dist/*.zip
+
+  # Redeploys get-piccolo.app/play/ (the piccolo-web stack on the Multitap VPS)
+  # once :main is on GHCR: Portainer's stack webhook re-pulls the image and
+  # recreates the container. The webhook URL is the PORTAINER_WEBHOOK secret
+  # (the URL is the credential); without it the job does nothing. Tag builds
+  # come through release.yml without secrets, so they don't redeploy.
+  deploy:
+    needs: web
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Call the Portainer webhook
+        env:
+          WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "PORTAINER_WEBHOOK is not set: nothing to deploy"
+            exit 0
+          fi
+          curl -fsS -X POST --retry 3 --retry-all-errors --max-time 120 -o /dev/null -w "HTTP %{http_code}\n" "$WEBHOOK"

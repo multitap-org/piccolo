@@ -1,7 +1,7 @@
 #pragma once
 
 // The page's touch gamepad (the browser build): buttons drawn in HTML by the
-// core page (web/page/piccolo-pad.js) under or beside the picture, so the
+// core page (frontends-common's web/multitap-pad.js) under or beside the picture, so the
 // picture keeps the whole canvas. A controller like any other in the input
 // router ("SCREEN PAD", a device that hands a RetroPad, as the on-screen pad
 // and phones' pads do), on port 1 from the moment it shows without taking it

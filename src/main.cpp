@@ -5564,7 +5564,7 @@ static bool app_frame(App* app)
                 net_service_lock(&app->net_service);
             }
             guest_window_draw(&app->guest_window, access, &app->input_net, &app->input, game_running(app),
-                              !app->net_beacon_applied.empty(), &app->strings);
+                              !app->net_beacon_applied.empty(), &app->strings, app->pixel_font, app->ui_scale);
             GuestWindowAction action = app->guest_window.action;
             app->guest_window.action = GuestWindowAction::none;
             if (access != nullptr && (action == GuestWindowAction::make_link || action == GuestWindowAction::new_link))
