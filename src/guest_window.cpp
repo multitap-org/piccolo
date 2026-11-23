@@ -369,6 +369,13 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
             break;
     }
     ImGui::TextDisabled("%s", piccolo_text(strings, card));
+    if (card == Str::guests_card_failed && window->card.error[0] != '\0')
+    {
+        // Why, as net_http said it (there's no console on Windows to read it from).
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetFontSize() * 22.0f);
+        ImGui::TextDisabled("%s", window->card.error);
+        ImGui::PopTextWrapPos();
+    }
     ImGui::EndGroup();
     ImGui::Spacing();
     if (retro_ui_button(piccolo_text(strings, Str::guests_end)))
