@@ -111,6 +111,15 @@ if [ -n "$missing" ]; then
     # shellcheck disable=SC2086 # missing is a list
     git submodule update --init --recursive $missing
 fi
+# Their own submodules (libdatachannel's plog, usrsctp, libjuice...): when a
+# pin moves, the new commit's submodules start out not checked out. Only the
+# ones missing ('-' in git submodule status); nobody works inside those.
+for submodule in $submodules; do
+    if [ -f "$submodule/.gitmodules" ] && git -C "$submodule" submodule status --recursive | grep -q '^-'; then
+        echo "== submodules of $submodule"
+        git -C "$submodule" submodule update --init --recursive
+    fi
+done
 # Without --recursive: its own submodules are only its tests.
 if [ "$with_librashader" = 1 ] && [ ! -e deps/librashader/.git ]; then
     echo "== submodule: deps/librashader"
