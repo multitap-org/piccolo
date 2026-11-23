@@ -35,6 +35,7 @@ enum class GuestCardPixels
 };
 
 constexpr uint64_t GUEST_CARD_REFRESH_MS = 60000;
+constexpr uint64_t GUEST_PREPARE_MS = 15000;       // a new link waits this long for its room at most
 constexpr uint32_t GUEST_CARD_TRIES = 8;           // 404 / no answer: tried again, a second apart
 
 // The frame as XRGB8888 (the window's preview). False if it can't be converted.

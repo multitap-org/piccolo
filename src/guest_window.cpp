@@ -9,6 +9,7 @@
 
 #include "app_shell.h"
 #include "clipboard.h"
+#include "net_window.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
 
@@ -25,6 +26,8 @@ void guest_window_end(GuestWindow* window, NetAccess* access)
         net_access_guest_close(access);
     }
     window->live = false;
+    window->preparing = false;
+    window->prepare_sent = false;
     window->open = false;
     window->link_text[0] = '\0';
     net_guest_link_wipe(&window->link);
@@ -312,6 +315,17 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
 static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
                       const Localization* strings)
 {
+    if (window->preparing)
+    {
+        // Not shown until it works and has its card (main.cpp guest_update_locked).
+        net_window_waiting_leds(piccolo_text(strings, Str::guests_preparing));
+        ImGui::Spacing();
+        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        {
+            window->action = GuestWindowAction::end;
+        }
+        return;
+    }
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(piccolo_text(strings, Str::guests_link));
     ImGui::SameLine();

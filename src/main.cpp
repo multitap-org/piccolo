@@ -81,6 +81,9 @@
 #include "net_window.h"
 #include "guest_window.h"
 #include "net_guest.h"
+#if defined(PICCOLO_GUEST_CARD)
+#include "net_http.h"
+#endif
 #include "file_picker.h"
 #include "headless.h"
 #include "pixel_font.h"
@@ -778,6 +781,13 @@ static void open_guest_window(App* app)
 static void guest_make_link(App* app)
 {
     GuestWindow* window = &app->guest_window;
+#if defined(PICCOLO_GUEST_CARD)
+    // HTTP for the card, started here on the main thread (curl's setup isn't
+    // thread safe): before, only the core downloader started it, so on
+    // Windows (WinHTTP needs its session) every card failed until CORES had
+    // run (Andrés's log: "WinHTTP is not initialized", 12172).
+    net_http_init("piccolo/" PICCOLO_VERSION);
+#endif
     NetGuestLink link;
     if (!net_guest_link_make(&link))
     {
@@ -797,16 +807,11 @@ static void guest_make_link(App* app)
     window->live = true;
     SDL_Log("Guest link: open for \"%s\", %d seats, %s", window->title, window->seats,
             window->level == static_cast<uint32_t>(NetGuestLevel::play) ? "watch + play" : "watch");
-    // The card, with or without a picture: the game's name goes up either way.
-    // A send still going (NEW right after MAKE LINK) isn't waited for here,
-    // under the lock: the refresh sends the new card as soon as it ends.
-    if (guest_card_state(&window->card) == GuestCardState::sending)
-    {
-        window->next_refresh_ms = 0;
-        return;
-    }
-    guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
-    window->next_refresh_ms = SDL_GetTicks() + GUEST_CARD_REFRESH_MS;
+    // The link shows once its room is on the beacon and its card is sent
+    // (guest_update_locked): pasted anywhere, it has its card at once.
+    window->preparing = true;
+    window->prepare_sent = false;
+    window->prepare_started_ms = SDL_GetTicks();
 }
 
 // The session ends: END, the game closed or changed, networking off, quitting.
@@ -830,6 +835,29 @@ static void guest_update_locked(App* app)
     if (window->live && (!game_running(app) || app->game_starts != window->game_starts))
     {
         guest_end(app, &app->net_service.access);
+    }
+    // A new link: its card goes up once its room is joined (or after
+    // GUEST_PREPARE_MS: no WebRTC here, or a beacon that's slow), and the link
+    // shows when that send is done, sent or not.
+    if (window->live && window->preparing)
+    {
+        uint64_t now = SDL_GetTicks();
+        bool ready = net_access_guest_ready(&app->net_service.access) ||
+                     now - window->prepare_started_ms >= GUEST_PREPARE_MS;
+        GuestCardState state = guest_card_state(&window->card);
+        if (!window->prepare_sent && ready && state != GuestCardState::sending)
+        {
+            std::string beacon = guest_beacon_host(app);
+            guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+            window->prepare_sent = true;
+            window->next_refresh_ms = now + GUEST_CARD_REFRESH_MS;
+        }
+        else if (window->prepare_sent && state != GuestCardState::sending)
+        {
+            window->preparing = false;
+            SDL_Log("Guest link: ready (%s)", state == GuestCardState::sent ? "its card is up" : "no card");
+        }
+        return;
     }
     // A live link's picture follows the game (Andrés): taken again and sent
     // every GUEST_CARD_REFRESH_MS, unless the last send is still going.

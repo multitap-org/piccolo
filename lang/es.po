@@ -4198,3 +4198,7 @@ msgstr "DESCONECTADO"
 msgctxt "guests_no_screenshot"
 msgid "NO SCREENSHOT AVAILABLE"
 msgstr "SIN CAPTURA DISPONIBLE"
+
+msgctxt "guests_preparing"
+msgid "PREPARING THE LINK..."
+msgstr "PREPARANDO EL ENLACE..."

@@ -61,6 +61,12 @@ struct GuestWindow
     std::vector<uint8_t> png;                    // the card's picture, taken when the window opened
     GuestCardUpload card;
     uint64_t next_refresh_ms = 0;                // a live link takes the picture again then (GUEST_CARD_REFRESH_MS)
+    // MAKE LINK / NEW: the link shows only once it's ready (Andrés): its room
+    // on the beacon joined, and the card sent (or given up on), so a link
+    // pasted anywhere already has its card. GUEST_PREPARE_MS at most.
+    bool     preparing = false;
+    bool     prepare_sent = false;               // the card for this link is on its way
+    uint64_t prepare_started_ms = 0;
     // The same picture in the window (drawn like QUICK MENU's thumbnails).
     VideoTexture          preview;
     std::vector<uint32_t> preview_pixels;        // XRGB8888, uploaded on the next frame

@@ -888,6 +888,7 @@ guests_full = FULL
 guests_failures = COULDN'T CONNECT:
 guests_failures_tip = GUESTS WHOSE NETWORK AND THIS ONE CAN'T REACH EACH OTHER DIRECTLY. NOTHING IS RELAYED, SO THEY'RE TOLD SO.
 guests_no_screenshot = NO SCREENSHOT AVAILABLE
+guests_preparing = PREPARING THE LINK...
 guests_card_none = CARD: NO PICTURE (THE LINK STILL WORKS)
 guests_card_sending = CARD: SENDING...
 guests_card_ready = CARD: ON THE LINK
