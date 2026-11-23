@@ -84,6 +84,12 @@ done
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
 
+# The URLs the submodules are fetched from, back from .gitmodules: a checkout
+# whose .git/config points them at local folders can't fetch the missing
+# ones (git refuses the file transport for submodules). Checked-out
+# submodules keep their commit and branch.
+git submodule sync -q
+
 # The submodules of compilation.md step 2, only the ones not checked out yet
 # (no .git in their folder): one already there may be on a branch being
 # worked on, and `git submodule update` would move it back to the pinned
