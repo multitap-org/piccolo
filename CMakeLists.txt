@@ -383,7 +383,7 @@ if(TARGET frontend_download)
 endif()
 
 # Windows: the .exe's icon, as a resource (assets/windows/piccolo.ico, made by
-# tools/make_app_icon.py from the same PNGs as the window icon).
+# hosts-common's tools/make_app_icon.py from the same PNGs as the window icon).
 if(WIN32)
     enable_language(RC)
     set(PICCOLO_ICO "${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/piccolo.ico")

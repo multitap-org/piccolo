@@ -70,4 +70,4 @@ PNGs, with Inkscape:
 48-512 from `piccolo-icon.svg`, 24-32 from `piccolo-icon-small.svg`, 16 from
 `piccolo-icon-16.svg`. Then embed the window icon:
 
-    python3 tools/make_app_icon.py
+    python3 deps/common/hosts-common/tools/make_app_icon.py piccolo
