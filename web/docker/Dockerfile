@@ -7,3 +7,6 @@
 FROM nginx:1.27-alpine
 COPY --from=config nginx.conf /etc/nginx/conf.d/default.conf
 COPY . /usr/share/nginx/html/
+# get-piccolo.app serves this image under /play/ (a proxy location that keeps
+# the path): play -> . makes /play/<page> the same file as /<page>.
+RUN ln -s . /usr/share/nginx/html/play
