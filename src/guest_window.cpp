@@ -302,7 +302,7 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
 }
 
 void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                       bool game, bool internet, const Localization* strings)
+                       bool game, bool internet, const Localization* strings, ImFont* pixel_font, int32_t scale)
 {
     if (!window->open)
     {
@@ -315,11 +315,18 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                              ImGuiWindowFlags_NoSavedSettings;
     bool keep = true;
-    if (!ImGui::Begin(title, &keep, flags))
+    // Themed like every other window; the close button is the pixel font's X.
+    retro_ui_push_theme(pixel_font, scale);
+    if (!ImGui::Begin(title, nullptr, flags))
     {
         ImGui::End();
-        window->open = keep;
+        retro_ui_pop_theme();
         return;
+    }
+    retro_ui_begin_window(scale);
+    if (retro_ui_close_button())
+    {
+        keep = false;
     }
     if (access == nullptr)
     {
@@ -333,7 +340,9 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
     {
         draw_setup(window, game, internet, strings);
     }
+    retro_ui_end_window();
     ImGui::End();
+    retro_ui_pop_theme();
     if (!keep)
     {
         window->open = false;   // closing keeps a link (END ends it)
