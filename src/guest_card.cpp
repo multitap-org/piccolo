@@ -96,18 +96,51 @@ std::string guest_card_url(const char* beacon, const NetGuestLink* link)
     return std::string("https://") + beacon + "/join/" + link->room + "/card";
 }
 
+bool guest_card_frame_xrgb(const void* pixels, uint32_t width, uint32_t height, uint32_t pitch, GuestCardPixels format,
+                           std::vector<uint32_t>* out)
+{
+    out->clear();
+    if (pixels == nullptr || width == 0 || height == 0 || width > NET_GUEST_CARD_MAX_WIDTH ||
+        height > NET_GUEST_CARD_MAX_HEIGHT)
+    {
+        return false;
+    }
+    out->resize(static_cast<size_t>(width) * height);
+    if (!SDL_ConvertPixels(static_cast<int32_t>(width), static_cast<int32_t>(height), sdl_format(format), pixels,
+                           static_cast<int32_t>(pitch), SDL_PIXELFORMAT_XRGB8888, out->data(),
+                           static_cast<int32_t>(width * 4)))
+    {
+        out->clear();
+        return false;
+    }
+    return true;
+}
+
 static int upload_thread(void* user)
 {
     GuestCardUpload* upload = static_cast<GuestCardUpload*>(user);
     bool sent = false;
 #if defined(PICCOLO_GUEST_CARD)
-    sent = net_http_post(upload->url.c_str(), "application/octet-stream", upload->body.data(), upload->body.size(),
-                         &upload->status, upload->error, sizeof(upload->error)) &&
-           upload->status == 204;
-    if (!sent && upload->status != 0)
+    for (uint32_t attempt = 0; attempt < GUEST_CARD_TRIES && !sent; attempt++)
     {
-        std::snprintf(upload->error, sizeof(upload->error), "the beacon answered HTTP %u",
-                      static_cast<unsigned>(upload->status));
+        if (attempt > 0)
+        {
+            SDL_Delay(1000);
+        }
+        upload->status = 0;
+        bool answered = net_http_post(upload->url.c_str(), "application/octet-stream", upload->body.data(),
+                                      upload->body.size(), &upload->status, upload->error, sizeof(upload->error));
+        sent = answered && upload->status == 204;
+        if (answered && !sent)
+        {
+            std::snprintf(upload->error, sizeof(upload->error), "the beacon answered HTTP %u",
+                          static_cast<unsigned>(upload->status));
+        }
+        // Only "the room isn't there yet" (404) and no answer are worth a new try.
+        if (answered && upload->status != 404)
+        {
+            break;
+        }
     }
 #else
     std::snprintf(upload->error, sizeof(upload->error), "no HTTP in this build");

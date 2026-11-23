@@ -35,6 +35,7 @@
 #include "guest_card.h"
 #include "input_net.h"
 #include "localization.h"
+#include "video_texture.h"
 #include "net_access.h"
 
 enum class GuestWindowAction
@@ -57,6 +58,14 @@ struct GuestWindow
     uint32_t game_starts = 0;                    // the game the session belongs to (App::game_starts)
     std::vector<uint8_t> png;                    // the card's picture, taken when the window opened
     GuestCardUpload card;
+    uint64_t next_refresh_ms = 0;                // a live link takes the picture again then (GUEST_CARD_REFRESH_MS)
+    // The same picture in the window (drawn like QUICK MENU's thumbnails).
+    VideoTexture          preview;
+    std::vector<uint32_t> preview_pixels;        // XRGB8888, uploaded on the next frame
+    uint32_t              preview_width = 0;
+    uint32_t              preview_height = 0;
+    bool                  preview_pending = false;
+    bool                  has_preview = false;
     double   copied_at = -1.0;                   // COPY pressed (shows COPIED for a moment)
     // The port each guest was last told (NET_GUEST_PORT_MESSAGE), per peer.
     uint8_t  told_port[NET_MAX_PEERS] = {};
@@ -75,6 +84,12 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
 
 // The session is over (END, the game, quitting): guests told, link closed.
 void guest_window_end(GuestWindow* window, NetAccess* access);
+
+// Uploads a new preview. Call after app_shell_acquire, outside rendering
+// (where QUICK MENU uploads its thumbnail).
+void guest_window_upload(GuestWindow* window, AppShell* shell);
+// Frees the preview's texture (waits for the GPU).
+void guest_window_destroy(GuestWindow* window, AppShell* shell);
 
 // Tells each guest its port when it changed (once a frame, under the lock).
 void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const InputNet* input_net,

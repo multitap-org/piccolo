@@ -7,7 +7,15 @@
 // The picture is the core's own frame (pixel art at its own size), scaled up
 // by a whole number with nearest filtering to at most 1280 x 960, as PNG:
 // sharp, and small enough (a few dozen KiB) for the beacon's 256 KiB limit.
-// The upload (net_http_post) runs on its own thread; the UI polls it.
+// The upload (net_http_post) runs on its own thread; the UI polls it. It's
+// tried again for a few seconds while the beacon answers 404 or nothing: the
+// beacon takes a card only once the host has joined the link's room, which
+// happens just after MAKE LINK, on the network thread.
+//
+// While the link is open the picture is taken again and sent every
+// GUEST_CARD_REFRESH_MS (the beacon allows 4 a minute). Chat apps keep their
+// own copy of a card once a message is posted: a newer one shows in new
+// shares and on the join page.
 
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +33,13 @@ enum class GuestCardPixels
     rgb565,
     xrgb1555,
 };
+
+constexpr uint64_t GUEST_CARD_REFRESH_MS = 60000;
+constexpr uint32_t GUEST_CARD_TRIES = 8;           // 404 / no answer: tried again, a second apart
+
+// The frame as XRGB8888 (the window's preview). False if it can't be converted.
+bool guest_card_frame_xrgb(const void* pixels, uint32_t width, uint32_t height, uint32_t pitch, GuestCardPixels format,
+                           std::vector<uint32_t>* out);
 
 // The PNG for `pixels` (width x height, `pitch` bytes per row). False if
 // it can't be made within the beacon's limits.

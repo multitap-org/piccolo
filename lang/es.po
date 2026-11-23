@@ -4194,3 +4194,7 @@ msgstr "EN LÍNEA"
 msgctxt "net_offline"
 msgid "OFFLINE"
 msgstr "DESCONECTADO"
+
+msgctxt "guests_no_screenshot"
+msgid "NO SCREENSHOT AVAILABLE"
+msgstr "SIN CAPTURA DISPONIBLE"

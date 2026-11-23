@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "port_indicators.h"
 
+#include "app_shell.h"
 #include "clipboard.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
@@ -61,6 +62,78 @@ void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const Input
             window->told_port[peer] = value;
         }
     }
+}
+
+void guest_window_upload(GuestWindow* window, AppShell* shell)
+{
+    if (!window->preview_pending)
+    {
+        return;
+    }
+    if (!video_texture_created(&window->preview) &&
+        !video_texture_create(&window->preview, shell, NET_GUEST_CARD_MAX_WIDTH, NET_GUEST_CARD_MAX_HEIGHT,
+                              FramePixelFormat::xrgb8888, true))
+    {
+        window->preview_pending = false;
+        return;
+    }
+    if (!app_shell_acquire(shell))
+    {
+        return;   // the next frame
+    }
+    window->has_preview = video_texture_upload(&window->preview, shell, window->preview_pixels.data(),
+                                               window->preview_width, window->preview_height);
+    window->preview_pending = false;
+}
+
+void guest_window_destroy(GuestWindow* window, AppShell* shell)
+{
+    video_texture_destroy(&window->preview, shell);   // waits for the GPU
+}
+
+// The card's picture, as wide as `width` (its own shape), sharp; NO
+// SCREENSHOT AVAILABLE when there's none (the card shows white noise then).
+static void draw_preview(GuestWindow* window, float width, const Localization* strings)
+{
+    float aspect = window->preview_height > 0
+                       ? static_cast<float>(window->preview_width) / static_cast<float>(window->preview_height)
+                       : 4.0f / 3.0f;
+    ImVec2 box = ImVec2(std::floor(width), std::floor(width / aspect));
+    ImVec2 corner = ImGui::GetCursorScreenPos();
+    corner = ImVec2(std::floor(corner.x), std::floor(corner.y));
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    draw_list->AddRectFilled(corner, ImVec2(corner.x + box.x, corner.y + box.y), IM_COL32(0, 0, 0, 255));
+    if (window->has_preview)
+    {
+        float u = 0.0f;
+        float v = 0.0f;
+        video_texture_uv_max(&window->preview, &u, &v);
+        const ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
+        draw_list->AddImage(ImTextureRef(static_cast<ImTextureID>(window->preview.imgui_id)), corner,
+                            ImVec2(corner.x + box.x, corner.y + box.y), ImVec2(0.0f, 0.0f), ImVec2(u, v));
+        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
+    }
+    else
+    {
+        // Two lines, centered: the box is narrow.
+        const char* text = piccolo_text(strings, Str::guests_no_screenshot);
+        float line = ImGui::GetTextLineHeight();
+        float y = corner.y + (box.y - line * 2.0f) * 0.5f;
+        const char* space = std::strchr(text, ' ');
+        const char* second = space != nullptr ? std::strchr(space + 1, ' ') : nullptr;   // "NO SCREENSHOT" / "AVAILABLE"
+        size_t first_size = second != nullptr ? static_cast<size_t>(second - text) : std::strlen(text);
+        ImVec2 first_extent = ImGui::CalcTextSize(text, text + first_size);
+        draw_list->AddText(ImVec2(std::floor(corner.x + (box.x - first_extent.x) * 0.5f), std::floor(y)),
+                           ImGui::GetColorU32(ImGuiCol_TextDisabled), text, text + first_size);
+        if (second != nullptr)
+        {
+            ImVec2 second_extent = ImGui::CalcTextSize(second + 1);
+            draw_list->AddText(ImVec2(std::floor(corner.x + (box.x - second_extent.x) * 0.5f), std::floor(y + line)),
+                               ImGui::GetColorU32(ImGuiCol_TextDisabled), second + 1);
+        }
+    }
+    ImGui::Dummy(box);
 }
 
 static void wrapped(const char* text, bool dim)
@@ -118,6 +191,9 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
 
 static void draw_setup(GuestWindow* window, bool game, bool internet, const Localization* strings)
 {
+    draw_preview(window, ImGui::GetFontSize() * 12.0f, strings);
+    ImGui::SameLine();
+    ImGui::BeginGroup();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(piccolo_text(strings, Str::guests_game));
     ImGui::SameLine(ImGui::GetFontSize() * 12.0f);
@@ -130,6 +206,7 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
     {
         wrapped(piccolo_text(strings, Str::guests_play_hint), true);
     }
+    ImGui::EndGroup();
     ImGui::Spacing();
     wrapped(piccolo_text(strings, Str::guests_text), false);
     if (window->png.empty() && game)
@@ -259,6 +336,9 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
     draw_seats_and_access(window, access, strings, true);
     draw_guests(window, access, input_net, input, strings);
 
+    draw_preview(window, ImGui::GetFontSize() * 8.0f, strings);
+    ImGui::SameLine();
+    ImGui::BeginGroup();
     uint32_t taken = net_access_guest_count(access);
     char line[128];
     std::snprintf(line, sizeof(line), "%s %u / %d%s%s", piccolo_text(strings, Str::guests_taken),
@@ -289,6 +369,7 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
             break;
     }
     ImGui::TextDisabled("%s", piccolo_text(strings, card));
+    ImGui::EndGroup();
     ImGui::Spacing();
     if (retro_ui_button(piccolo_text(strings, Str::guests_end)))
     {

@@ -725,6 +725,42 @@ static std::string guest_beacon_host(const App* app)
     return name;
 }
 
+// The frame shown now, for the card (PNG) and the window's preview. A core
+// without a frame in memory (none yet): no picture, the card goes up
+// without one (the beacon shows white noise).
+static void guest_capture(App* app)
+{
+    GuestWindow* window = &app->guest_window;
+    window->png.clear();
+    window->has_preview = false;   // until a new picture is uploaded: NO SCREENSHOT AVAILABLE
+    if (!game_running(app) || app->session.host == nullptr)
+    {
+        return;
+    }
+    const LibretroVideoFrame* video = &app->session.host->video;
+    GuestCardPixels format = GuestCardPixels::xrgb8888;
+    if (video->format == RETRO_PIXEL_FORMAT_RGB565)
+    {
+        format = GuestCardPixels::rgb565;
+    }
+    else if (video->format == RETRO_PIXEL_FORMAT_0RGB1555)
+    {
+        format = GuestCardPixels::xrgb1555;
+    }
+    uint32_t pitch = video->width * video->bytes_per_pixel;
+    if (!guest_card_png(video->pixels, video->width, video->height, pitch, format, &window->png))
+    {
+        SDL_Log("Guest link: no picture for the card");
+        return;
+    }
+    if (guest_card_frame_xrgb(video->pixels, video->width, video->height, pitch, format, &window->preview_pixels))
+    {
+        window->preview_width = video->width;
+        window->preview_height = video->height;
+        window->preview_pending = true;
+    }
+}
+
 // The window opens with the game's name cleaned for the card and the frame
 // shown now as its picture (a link already open keeps its own).
 static void open_guest_window(App* app)
@@ -733,25 +769,7 @@ static void open_guest_window(App* app)
     if (!window->live)
     {
         net_guest_title_clean(app->game_name, window->title);
-        window->png.clear();
-        if (game_running(app) && app->session.host != nullptr)
-        {
-            const LibretroVideoFrame* video = &app->session.host->video;
-            GuestCardPixels format = GuestCardPixels::xrgb8888;
-            if (video->format == RETRO_PIXEL_FORMAT_RGB565)
-            {
-                format = GuestCardPixels::rgb565;
-            }
-            else if (video->format == RETRO_PIXEL_FORMAT_0RGB1555)
-            {
-                format = GuestCardPixels::xrgb1555;
-            }
-            if (!guest_card_png(video->pixels, video->width, video->height, video->width * video->bytes_per_pixel,
-                                format, &window->png))
-            {
-                SDL_Log("Guest link: no picture for the card");
-            }
-        }
+        guest_capture(app);
     }
     guest_window_open(window);
 }
@@ -779,10 +797,16 @@ static void guest_make_link(App* app)
     window->live = true;
     SDL_Log("Guest link: open for \"%s\", %d seats, %s", window->title, window->seats,
             window->level == static_cast<uint32_t>(NetGuestLevel::play) ? "watch + play" : "watch");
-    if (!window->png.empty())
+    // The card, with or without a picture: the game's name goes up either way.
+    // A send still going (NEW right after MAKE LINK) isn't waited for here,
+    // under the lock: the refresh sends the new card as soon as it ends.
+    if (guest_card_state(&window->card) == GuestCardState::sending)
     {
-        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+        window->next_refresh_ms = 0;
+        return;
     }
+    guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+    window->next_refresh_ms = SDL_GetTicks() + GUEST_CARD_REFRESH_MS;
 }
 
 // The session ends: END, the game closed or changed, networking off, quitting.
@@ -806,6 +830,16 @@ static void guest_update_locked(App* app)
     if (window->live && (!game_running(app) || app->game_starts != window->game_starts))
     {
         guest_end(app, &app->net_service.access);
+    }
+    // A live link's picture follows the game (Andrés): taken again and sent
+    // every GUEST_CARD_REFRESH_MS, unless the last send is still going.
+    if (window->live && SDL_GetTicks() >= window->next_refresh_ms &&
+        guest_card_state(&window->card) != GuestCardState::sending)
+    {
+        window->next_refresh_ms = SDL_GetTicks() + GUEST_CARD_REFRESH_MS;
+        guest_capture(app);
+        std::string beacon = guest_beacon_host(app);
+        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
     }
     guest_window_tell_ports(window, &app->net_service.access, &app->input_net, &app->input);
 }
@@ -5687,6 +5721,7 @@ static bool app_frame(App* app)
         dvr_widget_upload(&app->dvr, &app->session, &app->shell);   // a thumbnail (moves the core and back)
         core_session_upload_video(&app->session, &app->shell);
         quick_menu_upload(&app->quick_menu, &app->shell);
+        guest_window_upload(&app->guest_window, &app->shell);
         // The loop's work, before the display may make it wait (acquire / present).
         uint64_t now_ns = SDL_GetTicksNS();
         // (Catch-up frames count: a late loop runs them too.)
@@ -6015,6 +6050,7 @@ int main(int argc, char** argv)
     }
     screenshot_writer_destroy(&app->screenshot_writer);   // writes what's still waiting
     quick_menu_destroy(&app->quick_menu, &app->shell);
+    guest_window_destroy(&app->guest_window, &app->shell);
     video_output_destroy(&app->video, &app->shader_library, &app->shell);
     shader_library_unload(&app->shader_library);
     if (!app->input_config_path.empty())
