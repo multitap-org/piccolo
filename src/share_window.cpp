@@ -521,6 +521,19 @@ static Str refusal_text(NetClientRefusal refusal)
 // The other side while no piccolo is connected with OWNER access: the
 // piccolos on this network, the code (only the first time) and CONNECT; or,
 // connected at a lower level, what to ask for there.
+// A piccolo on the LAN we paired with (by name: the list doesn't carry keys).
+static bool found_is_paired(const NetShareLinkStatus* link, int32_t index)
+{
+    for (size_t i = 0; i < link->paired.size(); i++)
+    {
+        if (link->paired[i] == link->found[static_cast<size_t>(index)].name)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, const PaneLayout* layout,
                          const Localization* strings)
 {
@@ -585,7 +598,14 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
             for (size_t i = 0; i < link->paired.size(); i++)
             {
                 ImGui::PushID(static_cast<int>(1000 + i));
-                if (ImGui::Selectable(link->paired[i].c_str(), window->paired_selected == static_cast<int32_t>(i)))
+                const char* state = "";
+                if (i < link->paired_online.size())
+                {
+                    state = piccolo_text(strings, link->paired_online[i] != 0 ? Str::net_online : Str::net_offline);
+                }
+                char label[160] = {};
+                std::snprintf(label, sizeof(label), "%s  %s", link->paired[i].c_str(), state);
+                if (ImGui::Selectable(label, window->paired_selected == static_cast<int32_t>(i)))
                 {
                     window->paired_selected = static_cast<int32_t>(i);
                     window->found_selected = -1;
@@ -606,28 +626,27 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         retro_ui_item_tooltip(piccolo_text(strings, Str::share_pair_internet_help));
         ImGui::Spacing();
         bool connecting = link->state == NetShareLinkState::connecting;
-        if (connecting && !link->code.empty())
-        {
-            // Ours: the other piccolo's user types it the first time (its
-            // pairing request dialog). A wrong try gives a new one.
-            ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
-            retro_ui_item_tooltip(piccolo_text(strings, Str::share_code_help));
-            char grouped[16] = {};
-            std::snprintf(grouped, sizeof(grouped), "%.3s %.3s %.3s", link->code.c_str(), link->code.c_str() + 3,
-                          link->code.c_str() + 6);
-            retro_ui_push_section_text();
-            ImGui::TextUnformatted(grouped);
-            retro_ui_pop_section_text();
-            if (link->waiting_host)
-            {
-                net_window_waiting_leds(piccolo_text(strings, Str::share_waiting));
-            }
-        }
+        // A piccolo we aren't paired with (on this network, or "another
+        // network"): PAIR opens TOOLS > PAIR on it, the one place pairing
+        // happens (Andrés, 2026-11-22). A paired one: CONNECT.
+        bool unpaired = window->invite_selected ||
+                        (window->found_selected >= 0 && !found_is_paired(link, window->found_selected));
         ImGui::BeginDisabled((window->found_selected < 0 && window->paired_selected < 0 && !window->invite_selected) ||
                              connecting);
-        if (retro_ui_button(piccolo_text(strings, Str::share_connect)))
+        if (retro_ui_button(piccolo_text(strings, unpaired ? Str::pair_button : Str::share_connect)))
         {
-            window->connect = true;
+            if (window->invite_selected)
+            {
+                window->pair_internet = true;
+            }
+            else if (unpaired)
+            {
+                window->pair = true;
+            }
+            else
+            {
+                window->connect = true;
+            }
         }
         ImGui::EndDisabled();
         if (connecting)

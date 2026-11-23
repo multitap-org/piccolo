@@ -215,6 +215,7 @@ set(PICCOLO_SOURCES
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp
+    src/pair_window.cpp
     src/safe_start_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp

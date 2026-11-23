@@ -55,6 +55,7 @@
 #include "core_updater.h"
 #include "cores_window.h"
 #include "share_window.h"
+#include "pair_window.h"
 #include "content_cache.h"
 #include "core_session.h"
 #include "dvr_widget.h"
@@ -327,6 +328,7 @@ struct App
     // up when the window opens (the server and cores folder may have changed).
     CoreUpdater        core_updater;
     CoresWindow        cores_window;
+    PairWindow         pair_window;      // TOOLS > PAIR (our code, to be let into another piccolo)
     ShareWindow        share_window;     // TOOLS > SHARE (files with another piccolo at OWNER level)
     NetShareFolders    share_folders;    // this piccolo's shared folders: game folders, saves, states
     NetShareLink       share_link;       // SHARE's connection to another piccolo, as its client
@@ -1244,6 +1246,77 @@ static bool net_prepare(App* app);
 // TOOLS > SHARE: this piccolo's shared folders as they are now, and the
 // connection to another piccolo (started the first time, kept afterwards so
 // copies go on with the window closed).
+// SHARE's connection to other piccolos, started on first use (TOOLS > SHARE
+// and TOOLS > PAIR use the same one).
+static bool start_share_link(App* app)
+{
+    if (!net_share_link_started(&app->share_link) && net_prepare(app))
+    {
+        std::string hosts_path = app->paths.settings + "/net_hosts.cfg";
+        net_share_link_start(&app->share_link, &app->net_identity, settings_get_text(&app->settings, PICCOLO_NET_NAME),
+                             hosts_path.c_str());
+    }
+    return net_share_link_started(&app->share_link);
+}
+
+// TOOLS > PAIR: its requests, on SHARE's connection (pair_window.h).
+static void pair_update(App* app)
+{
+    PairWindow* window = &app->pair_window;
+    NetShareLink* link = &app->share_link;
+    if (!net_share_link_started(link))
+    {
+        return;
+    }
+    if (window->open && !app->share_window.open)
+    {
+        net_share_link_status(link, &app->share_status);   // SHARE reads it itself while open
+    }
+    if (window->want_pair)
+    {
+        window->want_pair = false;
+        if (window->selected >= 0 && static_cast<size_t>(window->selected) < app->share_status.found.size())
+        {
+            net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->selected)].address,
+                                   window->code);
+        }
+    }
+    if (window->want_pair_internet)
+    {
+        window->want_pair_internet = false;
+        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));   // as SHARE does
+        net_share_link_pair_beacon(link, window->code);
+    }
+    if (window->want_cancel)
+    {
+        window->want_cancel = false;
+        net_share_link_disconnect(link);
+    }
+    if (window->want_give_back)
+    {
+        window->want_give_back = false;
+        // Access back (Andrés, 2026-11-22): the host may come to us at the
+        // level it gave us. It's told on this connection, and it goes in our
+        // own devices list.
+        if (app->net_running && net_share_link_grant_back(link, window->given))
+        {
+            net_service_lock(&app->net_service);
+            net_access_add_device(&app->net_service.access, window->host_key, window->host_name.c_str(), window->given);
+            net_service_unlock(&app->net_service);
+            SDL_Log("Network: \"%s\" may come here too (%s)", window->host_name.c_str(),
+                    net_access_level_name(window->given));
+        }
+    }
+    if (window->want_close)
+    {
+        window->want_close = false;
+        if (!app->share_window.open)
+        {
+            net_share_link_disconnect(link);   // paired: SHARE connects again when it's used
+        }
+    }
+}
+
 static void open_share_window(App* app)
 {
     std::vector<std::string> game_folders;
@@ -1251,14 +1324,10 @@ static void open_share_window(App* app)
     std::string states;
     share_folder_paths(app, &game_folders, &saves, &states);
     net_share_set_folders(&app->share_folders, &game_folders, saves.c_str(), states.c_str());
-    if (!net_share_link_started(&app->share_link) && net_prepare(app))
+    if (start_share_link(app))
     {
-        std::string hosts_path = app->paths.settings + "/net_hosts.cfg";
-        net_share_link_start(&app->share_link, &app->net_identity, settings_get_text(&app->settings, PICCOLO_NET_NAME),
-                             hosts_path.c_str());
-    }
-    if (net_share_link_started(&app->share_link))
-    {
+        // The paired piccolos' ONLINE / OFFLINE is asked through BEACON SERVER.
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
         net_share_link_set_folders(&app->share_link, &game_folders, saves.c_str(), states.c_str());
     }
     share_window_open(&app->share_window);
@@ -1304,6 +1373,19 @@ static void share_update(App* app, ShareTransferLine* line)
     if (window->open)
     {
         net_share_link_status(link, &app->share_status);
+    }
+    if (window->pair || window->pair_internet)
+    {
+        // Pairing lives in TOOLS > PAIR only: it opens on that piccolo and
+        // starts at once. Once paired and closed, SHARE stays connected.
+        pair_window_open(&app->pair_window, nullptr);
+        app->pair_window.selected = window->found_selected;
+        app->pair_window.internet = window->pair_internet;
+        app->pair_window.want_pair = window->pair;
+        app->pair_window.want_pair_internet = window->pair_internet;
+        app->pair_window.phase = PairWindowPhase::waiting;
+        window->pair = false;
+        window->pair_internet = false;
     }
     if (window->connect)
     {
@@ -1518,6 +1600,10 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::share:
             open_share_window(app);
+            break;
+        case MenuAction::pair:
+            start_share_link(app);
+            pair_window_open(&app->pair_window, nullptr);
             break;
         case MenuAction::invite:
             net_invite_open(&app->net_window_state.invite);
@@ -3251,6 +3337,17 @@ static void draw_settings(App* app)
     context.themes = &app->themes;
     NetWindowContext network;
     network.state = &app->net_window_state;
+    // The hosts list (our client side): SHARE's connection knows it.
+    NetShareLinkStatus hosts_status;
+    int32_t forget_host = -1;
+    if (app->settings_window.open && app->settings_window.tab == SettingsTab::network && start_share_link(app))
+    {
+        net_share_link_status(&app->share_link, &hosts_status);
+        network.hosts = &hosts_status.paired;
+        network.hosts_online = &hosts_status.paired_online;
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+        network.forget_host = &forget_host;
+    }
     network.settings = &app->settings;
     network.strings = &app->strings;
     network.access = app->net_running ? &app->net_service.access : nullptr;
@@ -3376,6 +3473,10 @@ static void draw_settings(App* app)
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
+    }
+    if (forget_host >= 0)
+    {
+        net_share_link_forget_host(&app->share_link, static_cast<uint32_t>(forget_host));
     }
     choose_folder_start(app);
     if (app->settings_window.search_frame_delay)
@@ -4832,6 +4933,11 @@ static void net_update_locked(App* app)
             // The piccolo that just paired lets us come to it: it's a host we
             // may connect to now (SHARE lists it).
             SDL_Log("Network: \"%s\" lets us connect to it (%s)", device, net_access_level_name(event.access));
+            if (event.device >= 0 && start_share_link(app))
+            {
+                const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(event.device)];
+                net_share_link_add_host(&app->share_link, paired->key, paired->name.c_str());
+            }
             break;
         case NetAccessEventType::unpaired:
         {
@@ -5388,19 +5494,32 @@ static bool app_frame(App* app)
             share_context.line = &share_line;
             share_window_draw(&app->share_window, &share_context, app->pixel_font, app->ui_scale);
         }
+        // TOOLS > PAIR (on SHARE's connection).
+        pair_update(app);
+        if (app->pair_window.open)
+        {
+            PairWindowContext pair_context;
+            pair_context.strings = &app->strings;
+            pair_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
+            pair_context.can_give_back = app->net_running;
+            pair_window_draw(&app->pair_window, &pair_context, app->pixel_font, app->ui_scale);
+        }
         // A device asking to pair: over anything, the game paused (ui_derive).
         // TOOLS > INVITE too. They answer on the NetAccess: the network thread
         // waits meanwhile.
         if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
         {
             net_service_lock(&app->net_service);
-            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings);
-            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings);
+            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings,
+                                     app->pixel_font, app->ui_scale);
+            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings, app->pixel_font,
+                            app->ui_scale);
             net_service_unlock(&app->net_service);
         }
         else if (app->net_window_state.invite.open)
         {
-            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings);   // says the network is off
+            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings, app->pixel_font,
+                            app->ui_scale);   // says the network is off
         }
         // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
         if (app->guest_window.open)

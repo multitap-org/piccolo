@@ -32,6 +32,8 @@
 #include "net_access.h"
 #include "settings.h"
 
+struct ImFont;
+
 // The last speed test of a device, as it reported each step (net_speed.h
 // speed_result): the best rate each way that lost no more than
 // NET_WINDOW_SPEED_MAX_LOSS. Kept while piccolo runs, by device key.
@@ -98,6 +100,11 @@ struct NetWindowContext
     const char*         this_device = "";   // our key's fingerprint
     const std::vector<NetSpeedSummary>* speed = nullptr;   // speed test results, by device key
     bool                internet = false;   // INTERNET is on (the beacon status row shows)
+    // The piccolos this one connects to (its client side, SHARE / PAIR), and
+    // FORGET on one of them (the index, for main.cpp; -1 = none).
+    const std::vector<std::string>* hosts = nullptr;
+    const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
+    int32_t*            forget_host = nullptr;
 };
 
 // The tab's contents, inside SETTINGS' tab. The rows always edit the global
@@ -108,13 +115,15 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width);
 // The pairing request dialog (drawn every frame while one is active).
 void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event);
 void net_pairing_request_close(NetPairingRequest* request);
-void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings);
+void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings,
+                             ImFont* pixel_font, int32_t scale);
 // The four port LEDs lit in turn, then `label`: something being waited for.
 void net_window_waiting_leds(const char* label);
 
 // TOOLS > INVITE (drawn every frame while open). `access` nullptr = network off.
 void net_invite_open(NetInvite* invite);
 void net_invite_close(NetInvite* invite, NetAccess* access);
-void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings);
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, ImFont* pixel_font,
+                     int32_t scale);
 // A pairing request while waiting: answered with the typed code (true), or not ours.
 bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event);

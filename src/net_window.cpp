@@ -297,6 +297,45 @@ static void draw_beacon_status(const NetWindowContext* context, float label_widt
     }
 }
 
+// The piccolos we connect to (paired with TOOLS > PAIR / SHARE): FORGET only;
+// their access is the other side's to give (Andrés, 2026-11-22).
+static void draw_hosts(const NetWindowContext* context)
+{
+    const Localization* strings = context->strings;
+    if (context->hosts == nullptr || context->hosts->empty())
+    {
+        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_no_hosts));
+        return;
+    }
+    for (size_t i = 0; i < context->hosts->size(); i++)
+    {
+        ImGui::PushID(static_cast<int>(5000 + i));
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted((*context->hosts)[i].empty() ? "?" : (*context->hosts)[i].c_str());
+        if (context->hosts_online != nullptr && i < context->hosts_online->size())
+        {
+            ImGui::SameLine();
+            if ((*context->hosts_online)[i] != 0)
+            {
+                retro_ui_push_section_text();
+                ImGui::TextUnformatted(piccolo_text(strings, Str::net_online));
+                retro_ui_pop_section_text();
+            }
+            else
+            {
+                ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_offline));
+            }
+        }
+        ImGui::SameLine();
+        if (retro_ui_button(piccolo_text(strings, Str::net_device_forget)) && context->forget_host != nullptr)
+        {
+            *context->forget_host = static_cast<int32_t>(i);
+        }
+        retro_ui_item_tooltip(piccolo_text(strings, Str::net_host_forget_help));
+        ImGui::PopID();
+    }
+}
+
 void net_window_draw_tab(const NetWindowContext* context, float label_width)
 {
     const Localization* strings = context->strings;
@@ -339,6 +378,8 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
     draw_connected(context);
     retro_ui_separator_text(piccolo_text(strings, Str::net_section_devices));
     draw_devices(context);
+    retro_ui_separator_text(piccolo_text(strings, Str::net_section_hosts));
+    draw_hosts(context);
 }
 
 // --- The pairing request (host) ----------------------------------------------
@@ -388,7 +429,8 @@ void net_window_waiting_leds(const char* label)
 //   |                          [ALLOW] [REFUSE]       |
 //   +-------------------------------------------------+
 // After ALLOW: the same box, waiting (LEDs), until paired / gone.
-void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings)
+void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings,
+                             ImFont* pixel_font, int32_t scale)
 {
     if (!request->active || access == nullptr)
     {
@@ -401,11 +443,15 @@ void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, con
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
     ImGui::SetNextWindowFocus();
+    // Themed like every other window: the pixel font, the palette and the window's edge.
+    retro_ui_push_theme(pixel_font, scale);
     if (!ImGui::Begin(title, nullptr, flags))
     {
         ImGui::End();
+        retro_ui_pop_theme();
         return;
     }
+    retro_ui_begin_window(scale);
     retro_ui_push_section_text();
     ImGui::Text("%s (%s)", request->name,
                 piccolo_text(strings, request->kind == NetPairKind::piccoletto ? Str::net_kind_piccoletto
@@ -462,7 +508,9 @@ void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, con
             net_pairing_request_close(request);
         }
     }
+    retro_ui_end_window();
     ImGui::End();
+    retro_ui_pop_theme();
 }
 
 // --- TOOLS > INVITE ---------------------------------------------------------------
@@ -507,7 +555,8 @@ bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAcce
 //   |                                     [ALLOW] [CANCEL]       |
 //   +-----------------------------------------------------------+
 // After ALLOW: waiting (LEDs) until paired (it closes then).
-void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings)
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, ImFont* pixel_font,
+                     int32_t scale)
 {
     if (!invite->open)
     {
@@ -520,10 +569,18 @@ void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* s
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                              ImGuiWindowFlags_NoSavedSettings;
     bool keep = true;
-    if (!ImGui::Begin(title, &keep, flags))
+    // Themed like every other window; the close button is the pixel font's X.
+    retro_ui_push_theme(pixel_font, scale);
+    if (!ImGui::Begin(title, nullptr, flags))
     {
         ImGui::End();
+        retro_ui_pop_theme();
         return;
+    }
+    retro_ui_begin_window(scale);
+    if (retro_ui_close_button())
+    {
+        keep = false;
     }
     if (access == nullptr)
     {
@@ -577,7 +634,9 @@ void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* s
             keep = false;
         }
     }
+    retro_ui_end_window();
     ImGui::End();
+    retro_ui_pop_theme();
     if (!keep)
     {
         net_invite_close(invite, access);
