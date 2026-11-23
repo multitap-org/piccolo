@@ -35,10 +35,10 @@ EM_JS(void, page_game, (int32_t playing, double aspect), {
     }
 });
 
-// The page pad's buzz on a press (web/page/piccolo-pad.js), if the page has it.
+// The page pad's buzz on a press (frontends-common's web/multitap-pad.js), if the page has it.
 EM_JS(void, page_vibrate, (int32_t on), {
-    if (typeof piccolo_pad_set_vibrate === 'function') {
-        piccolo_pad_set_vibrate(on !== 0);
+    if (typeof multitap_pad_set_vibrate === 'function') {
+        multitap_pad_set_vibrate(on !== 0);
     }
 });
 

@@ -52,12 +52,13 @@ dist="$build/dist/$name"
 rm -rf "$dist" "$build/dist/$name.zip"
 mkdir -p "$dist/LICENSES"
 
-cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-pad.js" "$here/page/piccolo-gl-state.js" \
+cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-gl-state.js" \
    "$here/page/manifest.webmanifest" \
    "$here/page/.htaccess" "$here/page/_headers" "$here/page/nginx.conf.example" "$here/page/README.txt" "$dist/"
 # The page's shared half (frontends-common's web/: the start, the folder on
 # OPFS, the service worker), shared with piccoletto's page.
 cp "$root/deps/common/frontends-common/web/multitap-page.js" "$root/deps/common/frontends-common/web/multitap-storage.js" \
+   "$root/deps/common/frontends-common/web/multitap-pad.js" \
    "$root/deps/common/frontends-common/web/sw.js" "$dist/"
 for size in 32 128 512; do
     cp "$root/assets/branding/png/piccolo-icon-$size.png" "$dist/icon-$size.png"
@@ -93,7 +94,7 @@ for core in $cores; do
         piccobots) core_name=piccobots; pad=snes ;;
         *)       core_name=$core; pad=snes ;;
     esac
-    # @PAD@: the touch gamepad's buttons (piccolo-pad.js: gb or snes).
+    # @PAD@: the touch gamepad's buttons (multitap-pad.js: gb or snes).
     sed -i "s/@CORE_NAME@/$core_name/g; s/@PAD@/$pad/g" "$dist/$core/index.html"
 done
 for page in "$dist/index.html" "$dist"/*/index.html; do
@@ -128,8 +129,7 @@ if [ -n "$PICCOLETTO" ]; then
         exit 1
     fi
     mkdir -p "$dist/piccoletto"
-    cp "$PICCOLETTO/web/page/index.html" "$PICCOLETTO/web/page/piccoletto-page.js" \
-       "$PICCOLETTO/web/page/manifest.webmanifest" "$dist/piccoletto/"
+    cp "$PICCOLETTO"/web/page/* "$dist/piccoletto/"   # its page, its scripts (piccoletto-shell.js...), the manifest
     cp "$PICCOLETTO/web/build/wasm/piccoletto.js" "$PICCOLETTO/web/build/wasm/piccoletto.wasm" "$dist/piccoletto/"
     for size in 32 128 512; do
         cp "$PICCOLETTO/assets/branding/png/piccoletto-icon-$size.png" "$dist/piccoletto/icon-$size.png"
