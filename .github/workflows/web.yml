@@ -126,8 +126,10 @@ jobs:
           grep -qi '^cross-origin-embedder-policy: require-corp' play-headers.txt
           grep -qi '^location: /play/sameboy/' play-redirect.txt
 
+      # Pushes, and a manual run on main (gh workflow run web.yml --ref main:
+      # a change only in piccoletto's main, which this build takes).
       - name: Publish the image (GHCR)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -158,7 +160,7 @@ jobs:
   # come through release.yml without secrets, so they don't redeploy.
   deploy:
     needs: web
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
