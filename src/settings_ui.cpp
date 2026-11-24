@@ -1,15 +1,14 @@
 #include "settings_ui.h"
 
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 #include "imgui.h"
 
-#include "libretro_host.h"   // LIBRETRO_PATH_MAX
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "settings_view.h"
 
 // Marker colors: our own, distinct from the theme's blues (0xAARRGGBB).
 constexpr uint32_t MARKER_CORE = 0xFFF0C040u;   // amber
@@ -46,52 +45,61 @@ float settings_ui_label_width(const Settings* settings, const Localization* stri
     return widest + ImGui::GetStyle().ItemSpacing.x * 2.0f;
 }
 
-void settings_ui_marker(const SettingsUiContext* context, const char* key)
+// ---------------------------------------------------------------------------
+// Drawing one row from its SettingRowState. Nothing here reads or changes the
+// settings: what the user did goes into a SettingRowAction, and
+// settings_view_apply applies it.
+
+// The C / G marker. Takes the space of one glyph even when there's none, so
+// rows line up.
+static void draw_marker(const SettingsUiContext* context, const SettingRowState* row)
 {
-    SettingLayer source = SettingLayer::defaults;
-    settings_get(context->settings, key, &source);
     ImVec2 size = ImGui::CalcTextSize("C");
-    if (source != SettingLayer::core && source != SettingLayer::game)
+    if (row->override_layer != SettingLayer::core && row->override_layer != SettingLayer::game)
     {
         ImGui::Dummy(size);
         return;
     }
-    bool core = source == SettingLayer::core;
+    bool core = row->override_layer == SettingLayer::core;
     ImGui::TextColored(retro_ui_color_vec4(core ? MARKER_CORE : MARKER_GAME), "%s", core ? "C" : "G");
     retro_ui_item_tooltip(piccolo_text(context->strings, core ? Str::marker_core_help : Str::marker_game_help));
 }
 
-bool settings_ui_reset_button(const SettingsUiContext* context, const char* key)
+static float reset_width(const SettingsUiContext* context)
 {
-    if (settings_get_layer(context->settings, context->scope, key) == nullptr)
+    return ImGui::CalcTextSize(piccolo_text(context->strings, Str::reset)).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+}
+
+// RESET at the right edge of the row, when the scope being edited defines
+// the value. Sets a reset action when pressed.
+static void draw_reset(const SettingsUiContext* context, const SettingRowState* row, SettingRowAction* action)
+{
+    if (!row->can_reset)
     {
-        return false;
+        return;
     }
-    const char* reset = piccolo_text(context->strings, Str::reset);
-    float width = ImGui::CalcTextSize(reset).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - width);
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - reset_width(context));
     ImGui::PushID("reset");
-    bool clicked = retro_ui_button(reset);
+    bool clicked = retro_ui_button(piccolo_text(context->strings, Str::reset));
     ImGui::PopID();
     Str help = context->scope == SettingLayer::global ? Str::reset_help_global : Str::reset_help_override;
     retro_ui_item_tooltip(piccolo_text(context->strings, help));
     if (clicked)
     {
-        settings_reset(context->settings, context->scope, key);
+        action->edit = SettingRowEdit::reset;
     }
-    return clicked;
 }
 
 // The label column: text, then the cursor moves to the widget column.
-static void label_column(const SettingsUiContext* context, const SettingDescriptor* descriptor)
+static void draw_label(const SettingsUiContext* context, const SettingRowState* row)
 {
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text_id(context->strings, descriptor->label));
-    if (descriptor->help != SETTING_NO_TEXT)
+    ImGui::TextUnformatted(row->label);
+    if (row->help != nullptr)
     {
-        retro_ui_item_tooltip(piccolo_text_id(context->strings, descriptor->help));
+        retro_ui_item_tooltip(row->help);
     }
     ImGui::SameLine(start + context->label_width);
 }
@@ -99,8 +107,34 @@ static void label_column(const SettingsUiContext* context, const SettingDescript
 // Room left for the widget, keeping space for the reset button.
 static float widget_width(const SettingsUiContext* context)
 {
-    float reset = ImGui::CalcTextSize(piccolo_text(context->strings, Str::reset)).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    return ImGui::GetContentRegionAvail().x - reset - ImGui::GetStyle().ItemSpacing.x;
+    return ImGui::GetContentRegionAvail().x - reset_width(context) - ImGui::GetStyle().ItemSpacing.x;
+}
+
+// Starts greying out a global-only row. Only when it is: ImGui counts
+// BeginDisabled(false) too, and its color swatches then draw with a saved
+// opacity that may be 0 (invisible).
+static void begin_global_only(const SettingRowState* row)
+{
+    if (!row->enabled)
+    {
+        ImGui::BeginDisabled();
+    }
+}
+
+// Ends it, with the tooltip saying why (a disabled item needs
+// AllowWhenDisabled for its tooltip). Returns true when the row is enabled.
+static bool end_global_only(const SettingsUiContext* context, const SettingRowState* row)
+{
+    if (row->enabled)
+    {
+        return true;
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    {
+        retro_ui_tooltip(piccolo_text(context->strings, Str::global_only_help));
+    }
+    return false;
 }
 
 // An enum value's label in the current language, or its key ("4:3") when it has none.
@@ -109,17 +143,35 @@ static const char* value_label(const SettingsUiContext* context, const SettingEn
     return value->label == SETTING_NO_TEXT ? value->key : piccolo_text_id(context->strings, value->label);
 }
 
-static bool enum_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor, const char* value)
+static void draw_checkbox(const SettingRowState* row, SettingRowAction* action)
 {
+    ImGui::SameLine();
+    bool checked = std::strcmp(row->value, "true") == 0;
+    // "###" keeps the widget's ID the same whatever the language.
+    char label[256] = {};
+    std::snprintf(label, sizeof(label), "%s###check", row->label);
+    if (retro_ui_checkbox(label, &checked))
+    {
+        action->edit = SettingRowEdit::set_bool;
+        action->boolean = checked;
+    }
+    if (row->help != nullptr)
+    {
+        retro_ui_item_tooltip(row->help);
+    }
+}
+
+static void draw_enum(const SettingsUiContext* context, const SettingRowState* row, SettingRowAction* action)
+{
+    const SettingDescriptor* descriptor = row->descriptor;
     uint32_t current = 0;
     for (uint32_t i = 0; i < descriptor->value_count; i++)
     {
-        if (std::strcmp(descriptor->values[i].key, value) == 0)
+        if (std::strcmp(descriptor->values[i].key, row->value) == 0)
         {
             current = i;
         }
     }
-    bool changed = false;
     ImGui::SetNextItemWidth(widget_width(context));
     if (retro_ui_begin_combo("##value", value_label(context, &descriptor->values[current])))
     {
@@ -130,65 +182,48 @@ static bool enum_widget(const SettingsUiContext* context, const SettingDescripto
             ImGui::PopID();
             if (picked && i != current)
             {
-                changed = settings_set_enum(context->settings, context->scope, descriptor->key, i);
+                action->edit = SettingRowEdit::set_enum;
+                action->enum_index = i;
             }
         }
         ImGui::EndCombo();
     }
-    return changed;
 }
 
-static bool integer_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor, const char* value)
+static void draw_integer(const SettingsUiContext* context, const SettingRowState* row, SettingRowAction* action)
 {
-    int number = static_cast<int>(std::strtol(value, nullptr, 10));
+    int number = static_cast<int>(std::strtol(row->value, nullptr, 10));
     ImGui::SetNextItemWidth(widget_width(context));
     retro_ui_push_field_text();
-    bool edited = ImGui::InputInt("##value", &number, descriptor->step > 0 ? descriptor->step : 1, 8);
+    int step = row->descriptor->step > 0 ? row->descriptor->step : 1;
+    bool edited = ImGui::InputInt("##value", &number, step, 8);
     retro_ui_pop_field_text();
-    if (!edited)
+    if (edited)
     {
-        return false;
+        action->edit = SettingRowEdit::set_integer;
+        action->integer = static_cast<int32_t>(number);
     }
-    number = number < descriptor->min ? descriptor->min : (number > descriptor->max ? descriptor->max : number);
-    return settings_set_int(context->settings, context->scope, descriptor->key, static_cast<int32_t>(number));
 }
 
-static bool real_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor, const char* value)
+static void draw_real(const SettingsUiContext* context, const SettingRowState* row, SettingRowAction* action)
 {
-    float number = std::strtof(value, nullptr);
+    float number = std::strtof(row->value, nullptr);
     ImGui::SetNextItemWidth(widget_width(context));
-    if (!ImGui::SliderFloat("##value", &number, static_cast<float>(descriptor->min_real),
-                            static_cast<float>(descriptor->max_real), "%.1f%%"))
+    if (ImGui::SliderFloat("##value", &number, static_cast<float>(row->descriptor->min_real),
+                           static_cast<float>(row->descriptor->max_real), "%.1f%%"))
     {
-        return false;
+        action->edit = SettingRowEdit::set_real;
+        action->real = static_cast<double>(number);
     }
-    double rounded = static_cast<double>(number);
-    if (descriptor->step_real > 0.0)
-    {
-        rounded = std::round(rounded / descriptor->step_real) * descriptor->step_real;
-    }
-    return settings_set_real(context->settings, context->scope, descriptor->key, rounded);
-}
-
-// The color as it resolves at the edited scope (0xFFRRGGBB).
-static uint32_t settings_get_color_at(const SettingsUiContext* context, const char* key)
-{
-    uint32_t argb = 0xFF000000u;
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
-    if (value != nullptr)
-    {
-        settings_color_from_text(value, &argb);
-    }
-    return argb;
 }
 
 // A swatch (click: ImGui's color picker) and the value as #RRGGBB.
-static bool color_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor)
+static void draw_color(const SettingRowState* row, SettingRowAction* action)
 {
-    uint32_t argb = settings_get_color_at(context, descriptor->key);
+    uint32_t argb = 0xFF000000u;
+    settings_color_from_text(row->value, &argb);
     ImVec4 color = retro_ui_color_vec4(argb);
     float rgb[3] = {color.x, color.y, color.z};
-    bool changed = false;
     if (ImGui::ColorEdit3("##value", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
                                              ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoAlpha))
     {
@@ -198,115 +233,90 @@ static bool color_widget(const SettingsUiContext* context, const SettingDescript
             float channel = rgb[i] < 0.0f ? 0.0f : (rgb[i] > 1.0f ? 1.0f : rgb[i]);
             picked |= static_cast<uint32_t>(channel * 255.0f + 0.5f) << (16 - 8 * i);
         }
-        changed = settings_set_color(context->settings, context->scope, descriptor->key, picked);
+        action->edit = SettingRowEdit::set_color;
+        action->color = picked;
     }
     retro_ui_raised_item_edge();
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("#%06X", static_cast<unsigned>(argb & 0xFFFFFFu));
-    return changed;
 }
 
-static bool path_widget(const SettingsUiContext* context, const SettingDescriptor* descriptor, const char* value,
-                        const char* hint)
+// A text field `width` wide. The text is handed back when editing ends
+// (empty: back to the default).
+static void draw_text_field(const SettingRowState* row, const char* hint, float width, SettingRowAction* action)
 {
     // ImGui keeps its own copy of the text while the field is being edited;
-    // this buffer only seeds it. The value is set when editing ends.
-    char buffer[LIBRETRO_PATH_MAX] = {};
-    std::snprintf(buffer, sizeof(buffer), "%s", value);
-    ImGui::SetNextItemWidth(widget_width(context));
+    // this buffer only seeds it.
+    char buffer[SETTING_ROW_TEXT_MAX] = {};
+    std::snprintf(buffer, sizeof(buffer), "%s", row->value);
+    ImGui::SetNextItemWidth(width);
     retro_ui_push_field_text();
     ImGui::InputTextWithHint("##value", hint != nullptr ? hint : "", buffer, sizeof(buffer));
     retro_ui_pop_field_text();
-    if (!ImGui::IsItemDeactivatedAfterEdit())
+    if (ImGui::IsItemDeactivatedAfterEdit())
     {
-        return false;
+        action->edit = SettingRowEdit::set_text;
+        std::snprintf(action->text, sizeof(action->text), "%s", buffer);
     }
-    if (buffer[0] == '\0')
-    {
-        return settings_reset(context->settings, context->scope, descriptor->key);   // empty = default
-    }
-    return settings_set(context->settings, context->scope, descriptor->key, buffer);
 }
 
-bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint)
+static void draw_row(const SettingsUiContext* context, const SettingRowState* row, const char* hint,
+                     SettingRowAction* action)
 {
-    const SettingDescriptor* descriptor = settings_find(context->settings, key);
-    if (descriptor == nullptr)
+    ImGui::PushID(row->key);
+    draw_marker(context, row);
+    begin_global_only(row);
+    if (row->descriptor->type == SettingType::boolean)
     {
-        return false;
-    }
-    bool global_only_here = !descriptor->overridable && context->scope != SettingLayer::global;
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
-    bool changed = false;
-
-    ImGui::PushID(key);
-    settings_ui_marker(context, key);
-    // Only when it is: ImGui counts BeginDisabled(false) too, and its color
-    // swatches then draw with a saved opacity that may be 0 (invisible).
-    if (global_only_here)
-    {
-        ImGui::BeginDisabled();
-    }
-    if (descriptor->type == SettingType::boolean)
-    {
-        ImGui::SameLine();
-        bool checked = std::strcmp(value, "true") == 0;
-        // "###" keeps the widget's ID the same whatever the language.
-        char label[256] = {};
-        std::snprintf(label, sizeof(label), "%s###check", piccolo_text_id(context->strings, descriptor->label));
-        if (retro_ui_checkbox(label, &checked))
-        {
-            changed = settings_set_bool(context->settings, context->scope, key, checked);
-        }
-        if (descriptor->help != SETTING_NO_TEXT)
-        {
-            retro_ui_item_tooltip(piccolo_text_id(context->strings, descriptor->help));
-        }
+        draw_checkbox(row, action);
     }
     else
     {
-        label_column(context, descriptor);
-        switch (descriptor->type)
+        draw_label(context, row);
+        switch (row->descriptor->type)
         {
         case SettingType::enumeration:
-            changed = enum_widget(context, descriptor, value);
+            draw_enum(context, row, action);
             break;
         case SettingType::integer:
-            changed = integer_widget(context, descriptor, value);
+            draw_integer(context, row, action);
             break;
         case SettingType::real:
-            changed = real_widget(context, descriptor, value);
+            draw_real(context, row, action);
             break;
         case SettingType::path:
         case SettingType::text:
-            changed = path_widget(context, descriptor, value, hint);
+            draw_text_field(row, hint, widget_width(context), action);
             break;
         case SettingType::color:
-            changed = color_widget(context, descriptor);
+            draw_color(row, action);
             break;
         case SettingType::boolean:
             break;
         }
     }
-    if (global_only_here)
+    if (end_global_only(context, row))
     {
-        ImGui::EndDisabled();
-    }
-    if (global_only_here)
-    {
-        // A disabled item needs AllowWhenDisabled for its tooltip.
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        {
-            retro_ui_tooltip(piccolo_text(context->strings, Str::global_only_help));
-        }
-    }
-    else if (settings_ui_reset_button(context, key))
-    {
-        changed = true;
+        draw_reset(context, row, action);
     }
     ImGui::PopID();
-    return changed;
+}
+
+// ---------------------------------------------------------------------------
+// The rows the windows use: state from settings_view, drawing above, the
+// action applied by settings_view.
+
+bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint)
+{
+    SettingRowState row = {};
+    if (!settings_view_row(context->settings, context->strings, context->scope, key, &row))
+    {
+        return false;
+    }
+    SettingRowAction action = {};
+    draw_row(context, &row, hint, &action);
+    return settings_view_apply(context->settings, context->scope, key, &action);
 }
 
 bool settings_ui_folder_field(const SettingsUiContext* context, const char* value, const char* hint, float reserved)
@@ -317,7 +327,7 @@ bool settings_ui_folder_field(const SettingsUiContext* context, const char* valu
     const char* dots = "...";
     float dots_width = ImGui::CalcTextSize(dots).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     float spacing = ImGui::GetStyle().ItemSpacing.x;
-    char buffer[LIBRETRO_PATH_MAX] = {};
+    char buffer[SETTING_ROW_TEXT_MAX] = {};
     std::snprintf(buffer, sizeof(buffer), "%s", value);
     // Up to the right edge (Andrés: no empty column after it), less what
     // the caller's button needs.
@@ -341,43 +351,25 @@ bool settings_ui_folder_field(const SettingsUiContext* context, const char* valu
 
 bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, const char* hint)
 {
-    const SettingDescriptor* descriptor = settings_find(context->settings, key);
-    if (descriptor == nullptr)
+    SettingRowState row = {};
+    if (!settings_view_row(context->settings, context->strings, context->scope, key, &row))
     {
         return false;
     }
-    bool global_only_here = !descriptor->overridable && context->scope != SettingLayer::global;
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
-    bool clicked = false;
-
+    SettingRowAction action = {};
     ImGui::PushID(key);
-    settings_ui_marker(context, key);
-    if (global_only_here)
-    {
-        ImGui::BeginDisabled();
-    }
-    label_column(context, descriptor);
+    draw_marker(context, &row);
+    begin_global_only(&row);
+    draw_label(context, &row);
     // RESET only when this scope sets the folder: then its room is kept.
-    float reserved = 0.0f;
-    if (!global_only_here && settings_get_layer(context->settings, context->scope, key) != nullptr)
+    float reserved = row.can_reset ? reset_width(context) + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+    bool clicked = settings_ui_folder_field(context, row.value, hint, reserved) && row.enabled;
+    if (end_global_only(context, &row))
     {
-        reserved = ImGui::CalcTextSize(piccolo_text(context->strings, Str::reset)).x +
-                   ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
-    }
-    clicked = settings_ui_folder_field(context, value, hint, reserved) && !global_only_here;
-    if (global_only_here)
-    {
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        {
-            retro_ui_tooltip(piccolo_text(context->strings, Str::global_only_help));
-        }
-    }
-    else
-    {
-        settings_ui_reset_button(context, key);
+        draw_reset(context, &row, &action);
     }
     ImGui::PopID();
+    settings_view_apply(context->settings, context->scope, key, &action);
     return clicked;
 }
 
@@ -385,50 +377,35 @@ bool settings_ui_path_row_with_button(const SettingsUiContext* context, const ch
                                       const char* button, bool* button_clicked)
 {
     *button_clicked = false;
-    const SettingDescriptor* descriptor = settings_find(context->settings, key);
-    if (descriptor == nullptr || descriptor->type != SettingType::path || !descriptor->overridable)
+    SettingRowState row = {};
+    if (!settings_view_row(context->settings, context->strings, context->scope, key, &row) ||
+        row.descriptor->type != SettingType::path || !row.descriptor->overridable)
     {
         return false;   // only for paths every scope can set (no "global only" handling here)
     }
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
-    bool changed = false;
-
+    SettingRowAction action = {};
     ImGui::PushID(key);
-    settings_ui_marker(context, key);
-    label_column(context, descriptor);
-    // The field leaves room for the button, like path_widget for the reset.
+    draw_marker(context, &row);
+    draw_label(context, &row);
+    // The field leaves room for the button, as for the reset.
     float button_width = ImGui::CalcTextSize(button).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    char buffer[LIBRETRO_PATH_MAX] = {};
-    std::snprintf(buffer, sizeof(buffer), "%s", value);
-    ImGui::SetNextItemWidth(widget_width(context) - button_width - ImGui::GetStyle().ItemSpacing.x);
-    retro_ui_push_field_text();
-    ImGui::InputTextWithHint("##value", hint != nullptr ? hint : "", buffer, sizeof(buffer));
-    retro_ui_pop_field_text();
-    if (ImGui::IsItemDeactivatedAfterEdit())
-    {
-        changed = buffer[0] == '\0' ? settings_reset(context->settings, context->scope, key)   // empty = default
-                                    : settings_set(context->settings, context->scope, key, buffer);
-    }
+    draw_text_field(&row, hint, widget_width(context) - button_width - ImGui::GetStyle().ItemSpacing.x, &action);
     ImGui::SameLine();
     *button_clicked = retro_ui_button(button);
-    if (settings_ui_reset_button(context, key))
-    {
-        changed = true;
-    }
+    draw_reset(context, &row, &action);
     ImGui::PopID();
-    return changed;
+    return settings_view_apply(context->settings, context->scope, key, &action);
 }
 
 bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* key, const char* const* choices,
                                  uint32_t choice_count, const char* empty_label, const char* missing_label)
 {
-    const SettingDescriptor* descriptor = settings_find(context->settings, key);
-    if (descriptor == nullptr)
+    SettingRowState row = {};
+    if (!settings_view_row(context->settings, context->strings, context->scope, key, &row))
     {
         return false;
     }
-    bool global_only_here = !descriptor->overridable && context->scope != SettingLayer::global;
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
+    const char* value = row.value;
     bool listed = value[0] == '\0';
     for (uint32_t i = 0; i < choice_count && !listed; i++)
     {
@@ -448,17 +425,17 @@ bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* k
         std::snprintf(preview, sizeof(preview), "%s (%s)", value, missing_label);
     }
 
-    bool changed = false;
+    SettingRowAction action = {};
     ImGui::PushID(key);
-    settings_ui_marker(context, key);
-    ImGui::BeginDisabled(global_only_here);
-    label_column(context, descriptor);
+    draw_marker(context, &row);
+    begin_global_only(&row);
+    draw_label(context, &row);
     ImGui::SetNextItemWidth(widget_width(context));
     if (retro_ui_begin_combo("##value", preview))
     {
         if (ImGui::Selectable(empty_label, value[0] == '\0') && value[0] != '\0')
         {
-            changed = settings_reset(context->settings, context->scope, key);   // "" = the default
+            action.edit = SettingRowEdit::reset;   // "" = the default
         }
         for (uint32_t i = 0; i < choice_count; i++)
         {
@@ -468,25 +445,18 @@ bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* k
             ImGui::PopID();
             if (picked && !current)
             {
-                changed = settings_set(context->settings, context->scope, key, choices[i]);
+                action.edit = SettingRowEdit::set_text;
+                std::snprintf(action.text, sizeof(action.text), "%s", choices[i]);
             }
         }
         ImGui::EndCombo();
     }
-    ImGui::EndDisabled();
-    if (global_only_here)
+    if (end_global_only(context, &row))
     {
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        {
-            retro_ui_tooltip(piccolo_text(context->strings, Str::global_only_help));
-        }
-    }
-    else if (settings_ui_reset_button(context, key))
-    {
-        changed = true;
+        draw_reset(context, &row, &action);
     }
     ImGui::PopID();
-    return changed;
+    return settings_view_apply(context->settings, context->scope, key, &action);
 }
 
 void settings_ui_scope(Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
@@ -494,24 +464,7 @@ void settings_ui_scope(Settings* settings, const Localization* strings, const ch
 {
     bool has_core = core_name[0] != '\0';
     bool has_game = has_core && game_name[0] != '\0';
-    if (*choose_scope)
-    {
-        // The most specific layer already in use, so changes keep going there.
-        *choose_scope = false;
-        *scope = SettingLayer::global;
-        if (has_game && settings_layer_has_values(settings, SettingLayer::game))
-        {
-            *scope = SettingLayer::game;
-        }
-        else if (has_core && settings_layer_has_values(settings, SettingLayer::core))
-        {
-            *scope = SettingLayer::core;
-        }
-    }
-    if ((*scope == SettingLayer::core && !has_core) || (*scope == SettingLayer::game && !has_game))
-    {
-        *scope = SettingLayer::global;   // the game stopped
-    }
+    settings_view_scope(settings, has_core, has_game, scope, choose_scope);
     if (!has_core)
     {
         ImGui::TextDisabled("%s: %s", piccolo_text(strings, Str::scope), piccolo_text(strings, Str::scope_global));

@@ -47,6 +47,7 @@
 #include "shader_check_view.h"
 #include "text_input_window.h"
 #include "ui_mode.h"
+#include "ui_toolkit.h"
 #include "settings_window.h"
 #include "archive.h"
 #include "host_fs.h"
@@ -103,7 +104,7 @@ struct App
     AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     InputSystem input = {};       // controllers, ports, hotkeys (input_bindings.h)
     InputSdl    input_sdl = {};   // the keyboard and gamepads, from SDL
-    bool        ui_keys_down[5] = {};   // gamepad interface actions given to ImGui as keys (drive_ui_with_gamepads)
+    bool        ui_keys_down[5] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
     bool        ui_back_down = false;
     uint64_t    ui_back_since_ms = 0;      // BACK / SELECT held since (0 = not held)
     bool        ui_back_done = false;      // this hold already closed a window
@@ -1985,20 +1986,20 @@ static void measure_shader_check(App* app)
 }
 
 // Gamepads drive the menus and dialogs as the keyboard does: their
-// interface actions become ImGui's arrow keys and Space (activate); BACK
+// interface actions become the toolkit's move and activate keys; BACK
 // closes an open list or popup, otherwise the topmost window (as Escape).
 struct UiKey
 {
     InputAction action;
-    ImGuiKey    key;
+    UiNavKey    key;
 };
 
 static const UiKey UI_KEYS[] = {
-    {InputAction::ui_up, ImGuiKey_UpArrow},
-    {InputAction::ui_down, ImGuiKey_DownArrow},
-    {InputAction::ui_left, ImGuiKey_LeftArrow},
-    {InputAction::ui_right, ImGuiKey_RightArrow},
-    {InputAction::ui_accept, ImGuiKey_Space},
+    {InputAction::ui_up, UiNavKey::up},
+    {InputAction::ui_down, UiNavKey::down},
+    {InputAction::ui_left, UiNavKey::left},
+    {InputAction::ui_right, UiNavKey::right},
+    {InputAction::ui_accept, UiNavKey::accept},
 };
 constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
 
@@ -2142,21 +2143,20 @@ static void cancel_grabs(App* app)
 }
 
 // What changed hands: nothing held acts in the new mode (the key that did
-// it included), on the router's side and ImGui's.
+// it included), on the router's side and the toolkit's.
 static void release_input(App* app)
 {
     input_hold_until_released(&app->input);
     cancel_grabs(app);
-    ImGuiIO& io = ImGui::GetIO();
     for (size_t i = 0; i < UI_KEY_COUNT; i++)
     {
         if (app->ui_keys_down[i])
         {
-            io.AddKeyEvent(UI_KEYS[i].key, false);
+            ui_toolkit_nav_key(UI_KEYS[i].key, false);
             app->ui_keys_down[i] = false;
         }
     }
-    io.ClearInputKeys();
+    ui_toolkit_clear_keys();
     app->ui_back_since_ms = 0;
     app->ui_back_done = false;
 }
@@ -2580,7 +2580,6 @@ constexpr uint64_t UI_BACK_HOLD_MS = 600;   // hold BACK (or SELECT alone) this 
 
 static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, bool ui_up)
 {
-    ImGuiIO& io = ImGui::GetIO();
     const InputFrame* frame = source_frame;
     for (size_t i = 0; i < UI_KEY_COUNT; i++)
     {
@@ -2588,7 +2587,7 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
         bool down = ui_up && frame->gamepad_held[action];
         if (down != app->ui_keys_down[i])
         {
-            io.AddKeyEvent(UI_KEYS[i].key, down);
+            ui_toolkit_nav_key(UI_KEYS[i].key, down);
             app->ui_keys_down[i] = down;
         }
     }
@@ -2601,10 +2600,10 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     uint64_t now = SDL_GetTicks();
     if (back_down && !app->ui_back_down)
     {
-        if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+        if (ui_toolkit_has_popup())
         {
-            io.AddKeyEvent(ImGuiKey_Escape, true);   // a list or popup closes first
-            io.AddKeyEvent(ImGuiKey_Escape, false);
+            ui_toolkit_nav_key(UiNavKey::back, true);   // a list or popup closes first
+            ui_toolkit_nav_key(UiNavKey::back, false);
         }
         else if (ui_top_window(&app->ui) == UiWindow::core_config && core_config_window_sub_view(&app->core_config))
         {
@@ -2631,7 +2630,7 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     // bar's first menu, when the bar is up and nothing else is open on top of it.
     // Not for the START that just joined a port.
     bool bar_alone = app->ui.mode == UiMode::main_menu && app->ui.window_count == 0 &&
-                     !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+                     !ui_toolkit_has_popup();
     if (bar_alone && frame->joined_port == INPUT_NO_PORT && frame->pressed[static_cast<uint32_t>(InputAction::ui_open_menu)])
     {
         app->open_first_menu = true;
@@ -2906,20 +2905,20 @@ static void app_update_input(App* app)
     bool dvr_was_open = app->dvr.open;
     dvr_widget_update(&app->dvr, &frame, SDL_GetTicks());
     app_handle_hotkeys(app, &frame);
-    // DEVICES reads the pads itself: they don't drive ImGui meanwhile, and
+    // DEVICES reads the pads itself: they don't drive the menus meanwhile, and
     // its BACK (Escape too) only closes it. The DVR the same.
     bool board = board_was_open || app->ports_widget.open || dvr_was_open || app->dvr.open;
     drive_ui_with_gamepads(app, &frame, ui_up && !board);
-    // Escape in the UI: back, at once (an open list or popup is ImGui's: it
-    // closes on the same key).
+    // Escape in the UI: back, at once (an open list or popup is the toolkit's:
+    // it closes on the same key).
     if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open && !dvr_was_open &&
-        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+        !ui_toolkit_has_popup())
     {
         ui_do_back(app);
     }
     // PAGE LEFT / RIGHT change tabs (not while typing in a field).
     int page = 0;
-    if (ui_up && !ImGui::GetIO().WantTextInput)
+    if (ui_up && !ui_toolkit_wants_text())
     {
         page = frame.pressed[static_cast<uint32_t>(InputAction::ui_page_right)] ? 1
              : frame.pressed[static_cast<uint32_t>(InputAction::ui_page_left)]  ? -1 : 0;
@@ -2998,8 +2997,10 @@ static void app_handle_events(App* app)
             app_shell_process_event(&app->shell, &event);
         }
         input_sdl_handle_event(&app->input_sdl, &app->input, &event);
-        const ImGuiIO& io = ImGui::GetIO();
-        onscreen_pad_event(&app->onscreen_pad, &event, io.DisplaySize.x, io.DisplaySize.y);
+        float screen_width = 0.0f;
+        float screen_height = 0.0f;
+        ui_toolkit_screen_size(&screen_width, &screen_height);
+        onscreen_pad_event(&app->onscreen_pad, &event, screen_width, screen_height);
 
         if ((event.type == SDL_EVENT_AUDIO_DEVICE_ADDED || event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED) &&
             !event.adevice.recording)

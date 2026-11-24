@@ -200,6 +200,7 @@ set(PICCOLO_SOURCES
     src/file_picker.cpp
     src/piccolo_settings.cpp
     src/settings_ui.cpp
+    src/settings_view.cpp
     src/settings_window.cpp
     src/input_window.cpp
     src/net_window.cpp
@@ -215,6 +216,7 @@ set(PICCOLO_SOURCES
     src/piccolo_text.cpp
     src/recent_games.cpp
     src/ui_mode.cpp
+    src/ui_toolkit_imgui.cpp
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp
@@ -493,6 +495,16 @@ if(MULTITAP_BUILD_TESTS)
     multitap_set_project_flags(piccolo_ui_mode_test)
     add_test(NAME piccolo_ui_mode COMMAND piccolo_ui_mode_test)
     set_tests_properties(piccolo_ui_mode PROPERTIES
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    add_executable(piccolo_settings_view_test tools/settings_view_test.cpp src/settings_view.cpp src/piccolo_text.cpp
+                   "${PICCOLO_GENERATED}/piccolo_strings.cpp")
+    target_include_directories(piccolo_settings_view_test PRIVATE src "${PICCOLO_GENERATED}")
+    target_link_libraries(piccolo_settings_view_test PRIVATE frontend_common libretro_api)
+    multitap_set_project_flags(piccolo_settings_view_test)
+    add_test(NAME piccolo_settings_view COMMAND piccolo_settings_view_test)
+    set_tests_properties(piccolo_settings_view PROPERTIES
+        PASS_REGULAR_EXPRESSION "settings view: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp src/screen_effects.cpp)
