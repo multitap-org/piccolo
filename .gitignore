@@ -8,7 +8,8 @@ compile_commands.json
 imgui.ini
 
 # IDE
-.vscode/
+/.vscode/*
+!/.vscode/settings.json
 .idea/
 *.user
 

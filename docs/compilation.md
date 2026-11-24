@@ -6,6 +6,49 @@ so a checkout with its submodules builds on its own.
 
 - [Linux (Debian / Ubuntu)](#linux-debian--ubuntu)
 - [Windows (MSYS2)](#windows-msys2)
+- [Code review in VS Code](#code-review-in-vs-code)
+
+## Code review in VS Code
+
+Open the repository as a folder with the **clangd** extension
+(`llvm-vs-code-extensions.vscode-clangd`). Configure a separate Debug tree from
+your usual build shell (UCRT64 on x86-64 Windows). On Windows, launch VS Code
+from that shell so clangd inherits the compiler's `PATH`. Exit existing VS Code
+windows first if they were started outside the build shell.
+
+```sh
+cmake --preset build-review
+cmake --build --preset build-review
+```
+
+CMake generates `build-review/compile_commands.json`, which `.clangd` uses for
+navigation, diagnostics, and finding references. The preset is shared in
+`CMakePresets.json`, and each clone generates its own `build-review/` files.
+The second command generates the UI string header and can be rerun after
+changes to `src/strings.txt`.
+Run **clangd: Restart language server** after the first configure. On Windows,
+if clangd cannot locate the standard library headers, add a workspace
+`clangd.arguments` entry with
+`--query-driver=` followed by the full path to the compiler from that database
+(for example, `C:/msys64/ucrt64/bin/c++.exe`).
+
+For code under `src/` and `tools/`, `.clang-format` defines the formatting
+rules. In existing files, select the code you edited and run **Format
+Selection** with clangd. Use **Format Document** for new files. Keep format on
+save off during review to keep unrelated lines out of the diff.
+
+To check the formatting of changes to tracked files, run `git clang-format`
+with `git-clang-format` and `clang-format` on your `PATH`. Both are in the
+MSYS2 UCRT64 `mingw-w64-ucrt-x86_64-clang` package.
+
+```sh
+git clang-format --diff HEAD -- src tools
+```
+
+The command prints proposed formatting for staged and unstaged edits without
+applying it. Add new files to Git before including them in this check.
+If Git reports line-ending-only changes throughout a Windows checkout with
+CRLF files, add `-c core.autocrlf=true` immediately after `git` for this check.
 
 ## Linux (Debian / Ubuntu)
 

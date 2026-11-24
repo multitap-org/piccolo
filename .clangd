@@ -1,0 +1,4 @@
+CompileFlags:
+  CompilationDatabase: build-review
+Completion:
+  HeaderInsertion: Never

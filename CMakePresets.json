@@ -1,0 +1,25 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "build-review",
+            "displayName": "Code review",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-review",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "MULTITAP_PICCOLO_DIR": {
+                    "type": "PATH",
+                    "value": ""
+                }
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "build-review",
+            "configurePreset": "build-review",
+            "targets": ["generated/piccolo_strings.h"]
+        }
+    ]
+}

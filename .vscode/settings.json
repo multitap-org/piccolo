@@ -1,0 +1,13 @@
+{
+    "search.exclude": {
+        "**/deps/**": true,
+        "**/build*/**": true
+    },
+    "[c][cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.detectIndentation": false,
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4,
+        "editor.formatOnSave": false
+    }
+}
