@@ -15,6 +15,11 @@
 // Nothing about the running game here: a core's own devices are asked for
 // in the game (step 5). Binding changes mark the window dirty (piccolo
 // saves settings/input.cfg); the settings go to piccolo.cfg.
+//
+// Split like every window: input_window_update runs a SET / BIND ALL in
+// progress (no GUI), input_window_state fills what the window shows,
+// input_window_draw draws it and records what was pressed, and
+// input_window_apply changes the bindings, devices and settings (no GUI).
 
 #include <cstdint>
 #include <string>
@@ -25,9 +30,11 @@
 #include "input_sdl.h"
 #include "localization.h"
 #include "settings.h"
+#include "settings_ui.h"
 
 #include "retro_ui_font.h"
 
+// What the window keeps between frames (the drawing may change it).
 struct InputWindow
 {
     bool         open = false;
@@ -48,27 +55,104 @@ struct InputWindow
     bool        bind_all = false;            // BIND ALL: go on to the next action...
     InputAction bind_all_last = InputAction::pad_b;   // ...up to this one
 
-    uint32_t     map_request = 0;            // DEVICES > MAP...: this joystick (piccolo opens MAP CONTROLLER)
-    bool         edit_touch_layout = false;  // SETTINGS > EDIT LAYOUT: piccolo closes this and edits the on-screen pad
+    // DEVICES > MAP...: this joystick. Kept here: piccolo opens MAP CONTROLLER
+    // from its input step (with the offers), on the next frame.
+    uint32_t     map_request = 0;
     bool dirty = false;                      // bindings or devices changed: save settings/input.cfg
 };
 
-struct InputWindowContext
+// What the window shows from the rest of piccolo, read only. The drawing
+// reads the controllers, devices and profiles through `input`, and SDL's
+// gamepads (labels, extra buttons, mapping) through `sdl`.
+struct InputWindowState
 {
-    InputSystem*        input = nullptr;
+    const InputSystem*  input = nullptr;
     const InputSdl*     sdl = nullptr;
     const Localization* strings = nullptr;
-    Settings*           settings = nullptr;
+    const Settings*     settings = nullptr;  // the rows read it (settings_ui)
     const char*         core_name = "";      // "" = no core running (SCOPE)
     const char*         game_name = "";
     const InputLayouts* layouts = nullptr;   // the controllers' button names
     uint64_t            now_ms = 0;
+    uint64_t            press_ms = 0;        // TIME TO PRESS (SET's countdown)
+    // A SET / BIND ALL in progress: the control being held, and how far.
+    bool                holding = false;
+    InputSource         held = {};
+    float               hold_progress = 0.0f;
+};
+
+enum class InputWindowPress
+{
+    none,
+    set,                // SET or +: `controller`'s `input_action` takes its next control into `row`
+    bind_all,           // BIND ALL: `controller`, from `input_action` to `last`
+    reset,              // a row's RESET: `input_action` back to `controller`'s defaults
+    clear,              // CLEAR: `row` of `input_action` removed
+    defaults,           // DEFAULTS: `input_action` to `last` back to the defaults
+    cancel,             // CANCEL: the SET / BIND ALL stops, its changes put back
+    hotkey_mode,        // HOTKEY MODE picked: `hotkey_mode`
+    deadzone,           // DEADZONE moved: `deadzone`
+    ignore,             // IGNORE picked: `device_id`'s `ignore`
+    map,                // DEVICES > MAP...: `joystick` (piccolo opens MAP CONTROLLER)
+    remove_player,      // a keyboard player's REMOVE: `controller`
+    add_player,         // the keyboard's ADD: one more player on `device_id`
+    edit_touch_layout,  // SETTINGS > EDIT LAYOUT
+};
+
+constexpr uint32_t INPUT_WINDOW_NAME_MAX = 64;
+constexpr uint32_t INPUT_WINDOW_LABEL_MAX = 48;
+
+// What the user did this frame (zeroed before drawing).
+struct InputWindowAction
+{
+    SettingsUiEdit   setting;                // a settings row changed (SETTINGS)
+    InputWindowPress press = InputWindowPress::none;
+    uint32_t         controller = 0;
+    InputAction      input_action = InputAction::pad_b;
+    InputAction      last = InputAction::pad_b;
+    uint32_t         row = 0;
+    InputHotkeyMode  hotkey_mode = InputHotkeyMode::hold;
+    float            deadzone = 0.0f;
+    uint32_t         device_id = 0;
+    InputIgnore      ignore = InputIgnore::automatic;
+    uint32_t         joystick = 0;
+    // A NAME field left with a new name (may come with a press: the click
+    // that left it).
+    bool             rename = false;
+    uint32_t         rename_controller = 0;
+    char             name[INPUT_WINDOW_NAME_MAX] = {};
+    // An extra button's own name typed (DEVICES).
+    bool             button_label = false;
+    uint32_t         label_controller = 0;
+    uint16_t         label_button = 0;
+    char             label[INPUT_WINDOW_LABEL_MAX] = {};
+};
+
+// What main.cpp does itself after input_window_apply.
+enum class InputWindowRequest
+{
+    none,
+    edit_touch_layout,   // close INPUT and edit the on-screen pad
 };
 
 void input_window_open(InputWindow* window);
 
-// Draws the window while open (and runs a SET / BIND ALL in progress).
-void input_window_draw(InputWindow* window, const InputWindowContext* context, RetroUiFont* pixel_font, int32_t scale);
+// Every frame, before the state (and while closed: a SET / BIND ALL in
+// progress stops): runs a SET / BIND ALL in progress.
+void input_window_update(InputWindow* window, InputSystem* input, uint64_t now_ms);
+
+void input_window_state(InputWindowState* state, const InputSystem* input, const InputSdl* sdl,
+                        const Localization* strings, const Settings* settings, const char* core_name,
+                        const char* game_name, const InputLayouts* layouts, uint64_t now_ms);
+
+// Draws the window while open.
+void input_window_draw(InputWindow* window, const InputWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       InputWindowAction* action);
+
+// The settings row's edit, and the press: bindings, devices, players, a SET
+// / BIND ALL started or cancelled. DEVICES > MAP... sets window->map_request.
+InputWindowRequest input_window_apply(InputWindow* window, const InputWindowAction* action, InputSystem* input,
+                                      Settings* settings, uint64_t now_ms);
 
 // A gamepad's layout (its appearance, as kept in its profile), or nullptr
 // when it has none (never mapped, declined, or a layout that's gone).
