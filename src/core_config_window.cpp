@@ -1748,7 +1748,7 @@ static void draw_controls_tab(CoreConfigWindow* config, const CoreConfigWindowSt
                     config->remap = true;
                     config->remap_port = p;
                     config->remap_controller = controller;
-                    config->remap_section = 0;
+                    config->remap_section = -1;   // every section closed at first (testing round 2)
                 }
                 retro_ui_same_line();
             }
@@ -1980,7 +1980,7 @@ void core_config_window_open_controls(CoreConfigWindow* config)
 void core_config_window_open_remap(CoreConfigWindow* config, uint32_t port, uint32_t controller)
 {
     core_config_window_open_controls(config);
-    config->remap_section = 0;   // MAPPING open
+    config->remap_section = -1;   // every section closed at first (testing round 2)
     config->remap = true;
     config->remap_port = port;
     config->remap_controller = controller;

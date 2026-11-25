@@ -62,7 +62,7 @@ struct SettingsWindow
     char         save_theme_name[48] = {};
     std::string  theme_choice;                 // the theme last picked or saved: the lists show it first when several match
     bool         theme_custom = false;         // THEME was set to CUSTOM (else CUSTOM only when no shipped theme matches)
-    FolderSection folder_section = FolderSection::game_folders;   // GAME FOLDERS open at first
+    FolderSection folder_section = FolderSection::none;   // both closed at first (testing round 2)
 };
 
 // What piccolo says about itself this frame, as text for the tabs (main.cpp

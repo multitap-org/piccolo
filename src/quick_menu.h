@@ -8,9 +8,10 @@
 //   | SUPER METROID - SNES9X                                    |
 //   | [PAUSE     ][QUICK SAVE][QUICK LOAD][SCREENSHOT]           |
 //   | [SOFT RESET][HARD RESET][CORE CONFIG][CLOSE GAME]          |
-//   | v SAVE STATES                                              |   collapsed at first
+//   | v SAVE STATES                                              |   open at first
 //   | +--------------------------------------------------------+ |
 //   | |            the selected slot's picture, big            | |   as wide as five slots
+//   | |2026-11-25 14:32                                        | |   its date and time
 //   | +--------------------------------------------------------+ |
 //   | [ 0 ] [ 1 ] [ 2 ] [ 3 ] [ 4 ]                               |   thumbnails, date or time
 //   | [ 5 ] [ 6 ] [ 7 ] [ 8 ] [ 9 ]                               |
@@ -92,7 +93,7 @@ struct QuickMenu
     bool          refresh = true;   // read the slots again on the next update
     bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 0-9)
     uint32_t      focus_wait = 0;       // draws left where only `slot`'s tile counts as focused (the focus moves late)
-    bool          states_open = false;  // SAVE STATES unfolded (collapsed at first; kept here, so the
+    bool          states_open = true;   // SAVE STATES unfolded (open at first, testing round 2; kept here, so the
                                         // debug window's preview can show it open without touching this one)
 
     // Each slot's thumbnail as saved (the picture at x1, at the aspect in
@@ -115,6 +116,7 @@ struct QuickMenuState
     const char*         game_name = "";
     bool                user_paused = false;   // the player paused: PAUSE reads RESUME
     char                labels[QUICK_MENU_SLOTS][QUICK_MENU_LABEL_MAX] = {};   // "3 · 00:30" (today), "1 · 11-24", "2"
+    char                when[QUICK_MENU_LABEL_MAX] = {};   // the selected slot's date and time, "2026-11-25 14:32" ("": empty)
 };
 
 struct QuickMenuAction

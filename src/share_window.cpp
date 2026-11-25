@@ -995,9 +995,10 @@ void share_window_draw(ShareWindow* window, const ShareWindowState* state, Retro
         float spacing = retro_ui_item_spacing();
         PaneLayout layout;
         layout.width = static_cast<float>(static_cast<int32_t>((retro_ui_width_left() - middle - spacing * 2.0f) * 0.5f));
-        // (header: name, combo, path; below: WITH ITS SAVE..., the copy line)
+        // (header: name, combo, path; below: WITH ITS SAVE..., MIRROR FOLDER
+        // STRUCTURE, the copy line)
         float lists = retro_ui_height_left() - retro_ui_line_step() * 3.0f - retro_ui_text_line_step() * 2.0f -
-                      retro_ui_line_step() * 2.0f;
+                      retro_ui_line_step() * 3.0f;
         layout.folders_height = static_cast<float>(static_cast<int32_t>(lists * 0.38f));
         layout.files_height = static_cast<float>(static_cast<int32_t>(lists - layout.folders_height));
 
@@ -1064,6 +1065,15 @@ void share_window_draw(ShareWindow* window, const ShareWindowState* state, Retro
                 retro_ui_space(1.0f, retro_ui_line_height());
             }
         }
+
+        // A setting (global), shown where it acts (Andrés, testing round 2).
+        bool mirror = window->mirror_folders;
+        if (retro_ui_check("mirror", piccolo_text(strings, Str::setting_share_mirror_folders), &mirror))
+        {
+            action->mirror_folders_set = true;
+            action->mirror_folders = mirror;
+        }
+        retro_ui_item_tooltip(piccolo_text(strings, Str::setting_share_mirror_folders_help));
 
         draw_line(window, state->line, connected, strings, block, action);
         draw_conflict(window, strings, action);

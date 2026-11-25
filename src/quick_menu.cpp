@@ -80,6 +80,17 @@ void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Locali
             std::snprintf(label, QUICK_MENU_LABEL_MAX, "%u \xC2\xB7 %02d-%02d", slot, date.month, date.day);
         }
     }
+    // The selected slot's full date, on its big picture (a tile's label has
+    // room only for the time or the day: Andrés, testing round 2).
+    state->when[0] = '\0';
+    const StateSlotInfo* selected = &menu->slots[menu->slot];
+    if (selected->used)
+    {
+        SDL_DateTime date = {};
+        SDL_TimeToDateTime(selected->modified, &date, true);
+        std::snprintf(state->when, sizeof(state->when), "%04d-%02d-%02d %02d:%02d", date.year, date.month, date.day,
+                      date.hour, date.minute);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +175,16 @@ static void draw_preview(QuickMenu* menu, const QuickMenuState* state, float gri
         float v = 0.0f;
         video_texture_uv_max(&picture->texture, &u, &v);
         retro_ui_canvas_image_smooth(picture->texture.ui_texture, x, 0.0f, box_width, box_height, u, v, 0xFFFFFFFFu);
+    }
+    // Its date and time at the bottom left, on a dark band over the picture.
+    if (state->when[0] != '\0')
+    {
+        float pad = std::floor(retro_ui_font_size() * 0.5f);
+        float text_width = retro_ui_text_width(state->when);
+        float band_height = retro_ui_font_size() + 2.0f * pad;
+        float band_y = box_height - band_height;
+        retro_ui_canvas_rect(x, band_y, text_width + 2.0f * pad, band_height, 0xC0000000u);
+        retro_ui_canvas_text(x + pad, band_y + pad, state->when, retro_ui_palette()->text);
     }
     else if (!menu->slots[menu->slot].used)
     {

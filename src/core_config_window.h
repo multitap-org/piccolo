@@ -64,8 +64,8 @@ struct CoreConfigWindow
     // mark input_dirty (piccolo saves input.cfg).
     bool          remap = false;
     uint32_t      remap_port = 0;
-    uint32_t      ports_selected = 0;   // CONTROLS: the port open (UINT32_MAX: none)
-    int32_t       remap_section = 0;    // the remap's open section (one at a time; -1 none)
+    uint32_t      ports_selected = UINT32_MAX;   // CONTROLS: the port open (UINT32_MAX: none, at first)
+    int32_t       remap_section = -1;   // the remap's open section (one at a time; -1 none, at first)
     uint32_t      remap_controller = 0;
     bool          capturing = false;
     InputAction   capture_action = InputAction::pad_b;
