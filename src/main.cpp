@@ -5350,7 +5350,9 @@ static bool app_frame(App* app)
         // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
         bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
         // The ports' tabs, behind every window (they peek while the menu is up).
-        ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
+        PortsWidgetState ports_state = {};
+        ports_widget_state(&ports_state, &app->strings, menu_shown, SDL_GetTicks());
+        ports_widget_draw_tabs(&app->ports_widget, &ports_state, app->pixel_font, app->ui_scale);
         draw_hud(app);
         draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
         // The status line: with the menu bar, or alone over a paused game
@@ -5447,7 +5449,11 @@ static bool app_frame(App* app)
             open_shader_picker(app, app->core_config.shader_scope);
         }
         draw_shader_picker(app);   // over CORE CONFIGURATION
-        ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
+        PortsWidgetState board_state = {};
+        ports_widget_state(&board_state, &app->strings, menu_shown, SDL_GetTicks());
+        PortsWidgetAction board_action = {};
+        ports_widget_draw_board(&app->ports_widget, &board_state, app->pixel_font, app->ui_scale, &board_action);
+        ports_widget_apply(&app->ports_widget, &board_action, &app->input);
         dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
         switch (quick_action.press)
         {

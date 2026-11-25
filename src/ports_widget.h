@@ -17,6 +17,12 @@
 //     pads move from their own device.
 //
 // Mice aren't shown (one would always sit on port 1).
+//
+// Split like every window: the updates and ports_widget_state (no GUI) say
+// what it shows, ports_widget_draw_tabs / ports_widget_draw_board draw it and
+// record what a mouse did on the board, and ports_widget_apply stages that
+// move or closes DEVICES (no GUI). The columns, the pick and the staged moves
+// stay the widget's own state.
 
 #include <cstdint>
 #include <vector>
@@ -62,9 +68,27 @@ void ports_widget_set_pings(PortsWidget* widget, const InputSystem* input, const
 // How far the tabs reach, in retro pixels (the status line starts past them).
 float ports_widget_tabs_width(const PortsWidget* widget);
 
-// The tabs, behind every window; `menu_shown`: they peek.
-void ports_widget_draw_tabs(PortsWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings,
-                            bool menu_shown, uint64_t now_ms);
+// What it shows from the rest of the program.
+struct PortsWidgetState
+{
+    PortsViewText text;          // the words, in the player's language
+    bool          menu_shown = false;   // the tabs peek
+    uint64_t      now_ms = 0;
+};
+
+// What a mouse did on DEVICES this frame.
+struct PortsWidgetAction
+{
+    bool     move = false;   // move `key` to `port` (-1 = OUT), staged until DEVICES closes
+    uint32_t key = 0;
+    int32_t  port = -1;
+    bool     done = false;   // DONE: closes it
+};
+
+void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, uint64_t now_ms);
+
+// The tabs, behind every window.
+void ports_widget_draw_tabs(PortsWidget* widget, const PortsWidgetState* state, RetroUiFont* pixel_font, int32_t scale);
 
 // DEVICES: open (what's held now is ignored until let go), close.
 void ports_widget_open(PortsWidget* widget, const InputSystem* input);
@@ -75,6 +99,9 @@ void ports_widget_close(PortsWidget* widget, InputSystem* input);
 // BACK, which closes it).
 void ports_widget_board_update(PortsWidget* widget, InputSystem* input);
 
-// DEVICES, above everything (and what a mouse did on it).
-void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, RetroUiFont* pixel_font, int32_t scale, uint64_t now_ms,
-                             const Localization* strings);
+// DEVICES, above everything (what a mouse did on it goes to `action`).
+void ports_widget_draw_board(PortsWidget* widget, const PortsWidgetState* state, RetroUiFont* pixel_font, int32_t scale,
+                             PortsWidgetAction* action);
+
+// The board's move (staged) or DONE (closes it, the moves happen).
+void ports_widget_apply(PortsWidget* widget, const PortsWidgetAction* action, InputSystem* input);

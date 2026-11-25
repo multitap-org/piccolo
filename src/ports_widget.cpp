@@ -12,7 +12,7 @@ constexpr uint8_t HELD_BACK  = 16;
 constexpr uint8_t HELD_ACCEPT = 32;
 
 // ---------------------------------------------------------------------------
-// Who is where
+// State (no GUI): who is where
 // ---------------------------------------------------------------------------
 
 // A controller the view shows: its device connected, not a mouse, not ignored.
@@ -295,10 +295,6 @@ float ports_widget_tabs_width(const PortsWidget* widget)
     return widget->open ? 0.0f : ports_view_tabs_width(&widget->view);
 }
 
-// ---------------------------------------------------------------------------
-// Drawing (retroui's ports_view, in piccolo's words)
-// ---------------------------------------------------------------------------
-
 static PortsViewText view_text(const Localization* strings)
 {
     PortsViewText text;
@@ -314,15 +310,40 @@ static PortsViewText view_text(const Localization* strings)
     return text;
 }
 
-void ports_widget_draw_tabs(PortsWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings,
-                            bool menu_shown, uint64_t now_ms)
+void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, uint64_t now_ms)
 {
-    PortsViewText text = view_text(strings);
-    ports_view_draw_tabs(&widget->view, pixel_font, scale, &text, menu_shown, widget->open, false, now_ms);
+    state->text = view_text(strings);
+    state->menu_shown = menu_shown;
+    state->now_ms = now_ms;
 }
 
 // ---------------------------------------------------------------------------
-// DEVICES
+// Drawing (retroui's ports_view, in piccolo's words)
+// ---------------------------------------------------------------------------
+
+void ports_widget_draw_tabs(PortsWidget* widget, const PortsWidgetState* state, RetroUiFont* pixel_font, int32_t scale)
+{
+    ports_view_draw_tabs(&widget->view, pixel_font, scale, &state->text, state->menu_shown, widget->open, false, state->now_ms);
+}
+
+// What a mouse did on it goes to the action (the moves are staged in apply).
+void ports_widget_draw_board(PortsWidget* widget, const PortsWidgetState* state, RetroUiFont* pixel_font, int32_t scale,
+                             PortsWidgetAction* action)
+{
+    if (!widget->open)
+    {
+        return;
+    }
+    PortsViewBoardInput clicks;
+    ports_view_draw_board(&widget->view, pixel_font, scale, &state->text, state->now_ms, &clicks);
+    action->move = clicks.move;
+    action->key = clicks.key;
+    action->port = clicks.port;
+    action->done = clicks.done;
+}
+
+// ---------------------------------------------------------------------------
+// Apply (no GUI): DEVICES' moves
 // ---------------------------------------------------------------------------
 
 static uint8_t held_bits(const InputSystem* input, uint32_t controller)
@@ -583,22 +604,14 @@ void ports_widget_board_update(PortsWidget* widget, InputSystem* input)
     }
 }
 
-void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, RetroUiFont* pixel_font, int32_t scale, uint64_t now_ms,
-                             const Localization* strings)
+void ports_widget_apply(PortsWidget* widget, const PortsWidgetAction* action, InputSystem* input)
 {
-    if (!widget->open)
-    {
-        return;
-    }
-    PortsViewText text = view_text(strings);
-    PortsViewBoardInput clicks;
-    ports_view_draw_board(&widget->view, pixel_font, scale, &text, now_ms, &clicks);
-    if (clicks.move && clicks.key < input->controllers.size())
+    if (action->move && action->key < input->controllers.size())
     {
         staged_fit(widget, input);
-        stage_to(widget, clicks.key, clicks.port);   // (happens when DEVICES closes)
+        stage_to(widget, action->key, action->port);   // (happens when DEVICES closes)
     }
-    if (clicks.done)
+    if (action->done)
     {
         ports_widget_close(widget, input);
     }
