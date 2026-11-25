@@ -212,21 +212,31 @@ static bool finish_row(const SettingsUiContext* context, const char* key, const 
         return false;
     }
     SettingsUiEdit* edit = context->edit;
-    edit->pending = true;
-    edit->scope = context->scope;
-    std::snprintf(edit->key, sizeof(edit->key), "%s", key);
-    edit->action = *action;
+    if (edit->count == SETTINGS_UI_EDITS_MAX)
+    {
+        return true;   // a third change in one frame doesn't happen (SETTINGS_UI_EDITS_MAX); the first ones win
+    }
+    SettingsUiEditEntry* entry = &edit->entries[edit->count];
+    edit->count++;
+    entry->scope = context->scope;
+    std::snprintf(entry->key, sizeof(entry->key), "%s", key);
+    entry->action = *action;
     return true;
 }
 
 bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit)
 {
-    if (!edit->pending)
+    bool changed = false;
+    for (uint32_t i = 0; i < edit->count; i++)
     {
-        return false;
+        const SettingsUiEditEntry* entry = &edit->entries[i];
+        if (settings_view_apply(settings, entry->scope, entry->key, &entry->action))
+        {
+            changed = true;
+        }
     }
-    edit->pending = false;
-    return settings_view_apply(settings, edit->scope, edit->key, &edit->action);
+    edit->count = 0;
+    return changed;
 }
 
 bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint)

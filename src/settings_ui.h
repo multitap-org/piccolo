@@ -26,15 +26,25 @@
 
 constexpr uint32_t SETTINGS_UI_KEY_MAX = 128;
 
-// A setting the user changed this frame, for the window's apply step
-// (settings_ui_apply_edit), so the drawing never changes the settings. One per
-// frame: only one control is used at a time.
+// Two edits a frame at most: a text field reports its change when it loses
+// focus, which happens on the same frame as the click on another control
+// (an integer's +, a slider) that changes its own value at once.
+constexpr uint32_t SETTINGS_UI_EDITS_MAX = 2;
+
+struct SettingsUiEditEntry
+{
+    SettingLayer     scope  = SettingLayer::global;
+    char             key[SETTINGS_UI_KEY_MAX] = {};
+    SettingRowAction action = {};
+};
+
+// The settings the user changed this frame, in the order they were drawn,
+// for the window's apply step (settings_ui_apply_edit), so the drawing never
+// changes the settings.
 struct SettingsUiEdit
 {
-    bool             pending = false;
-    SettingLayer     scope   = SettingLayer::global;
-    char             key[SETTINGS_UI_KEY_MAX] = {};
-    SettingRowAction action  = {};
+    uint32_t            count = 0;
+    SettingsUiEditEntry entries[SETTINGS_UI_EDITS_MAX] = {};
 };
 
 // Which layer edits go to: SettingLayer::global, ::core or ::game.
@@ -47,8 +57,8 @@ struct SettingsUiContext
     SettingsUiEdit* edit     = nullptr;   // where a change goes (the window applies it after drawing)
 };
 
-// Applies a pending edit to the settings and clears it. True when a value
-// changed (as settings_view_apply).
+// Applies the pending edits to the settings, in order, and clears them. True
+// when a value changed (as settings_view_apply).
 bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit);
 
 // One setting's row. `hint` is shown in an empty path field (e.g. the
