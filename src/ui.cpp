@@ -91,19 +91,10 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     {
         share_window_draw(windows->share, &view->share, pixel_font, scale, &actions->share);
     }
+    // TOOLS > PAIR..., also a device asking to pair (over anything).
     if (view->pair_shown)
     {
         pair_window_draw(windows->pair, &view->pair, pixel_font, scale, &actions->pair);
-    }
-    // A device asking to pair: over anything. TOOLS > INVITE too.
-    if (view->pairing_shown)
-    {
-        net_pairing_request_draw(&windows->network->request, &view->request, pixel_font, scale, &actions->request);
-        net_invite_draw(&windows->network->invite, &view->invite, pixel_font, scale, &actions->invite);
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_draw(&windows->network->invite, &view->invite, pixel_font, scale, &actions->invite);
     }
     if (view->guest_shown)
     {

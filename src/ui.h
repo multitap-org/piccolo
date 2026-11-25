@@ -101,10 +101,6 @@ struct UiView
     ShareWindowState        share = {};
     bool                    pair_shown = false;
     PairWindowState         pair = {};
-    bool                    pairing_shown = false;   // a pairing request and INVITE, on the network
-    NetPairingRequestState  request = {};
-    bool                    invite_shown = false;    // INVITE alone (the network is off)
-    NetInviteState          invite = {};
     bool                    guest_shown = false;
     GuestWindowState        guest = {};
     InputWindowState        input = {};
@@ -135,7 +131,7 @@ struct UiWindows
     OnscreenPad*       pad = nullptr;
     PortsWidget*       ports = nullptr;
     SettingsWindow*    settings = nullptr;
-    NetWindow*         network = nullptr;   // SETTINGS > NETWORK, the pairing request, INVITE
+    NetWindow*         network = nullptr;   // SETTINGS > NETWORK
     FilePicker*        picker = nullptr;
     QuickMenu*         quick = nullptr;
     CoreConfigWindow*  config = nullptr;
@@ -145,7 +141,7 @@ struct UiWindows
     bool*              manager_open = nullptr;   // the CORE OPTIONS MANAGER
     CoresWindow*       cores = nullptr;
     ShareWindow*       share = nullptr;
-    PairWindow*        pair = nullptr;
+    PairWindow*        pair = nullptr;      // TOOLS > PAIR... (a pairing request too)
     GuestWindow*       guest = nullptr;
     InputWindow*       input = nullptr;
     MapWindow*         map = nullptr;
@@ -170,8 +166,6 @@ struct UiActions
     CoresWindowAction        cores = {};
     ShareWindowAction        share = {};
     PairWindowAction         pair = {};
-    NetPairingRequestAction  request = {};
-    NetInviteAction          invite = {};
     GuestWindowAction        guest = {};
     InputWindowAction        input = {};
     MapWindowAction          map = {};

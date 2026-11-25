@@ -1353,12 +1353,24 @@ static void pair_update(App* app)
     }
 }
 
-// TOOLS > PAIR: what was pressed, on SHARE's connection.
+// TOOLS > PAIR...: what was pressed. PAIR WITH A HOST on FILE TRANSFER's
+// connection; PAIR WITH A CLIENT on the NetAccess, so under the network lock
+// (the network thread waits meanwhile).
 static void pair_apply(App* app, const PairWindowAction* action)
 {
     NetService* service = app->net_running ? &app->net_service : nullptr;   // access back needs our listener
-    pair_window_apply(&app->pair_window, action, &app->share_link, &app->share_status,
-                      settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
+    pair_window_apply_host(&app->pair_window, action, &app->share_link, &app->share_status,
+                           settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
+    if (service != nullptr)
+    {
+        net_service_lock(service);
+        pair_window_apply_client(&app->pair_window, action, &service->access);
+        net_service_unlock(service);
+    }
+    else
+    {
+        pair_window_apply_client(&app->pair_window, action, nullptr);
+    }
 }
 
 static void open_share_window(App* app)
@@ -1493,14 +1505,21 @@ static void share_update(App* app, ShareTransferLine* line)
     }
 }
 
-// SHARE's PAIR: pairing lives in TOOLS > PAIR only: it opens on that piccolo
-// and starts at once. Once paired and closed, SHARE stays connected.
+// SHARE's PAIR: pairing lives in TOOLS > PAIR... only: it opens on PAIR
+// WITH A HOST with that piccolo and starts at once (unless the window is in
+// the middle of something else). Once paired and closed, SHARE stays
+// connected.
 static void share_pair(App* app, bool internet)
 {
     pair_window_open(&app->pair_window, nullptr);
+    if (app->pair_window.mode != PairMode::host || app->pair_window.phase != PairWindowPhase::list)
+    {
+        return;
+    }
     app->pair_window.selected = app->share_window.found_selected;
     PairWindowAction pair_action = {};
     pair_action.press = internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
+    pair_action.mode = PairMode::host;
     pair_apply(app, &pair_action);
 }
 
@@ -1700,9 +1719,6 @@ static void handle_menu_action(App* app, MenuAction action)
         case MenuAction::pair:
             start_share_link(app);
             pair_window_open(&app->pair_window, nullptr);
-            break;
-        case MenuAction::invite:
-            net_invite_open(&app->net_window.invite);
             break;
         case MenuAction::guests:
             open_guest_window(app);
@@ -2454,7 +2470,7 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
-    facts.pairing_request = app->net_window.request.active;
+    facts.pairing_request = app->pair_window.request.active;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -5044,22 +5060,14 @@ static void net_update_locked(App* app)
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
-            // The dialog that waited for it closes by itself.
-            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
-            {
-                net_pairing_request_close(&app->net_window.request);
-            }
-            if (app->net_window.invite.answered && app->net_window.invite.peer == event.peer)
-            {
-                net_invite_close(&app->net_window.invite, &app->net_service.access);
-            }
+            // PAIR WITH A CLIENT, if it waited for it: PAIRED WITH.
+            pair_window_paired(&app->pair_window, &app->net_service.access, &event, device);
             break;
         }
         case NetAccessEventType::closed:
-            if (event.device < 0 && app->net_window.request.active &&
-                app->net_window.request.peer == event.peer)
+            if (event.device < 0)
             {
-                net_pairing_request_close(&app->net_window.request);   // it cancelled, or left
+                pair_window_request_gone(&app->pair_window, event.peer);   // it cancelled, or left
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -5095,22 +5103,19 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
-            {
-                net_pairing_request_close(&app->net_window.request);
-            }
+            pair_window_request_gone(&app->pair_window, event.peer);
             break;
         case NetAccessEventType::pairing_requested:
-            // A device asks (Andrés, 2026-11-22): the dialog takes its code and
-            // the level; the game pauses while it's up. One at a time: another
-            // waits until this one is done (it asks again on its own if refused).
-            if (net_invite_take_request(&app->net_window.invite, &app->net_service.access, &event))
+            // A device asks (Andrés, 2026-11-22): TOOLS > PAIR... opens on
+            // PAIR WITH A CLIENT to take its code and the role; the game pauses
+            // while it's up. One at a time: another waits until this one is
+            // done (it asks again on its own if refused).
+            if (pair_window_take_request(&app->pair_window, &app->net_service.access, &event))
             {
-                SDL_Log("Network: \"%s\" came with the invite's code", event.name);
+                SDL_Log("Network: \"%s\" came with our own code", event.name);
             }
-            else if (!app->net_window.request.active || app->net_window.request.peer == event.peer)
+            else if (app->pair_window.request.active && app->pair_window.request.peer == event.peer)
             {
-                net_pairing_request_open(&app->net_window.request, &event);
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
             }
             break;
@@ -5254,8 +5259,7 @@ static uint32_t menu_backdrop_alpha(const App* app)
 {
     int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
     // (Not DEBUG: it's watched while playing.)
-    bool window_over_game = app->pair_window.open || app->guest_window.open || app->net_window.request.active ||
-                            app->net_window.invite.open;
+    bool window_over_game = app->pair_window.open || app->guest_window.open || app->pair_window.request.active;
     if ((!ui_is_up(app) && !window_over_game) || percent <= 0)
     {
         return 0;
@@ -5408,9 +5412,9 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         }
         share_window_update(&app->share_window, &app->share_folders, share_link);
     }
-    // TOOLS > PAIR (on SHARE's connection).
+    // TOOLS > PAIR... (PAIR WITH A HOST on SHARE's connection). Also while
+    // closed: a request opens it.
     pair_update(app);
-    if (app->pair_window.open)
     {
         const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start
         if (net_share_link_started(&app->share_link))
@@ -5472,20 +5476,8 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         {
             pair_link = &app->share_status;
         }
-        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running);
-    }
-    // A device asking to pair: over anything, the game paused (ui_derive).
-    // TOOLS > INVITE too (without the network it says the network is off).
-    view->pairing_shown = app->net_running && (app->net_window.request.active || app->net_window.invite.open);
-    view->invite_shown = !view->pairing_shown && app->net_window.invite.open;
-    if (view->pairing_shown)
-    {
-        net_pairing_request_state(&view->request, &app->strings);
-        net_invite_state(&view->invite, &app->strings, &app->net_service.access);   // (only whether there is one)
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_state(&view->invite, &app->strings, nullptr);
+        // (A request shows it over anything, the game paused: ui_derive.)
+        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running, app->net_running);
     }
     // TOOLS > REMOTE PLAY TOGETHER: reads the NetAccess, so under the lock.
     view->guest_shown = app->guest_window.open;
@@ -5744,20 +5736,6 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     if (view->pair_shown)
     {
         pair_apply(app, &actions->pair);
-    }
-    // The pairing request and INVITE answer on the NetAccess: the network
-    // thread waits meanwhile.
-    if (view->pairing_shown)
-    {
-        net_service_lock(&app->net_service);
-        NetAccess* access = &app->net_service.access;
-        net_pairing_request_apply(&app->net_window.request, &actions->request, access);
-        net_invite_apply(&app->net_window.invite, &actions->invite, access);
-        net_service_unlock(&app->net_service);
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_apply(&app->net_window.invite, &actions->invite, nullptr);
     }
     // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
     if (view->guest_shown)

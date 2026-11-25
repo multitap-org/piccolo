@@ -41,8 +41,6 @@ static const MenuItem CONFIG_ITEMS[] = {
 
 // Tools: the game's DVR, the core tools, then the network tools. The browser
 // has no CORE MANAGER: its core is linked into the page's program.
-// TODO(round1): PAIR and INVITE become one PAIR... entry with the one pairing
-// window (testing round 1, item 5); until then both stay.
 static const MenuItem TOOLS_ITEMS[] = {
     { Str::menu_game_dvr,        MenuAction::game_dvr,        MenuShown::greyed_no_game },
 #if !defined(__EMSCRIPTEN__)
@@ -51,7 +49,6 @@ static const MenuItem TOOLS_ITEMS[] = {
     { Str::menu_options_manager, MenuAction::options_manager, MenuShown::always },
     { Str::menu_tools,           MenuAction::separator,       MenuShown::always },
     { Str::menu_pair,            MenuAction::pair,            MenuShown::always },
-    { Str::menu_invite,          MenuAction::invite,          MenuShown::always },
     { Str::menu_guests,          MenuAction::guests,          MenuShown::always },
     { Str::menu_share,           MenuAction::share,           MenuShown::always },
 };
@@ -131,7 +128,6 @@ const char* menu_action_name(MenuAction action)
         case MenuAction::cores:      return "CORE MANAGER";
         case MenuAction::share:      return "FILE TRANSFER";
         case MenuAction::pair:       return "PAIR";
-        case MenuAction::invite:     return "INVITE";
         case MenuAction::guests:     return "REMOTE PLAY";
         case MenuAction::network:    return "NETWORK";
         case MenuAction::separator:    return "SEPARATOR";

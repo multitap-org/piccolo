@@ -161,7 +161,7 @@ struct UiFacts
     bool played_with_gamepad = false;   // the last game input came from a local gamepad
     bool gamepad_on_port = false;       // a local gamepad is on a port now
     bool background = false;            // Android: in the background
-    bool pairing_request = false;       // the pairing request dialog is up
+    bool pairing_request = false;       // a device asks to pair (TOOLS > PAIR... shows it)
 };
 
 struct UiDerived
