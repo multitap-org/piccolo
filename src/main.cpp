@@ -3200,10 +3200,8 @@ static void draw_game(App* app)
 // A folder field or GAME FOLDERS' "+" in SETTINGS: CHOOSE FOLDER, starting
 // at the folder the setting has (or the default one, or the first game
 // folder).
-static void choose_folder_start(App* app)
+static void choose_folder_start(App* app, const char* key)
 {
-    const char* key = app->settings_window.choose_folder_key;
-    app->settings_window.choose_folder_key = nullptr;
     if (key == nullptr)
     {
         return;
@@ -3348,14 +3346,7 @@ static void draw_settings(App* app)
                                    &image.processed_height);
     }
     image.controls_available = app->shader_library.loaded || app->shell.api == GpuApi::gl;
-    SettingsWindowContext context = {};
-    context.settings = &app->settings;
-    context.paths = &app->paths;
-    context.core_name = app->core_name;
-    context.game_name = app->game_name;
-    context.image = &image;
-    context.strings = &app->strings;
-    context.themes = &app->themes;
+    SettingsWindowNotes notes = {};
     // The NETWORK tab: its state is filled under the network lock, below.
     // The hosts list (our client side): SHARE's connection knows it.
     NetShareLinkStatus hosts_status;
@@ -3369,10 +3360,6 @@ static void draw_settings(App* app)
         net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
     }
     NetWindowState network_state = {};
-    NetWindowAction network_action = {};
-    context.network_window = &app->net_window;
-    context.network = &network_state;
-    context.network_action = &network_action;
     // Text with numbers: the translated part, then the numbers (no formats in translations).
     const char* window_label = piccolo_text(&app->strings, Str::section_window);
     char window_size[200] = {};
@@ -3391,12 +3378,12 @@ static void draw_settings(App* app)
         std::snprintf(window_size, sizeof(window_size), "%s: %u X %u", window_label, app->window.target_width,
                       app->window.target_height);
     }
-    context.window_size = window_size;
-    context.present_wait = piccolo_text(&app->strings, app_shell_waits_for_screen(&app->shell)
-                                                           ? Str::present_wait_screen
-                                                           : Str::present_wait_gpu);
-    context.audio_devices = app->audio_device_pointers.data();
-    context.audio_device_count = static_cast<uint32_t>(app->audio_device_pointers.size());
+    notes.window_size = window_size;
+    notes.present_wait = piccolo_text(&app->strings, app_shell_waits_for_screen(&app->shell)
+                                                         ? Str::present_wait_screen
+                                                         : Str::present_wait_gpu);
+    notes.audio_devices = app->audio_device_pointers.data();
+    notes.audio_device_count = static_cast<uint32_t>(app->audio_device_pointers.size());
     char audio_latency[200] = {};
     const AudioOutput* audio = &app->session.audio;
     if (audio->stream == nullptr)
@@ -3411,10 +3398,10 @@ static void draw_settings(App* app)
                       audio->rate.automatic ? " (AUTO)" : "", piccolo_text(&app->strings, Str::audio_latency_minimum),
                       audio->rate.floor_ms);
     }
-    context.audio_latency = audio_latency;
+    notes.audio_latency = audio_latency;
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
-    context.rewind_note = app->rewind_note;
-    context.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
+    notes.rewind_note = app->rewind_note;
+    notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
     {
@@ -3431,7 +3418,7 @@ static void draw_settings(App* app)
         game_mode = Str::game_mode_not_supported;
         break;
     }
-    context.game_mode = piccolo_text(&app->strings, game_mode);
+    notes.game_mode = piccolo_text(&app->strings, game_mode);
     char frame_delay_text[200] = {};
     const AutoFrameDelay* auto_delay = &app->auto_delay;
     if (game_running(app) && app->session.timing.effective != TimingMode::vsync)
@@ -3459,7 +3446,7 @@ static void draw_settings(App* app)
                       piccolo_text(&app->strings, Str::frame_delay_searching),
                       auto_frame_delay_seconds_to_lock(auto_delay));
     }
-    context.frame_delay = frame_delay_text;
+    notes.frame_delay = frame_delay_text;
     // RUN-AHEAD: what the running core does with it.
     char run_ahead_text[200] = {};
     const LibretroHost* run_ahead_host = app->session.host;
@@ -3477,8 +3464,8 @@ static void draw_settings(App* app)
                       piccolo_text(&app->strings, Str::run_ahead_in_use), libretro_host_run_ahead_applied(run_ahead_host),
                       piccolo_text(&app->strings, Str::run_ahead_most), run_ahead_host->core_run_ahead_max);
     }
-    context.run_ahead = run_ahead_text;
-    context.frame_delay_found = game_running(app) && auto_delay->locked;
+    notes.run_ahead = run_ahead_text;
+    notes.frame_delay_found = game_running(app) && auto_delay->locked;
     // The NETWORK tab reads and changes the NetAccess (pairing, levels,
     // FORGET): the network thread waits meanwhile.
     bool network_locked = app->net_running;
@@ -3490,34 +3477,38 @@ static void draw_settings(App* app)
     net_window_state(&network_state, &app->settings, &app->strings, network_access, app->net_listen_failed,
                      app->net_fingerprint, &app->net_speed_results,
                      PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET), hosts, hosts_online);
-    settings_window_draw(&app->settings_window, &context, app->pixel_font, app->ui_scale);
-    net_window_apply(&app->net_window, &network_action, &app->settings, network_access);   // SETTINGS saves on closing
+    settings_window_update(&app->settings_window, &app->settings, app->core_name, app->game_name);
+    SettingsWindowState settings_state = {};
+    settings_window_state(&settings_state, &app->settings_window, &app->settings, &app->strings, &app->paths,
+                          app->core_name, app->game_name, &notes, &app->themes, &image, &network_state);
+    SettingsWindowAction settings_action = {};
+    settings_window_draw(&app->settings_window, &app->net_window, &settings_state, app->pixel_font, app->ui_scale,
+                         &settings_action);
+    settings_window_apply(&settings_action, &app->settings);   // SETTINGS saves on closing
+    net_window_apply(&app->net_window, &settings_action.network, &app->settings, network_access);
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
     }
-    if (network_action.forget_host && hosts != nullptr)
+    if (settings_action.network.forget_host && hosts != nullptr)
     {
-        net_share_link_forget_host(&app->share_link, network_action.forget_host_index);
+        net_share_link_forget_host(&app->share_link, settings_action.network.forget_host_index);
     }
-    choose_folder_start(app);
-    if (app->settings_window.search_frame_delay)
+    choose_folder_start(app, settings_action.choose_folder);
+    if (settings_action.search_frame_delay)
     {
-        app->settings_window.search_frame_delay = false;
         search_frame_delay_again(app);
     }
     // MEASURE AGAIN: AUTO forgets this game's verdict (measured at its next start).
-    if (app->settings_window.rewind_measure_again)
+    if (settings_action.rewind_measure_again)
     {
-        app->settings_window.rewind_measure_again = false;
         settings_reset(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN);
         save_settings(app);
     }
     // SAVE THEME: into themes/ in piccolo's folder, then listed in THEME.
-    if (!app->settings_window.save_theme_request.empty())
+    if (settings_action.save_theme)
     {
-        std::string name = app->settings_window.save_theme_request;
-        app->settings_window.save_theme_request.clear();
+        std::string name = settings_action.save_theme_name;
         if (app->paths.root.empty() ||
             !piccolo_themes_save(&app->settings, name.c_str(), (app->paths.root + "/themes").c_str(), &app->themes))
         {
