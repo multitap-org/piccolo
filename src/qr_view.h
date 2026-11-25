@@ -1,6 +1,6 @@
 #pragma once
 
-// A text as a QR code, drawn with ImGui: dark modules on white with the
+// A text as a QR code, drawn on a retroui canvas: dark modules on white with the
 // quiet zone scanners want (4 modules), each module a whole number of pixels.
 //
 // Nothing shows one since pairing went the other way (the client shows a

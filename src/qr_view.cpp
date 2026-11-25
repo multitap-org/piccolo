@@ -2,8 +2,8 @@
 
 #include <cmath>
 
-#include "imgui.h"
 #include "qrcodegen.h"
+#include "retro_ui_controls.h"
 
 static_assert(QR_VIEW_BUFFER == qrcodegen_BUFFER_LEN_FOR_VERSION(QR_VIEW_MAX_VERSION),
               "the QR buffer size matches qrcodegen's");
@@ -28,18 +28,15 @@ void qr_view_draw(const QrView* view)
         return;
     }
     int size = qrcodegen_getSize(view->modules);
-    float module = std::floor(ImGui::GetFontSize() / 3.0f);
+    float module = std::floor(retro_ui_font_size() / 3.0f);
     if (module < 2.0f)
     {
         module = 2.0f;
     }
     const int quiet = 4;
     float side = static_cast<float>(size + quiet * 2) * module;
-    ImVec2 origin = ImGui::GetCursorScreenPos();
-    origin.x = std::floor(origin.x);
-    origin.y = std::floor(origin.y);
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(origin, ImVec2(origin.x + side, origin.y + side), IM_COL32(255, 255, 255, 255));
+    retro_ui_canvas(side, side);
+    retro_ui_canvas_rect(0.0f, 0.0f, side, side, 0xFFFFFFFFu);
     for (int y = 0; y < size; y++)
     {
         // Runs of dark modules on a row as one rectangle each.
@@ -56,11 +53,9 @@ void qr_view_draw(const QrView* view)
             {
                 x++;
             }
-            float left = origin.x + static_cast<float>(start + quiet) * module;
-            float top = origin.y + static_cast<float>(y + quiet) * module;
-            draw->AddRectFilled(ImVec2(left, top), ImVec2(left + static_cast<float>(x - start) * module, top + module),
-                                IM_COL32(0, 0, 0, 255));
+            float left = static_cast<float>(start + quiet) * module;
+            float top = static_cast<float>(y + quiet) * module;
+            retro_ui_canvas_rect(left, top, static_cast<float>(x - start) * module, module, 0xFF000000u);
         }
     }
-    ImGui::Dummy(ImVec2(side, side));
 }
