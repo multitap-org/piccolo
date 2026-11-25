@@ -5546,14 +5546,16 @@ static bool app_frame(App* app)
             core_catalog_scan(&app->catalog, game_running(app) ? app->session.host : nullptr);
         }
         std::string running_file = running_core_file(app);
-        CoresWindowContext cores_context = {};
-        cores_context.strings = &app->strings;
-        cores_context.updater = &app->core_updater;
-        cores_context.running_file = running_file.c_str();
-        app->cores_window.show_non_free = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_NON_FREE);
-        app->cores_window.show_legacy = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_LEGACY);
-        app->cores_window.show_experimental = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_EXPERIMENTAL);
-        cores_window_draw(&app->cores_window, &cores_context, app->pixel_font, app->ui_scale);
+        cores_window_update(&app->cores_window, &app->core_updater, &app->settings, running_file.c_str());
+        CoresWindowState cores_state = {};
+        cores_window_state(&cores_state, &app->core_updater, &app->settings, &app->strings, running_file.c_str());
+        CoresWindowAction cores_action = {};
+        cores_window_draw(&app->cores_window, &cores_state, app->pixel_font, app->ui_scale, &cores_action);
+        if (cores_window_apply(&app->cores_window, &cores_action, &app->core_updater, &app->settings,
+                               running_file.c_str()))
+        {
+            save_settings(app);   // a SHOW switch
+        }
 
         // SHARE: this side from our folders, the other from the connection.
         if (app->share_window.open)
@@ -5618,17 +5620,6 @@ static bool app_frame(App* app)
             {
                 net_service_unlock(&app->net_service);
             }
-        }
-        if (app->cores_window.show_changed)
-        {
-            app->cores_window.show_changed = false;
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_NON_FREE,
-                              app->cores_window.show_non_free);
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_LEGACY,
-                              app->cores_window.show_legacy);
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_EXPERIMENTAL,
-                              app->cores_window.show_experimental);
-            save_settings(app);
         }
         InputWindowContext input_context = {};
         input_context.input = &app->input;

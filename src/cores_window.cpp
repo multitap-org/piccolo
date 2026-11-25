@@ -3,18 +3,87 @@
 #include <cstdio>
 #include <string>
 
+#include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
-void cores_window_open(CoresWindow* window, CoreUpdater* updater)
+// ---------------------------------------------------------------------------
+// State
+
+static CoresShow show_from_settings(const Settings* settings)
 {
-    window->open = true;
-    window->selected = -1;
-    window->update_all = false;
-    core_updater_refresh(updater);
+    CoresShow show = {};
+    show.non_free = settings_get_bool(settings, PICCOLO_CORES_SHOW_NON_FREE);
+    show.legacy = settings_get_bool(settings, PICCOLO_CORES_SHOW_LEGACY);
+    show.experimental = settings_get_bool(settings, PICCOLO_CORES_SHOW_EXPERIMENTAL);
+    return show;
 }
+
+// Listed: installed cores always (so they can still be removed or updated);
+// the others when the SHOW switches allow both their license and their type.
+static bool listed(const CoresShow* show, const CoreUpdater* updater, int32_t entry)
+{
+    if (core_updater_status(updater, entry) != CoreStatus::not_installed)
+    {
+        return true;
+    }
+    const CoreIndexEntry* chosen = &updater->index.entries[static_cast<size_t>(entry)];
+    if (!chosen->free && !show->non_free)
+    {
+        return false;
+    }
+    switch (chosen->type)
+    {
+        case CoreType::main:         return true;
+        case CoreType::legacy:       return show->legacy;
+        case CoreType::experimental: return show->experimental;
+    }
+    return false;
+}
+
+// UPDATE ALL: whenever the downloader is idle, the next core with an update
+// (stops at the first error, or when none is left).
+void cores_window_update(CoresWindow* window, CoreUpdater* updater, const Settings* settings, const char* running_file)
+{
+    if (!window->open || !window->update_all || updater->state != CoreUpdaterState::idle)
+    {
+        return;
+    }
+    if (updater->message_is_error)
+    {
+        window->update_all = false;
+        return;
+    }
+    CoresShow show = show_from_settings(settings);
+    for (size_t i = 0; i < updater->index.entries.size(); i++)
+    {
+        int32_t entry = static_cast<int32_t>(i);
+        if (listed(&show, updater, entry) && core_updater_status(updater, entry) == CoreStatus::update &&
+            updater->index.entries[i].file != running_file &&
+            (!updater->free_only || updater->index.entries[i].free))
+        {
+            core_updater_install(updater, entry, running_file);
+            return;
+        }
+    }
+    window->update_all = false;
+}
+
+void cores_window_state(CoresWindowState* state, CoreUpdater* updater, const Settings* settings,
+                        const Localization* strings, const char* running_file)
+{
+    state->strings = strings;
+    state->updater = updater;
+    state->running_file = running_file;
+    state->available = core_updater_available();
+    state->show = show_from_settings(settings);
+    core_updater_progress(updater, &state->received, &state->total);
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
 
 static const char* status_text(const Localization* strings, CoreStatus status)
 {
@@ -58,60 +127,18 @@ static void size_text(int64_t bytes, char* out, size_t out_size)
     }
 }
 
-// Listed: installed cores always (so they can still be removed or updated);
-// the others when the SHOW switches allow both their license and their type.
-static bool listed(const CoresWindow* window, const CoreUpdater* updater, int32_t entry)
+static void press(CoresWindowAction* action, bool pressed, CoresWindowPress what)
 {
-    if (core_updater_status(updater, entry) != CoreStatus::not_installed)
+    if (pressed)
     {
-        return true;
+        action->press = what;
     }
-    const CoreIndexEntry* chosen = &updater->index.entries[static_cast<size_t>(entry)];
-    if (!chosen->free && !window->show_non_free)
-    {
-        return false;
-    }
-    switch (chosen->type)
-    {
-        case CoreType::main:         return true;
-        case CoreType::legacy:       return window->show_legacy;
-        case CoreType::experimental: return window->show_experimental;
-    }
-    return false;
 }
 
-// UPDATE ALL: whenever the downloader is idle, the next core with an update
-// (stops at the first error, or when none is left).
-static void continue_update_all(CoresWindow* window, const CoresWindowContext* context)
+static void draw_list(CoresWindow* window, const CoresWindowState* state, float block, float height)
 {
-    CoreUpdater* updater = context->updater;
-    if (!window->update_all || updater->state != CoreUpdaterState::idle)
-    {
-        return;
-    }
-    if (updater->message_is_error)
-    {
-        window->update_all = false;
-        return;
-    }
-    for (size_t i = 0; i < updater->index.entries.size(); i++)
-    {
-        int32_t entry = static_cast<int32_t>(i);
-        if (listed(window, updater, entry) && core_updater_status(updater, entry) == CoreStatus::update &&
-            updater->index.entries[i].file != context->running_file &&
-            (!updater->free_only || updater->index.entries[i].free))
-        {
-            core_updater_install(updater, entry, context->running_file);
-            return;
-        }
-    }
-    window->update_all = false;
-}
-
-static void draw_list(CoresWindow* window, const CoresWindowContext* context, float block, float height)
-{
-    CoreUpdater* updater = context->updater;
-    const Localization* strings = context->strings;
+    const CoreUpdater* updater = state->updater;
+    const Localization* strings = state->strings;
     retro_ui_begin_list("cores", 0.0f, height);
     RetroUiColumn columns[4] = {};
     columns[0].label = piccolo_text(strings, Str::cores_column_core);
@@ -128,7 +155,7 @@ static void draw_list(CoresWindow* window, const CoresWindowContext* context, fl
         {
             const CoreIndexEntry* entry = &updater->index.entries[i];
             int32_t index = static_cast<int32_t>(i);
-            if (!listed(window, updater, index))
+            if (!listed(&state->show, updater, index))
             {
                 continue;
             }
@@ -147,13 +174,13 @@ static void draw_list(CoresWindow* window, const CoresWindowContext* context, fl
     retro_ui_end_list();
 }
 
-static void draw_selected(CoresWindow* window, const CoresWindowContext* context)
+static void draw_selected(CoresWindow* window, const CoresWindowState* state, CoresWindowAction* action)
 {
-    CoreUpdater* updater = context->updater;
-    const Localization* strings = context->strings;
+    const CoreUpdater* updater = state->updater;
+    const Localization* strings = state->strings;
     bool busy = updater->state != CoreUpdaterState::idle;
     if (window->selected >= static_cast<int32_t>(updater->index.entries.size()) ||
-        (window->selected >= 0 && !listed(window, updater, window->selected)))
+        (window->selected >= 0 && !listed(&state->show, updater, window->selected)))
     {
         window->selected = -1;   // hidden by a SHOW switch, or a shorter list
     }
@@ -197,32 +224,28 @@ static void draw_selected(CoresWindow* window, const CoresWindowContext* context
     retro_ui_begin_disabled(busy);
     if (status != CoreStatus::installed)
     {
-        Str action = Str::cores_install;
+        Str install = Str::cores_install;
         if (status == CoreStatus::update)
         {
-            action = Str::cores_update;
+            install = Str::cores_update;
         }
         else if (status == CoreStatus::installed_by_hand)
         {
-            action = Str::cores_replace;
+            install = Str::cores_replace;
         }
-        if (retro_ui_button(piccolo_text(strings, action)))
-        {
-            core_updater_install(updater, window->selected, context->running_file);
-        }
+        press(action, retro_ui_button(piccolo_text(strings, install)), CoresWindowPress::install);
         retro_ui_same_line();
     }
-    if (status != CoreStatus::not_installed && retro_ui_button(piccolo_text(strings, Str::cores_remove)))
-    {
-        core_updater_remove(updater, window->selected, context->running_file);
-    }
+    press(action, status != CoreStatus::not_installed && retro_ui_button(piccolo_text(strings, Str::cores_remove)),
+          CoresWindowPress::remove);
     retro_ui_end_disabled();
+    action->entry = window->selected;
 }
 
 // NON-FREE, and the confirmation turning it on asks for.
-static void draw_non_free_switch(CoresWindow* window, const Localization* strings)
+static void draw_non_free_switch(CoresWindow* window, const Localization* strings, CoresWindowAction* action)
 {
-    bool shown = window->show_non_free;
+    bool shown = action->show.non_free;
     if (retro_ui_check("non_free", piccolo_text(strings, Str::cores_non_free), &shown))
     {
         if (shown)
@@ -231,8 +254,8 @@ static void draw_non_free_switch(CoresWindow* window, const Localization* string
         }
         else
         {
-            window->show_non_free = false;
-            window->show_changed = true;
+            action->show.non_free = false;
+            action->show_changed = true;
         }
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::cores_show_non_free_help));
@@ -250,8 +273,8 @@ static void draw_non_free_switch(CoresWindow* window, const Localization* string
     RetroUiAnswer answer = retro_ui_question(&question, window->confirm_non_free);
     if (answer == RetroUiAnswer::yes)
     {
-        window->show_non_free = true;
-        window->show_changed = true;
+        action->show.non_free = true;
+        action->show_changed = true;
     }
     if (answer != RetroUiAnswer::none)
     {
@@ -260,44 +283,47 @@ static void draw_non_free_switch(CoresWindow* window, const Localization* string
 }
 
 // One SHOW switch without a confirmation (OLDER VERSIONS, EXPERIMENTAL).
-static void draw_show_switch(CoresWindow* window, const Localization* strings, const char* id, Str label, Str help,
-                             bool* value)
+static void draw_show_switch(const Localization* strings, const char* id, Str label, Str help, bool* value,
+                             CoresWindowAction* action)
 {
     bool shown = *value;
     if (retro_ui_check(id, piccolo_text(strings, label), &shown))
     {
         *value = shown;
-        window->show_changed = true;
+        action->show_changed = true;
     }
     retro_ui_item_tooltip(piccolo_text(strings, help));
 }
 
 // SHOW: NON-FREE (not in store builds), OLDER VERSIONS, EXPERIMENTAL.
-static void draw_show_row(CoresWindow* window, const CoresWindowContext* context)
+static void draw_show_row(CoresWindow* window, const CoresWindowState* state, CoresWindowAction* action)
 {
-    const Localization* strings = context->strings;
+    const Localization* strings = state->strings;
     retro_ui_label(piccolo_text(strings, Str::cores_show));
-    if (!context->updater->free_only)
+    if (!state->updater->free_only)
     {
         retro_ui_same_line();
-        draw_non_free_switch(window, strings);
+        draw_non_free_switch(window, strings, action);
     }
     retro_ui_same_line();
-    draw_show_switch(window, strings, "legacy", Str::cores_show_legacy, Str::cores_show_legacy_help, &window->show_legacy);
+    draw_show_switch(strings, "legacy", Str::cores_show_legacy, Str::cores_show_legacy_help, &action->show.legacy,
+                     action);
     retro_ui_same_line();
-    draw_show_switch(window, strings, "experimental", Str::cores_show_experimental, Str::cores_show_experimental_help,
-                     &window->show_experimental);
+    draw_show_switch(strings, "experimental", Str::cores_show_experimental, Str::cores_show_experimental_help,
+                     &action->show.experimental, action);
 }
 
-void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
+void cores_window_draw(CoresWindow* window, const CoresWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       CoresWindowAction* action)
 {
+    *action = {};
+    action->show = state->show;
     if (!window->open)
     {
         return;
     }
-    CoreUpdater* updater = context->updater;
-    const Localization* strings = context->strings;
-    continue_update_all(window, context);
+    const CoreUpdater* updater = state->updater;
+    const Localization* strings = state->strings;
 
     float block = static_cast<float>(scale);
     float screen_width = 0.0f;
@@ -322,7 +348,7 @@ void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, R
         {
             window->open = false;
         }
-        if (!core_updater_available())
+        if (!state->available)
         {
             retro_ui_dim_text(piccolo_text(strings, Str::cores_unavailable), nullptr);
         }
@@ -334,43 +360,29 @@ void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, R
             float line = retro_ui_line_step();
             float bottom = window->bottom_height > 0.0f ? window->bottom_height : line * 4.0f;
             float list_height = retro_ui_height_left() - bottom;
-            draw_list(window, context, block, list_height > line * 3.0f ? list_height : line * 3.0f);
+            draw_list(window, state, block, list_height > line * 3.0f ? list_height : line * 3.0f);
             float bottom_start = retro_ui_cursor_y();
-            draw_selected(window, context);
+            draw_selected(window, state, action);
 
             bool busy = updater->state != CoreUpdaterState::idle;
             retro_ui_begin_disabled(busy);
-            if (retro_ui_button(piccolo_text(strings, Str::cores_refresh)))
-            {
-                window->update_all = false;
-                core_updater_refresh(updater);
-            }
+            press(action, retro_ui_button(piccolo_text(strings, Str::cores_refresh)), CoresWindowPress::refresh);
             retro_ui_same_line();
-            if (retro_ui_button(piccolo_text(strings, Str::cores_update_all)))
-            {
-                window->update_all = true;
-                updater->message_is_error = false;   // a new run: don't stop on the last error
-            }
+            press(action, retro_ui_button(piccolo_text(strings, Str::cores_update_all)), CoresWindowPress::update_all);
             retro_ui_end_disabled();
             if (busy)
             {
                 retro_ui_same_line();
-                if (retro_ui_button(piccolo_text(strings, Str::cores_cancel)))
-                {
-                    window->update_all = false;
-                    core_updater_cancel(updater);
-                }
+                press(action, retro_ui_button(piccolo_text(strings, Str::cores_cancel)), CoresWindowPress::cancel);
             }
-            draw_show_row(window, context);
+            draw_show_row(window, state, action);
 
             // Status: the download's progress, or what the downloader did last.
-            int64_t received = 0;
-            int64_t total = 0;
-            core_updater_progress(updater, &received, &total);
-            if (updater->state == CoreUpdaterState::installing && total > 0)
+            if (updater->state == CoreUpdaterState::installing && state->total > 0)
             {
                 retro_ui_text_format("%s %s %d%%", piccolo_text(strings, Str::cores_downloading),
-                                     updater->task_entry.name.c_str(), static_cast<int>(received * 100 / total));
+                                     updater->task_entry.name.c_str(),
+                                     static_cast<int>(state->received * 100 / state->total));
             }
             else if (updater->message_is_error)
             {
@@ -387,4 +399,51 @@ void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, R
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void cores_window_open(CoresWindow* window, CoreUpdater* updater)
+{
+    window->open = true;
+    window->selected = -1;
+    window->update_all = false;
+    core_updater_refresh(updater);
+}
+
+bool cores_window_apply(CoresWindow* window, const CoresWindowAction* action, CoreUpdater* updater, Settings* settings,
+                        const char* running_file)
+{
+    switch (action->press)
+    {
+    case CoresWindowPress::none:
+        break;
+    case CoresWindowPress::install:
+        core_updater_install(updater, action->entry, running_file);
+        break;
+    case CoresWindowPress::remove:
+        core_updater_remove(updater, action->entry, running_file);
+        break;
+    case CoresWindowPress::refresh:
+        window->update_all = false;
+        core_updater_refresh(updater);
+        break;
+    case CoresWindowPress::update_all:
+        window->update_all = true;
+        updater->message_is_error = false;   // a new run: don't stop on the last error
+        break;
+    case CoresWindowPress::cancel:
+        window->update_all = false;
+        core_updater_cancel(updater);
+        break;
+    }
+    if (!action->show_changed)
+    {
+        return false;
+    }
+    settings_set_bool(settings, SettingLayer::global, PICCOLO_CORES_SHOW_NON_FREE, action->show.non_free);
+    settings_set_bool(settings, SettingLayer::global, PICCOLO_CORES_SHOW_LEGACY, action->show.legacy);
+    settings_set_bool(settings, SettingLayer::global, PICCOLO_CORES_SHOW_EXPERIMENTAL, action->show.experimental);
+    return true;
 }
