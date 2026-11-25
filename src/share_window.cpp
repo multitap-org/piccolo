@@ -7,9 +7,10 @@
 #include <cstring>
 #include <ctime>
 
-#include "imgui.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
 void share_window_open(ShareWindow* window)
 {
@@ -369,28 +370,27 @@ struct PaneLayout
 static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const char* name, bool connected,
                       const PaneLayout* layout, const Localization* strings, bool* picked)
 {
-    ImGui::BeginGroup();
-    ImGui::PushID(name);
-    ImGui::TextUnformatted(name);
+    retro_ui_begin_group();
+    retro_ui_push_id(name);
+    retro_ui_text(name);
 
-    // The shared folder we're in.
+    // The shared folder we're in. Picking it again goes back to its top.
     std::string root = root_of(&pane->path);
     const char* preview = root.empty() ? piccolo_text(strings, Str::share_shared_folders) : root.c_str();
-    ImGui::SetNextItemWidth(layout->width);
-    if (retro_ui_begin_combo("##root", preview))
+    retro_ui_next_width(layout->width);
+    if (retro_ui_begin_choice("root", preview))
     {
         for (size_t i = 0; i < roots->size(); i++)
         {
-            ImGui::PushID(static_cast<int>(i));
-            if (ImGui::Selectable((*roots)[i].name.c_str(), (*roots)[i].name == root))
+            if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), (*roots)[i].name.c_str(),
+                                            (*roots)[i].name == root))
             {
                 go_to(pane, &(*roots)[i].name);
             }
-            ImGui::PopID();
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    ImGui::TextDisabled("%s", pane->path.empty() ? " " : pane->path.c_str());
+    retro_ui_dim_text(pane->path.empty() ? " " : pane->path.c_str(), nullptr);
 
     bool listed = connected && !pane->waiting && pane->status == NetShareStatus::ok;
 
@@ -400,17 +400,19 @@ static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const 
     retro_ui_begin_list("folders", layout->width, layout->folders_height);
     if (!connected)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_not_connected));
+        retro_ui_dim_text(piccolo_text(strings, Str::share_not_connected), nullptr);
     }
     else if (pane->waiting)
     {
-        ImGui::TextDisabled("...");
+        retro_ui_dim_text("...", nullptr);
     }
     else
     {
-        if (!pane->path.empty() && ImGui::Selectable(".."))
+        if (!pane->path.empty())
         {
-            up = true;
+            retro_ui_push_id("up");
+            up = retro_ui_list_item(0, "..", false, nullptr);
+            retro_ui_pop_id();
         }
         for (size_t i = 0; listed && i < pane->entries.size(); i++)
         {
@@ -418,16 +420,14 @@ static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const 
             {
                 continue;
             }
-            ImGui::PushID(static_cast<int>(i));
-            if (ImGui::Selectable(pane->entries[i].name.c_str()))
+            if (retro_ui_list_item(static_cast<uint32_t>(i), pane->entries[i].name.c_str(), false, nullptr))
             {
                 open_folder = pane->entries[i].name;
             }
-            ImGui::PopID();
         }
         if (pane->status != NetShareStatus::ok)
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_list_failed));
+            retro_ui_dim_text(piccolo_text(strings, Str::share_list_failed), nullptr);
         }
     }
     retro_ui_end_list();
@@ -444,19 +444,7 @@ static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const 
             continue;
         }
         any_file = true;
-        ImGui::PushID(static_cast<int>(i));
         bool grey = i < pane->same.size() && pane->same[i] != 0;
-        if (grey)
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        }
-        float row_x = ImGui::GetCursorPosX();
-        if (ImGui::Selectable(entry->name.c_str(), pane->selected == static_cast<int32_t>(i)) &&
-            pane->selected != static_cast<int32_t>(i))
-        {
-            pane->selected = static_cast<int32_t>(i);
-            *picked = true;
-        }
         char detail[48] = {};
         if (by_date)
         {
@@ -466,23 +454,22 @@ static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const 
         {
             format_size(entry->size, detail, sizeof(detail));
         }
-        float detail_width = ImGui::CalcTextSize(detail).x;
-        ImGui::SameLine(row_x + ImGui::GetContentRegionAvail().x - detail_width);
-        ImGui::TextUnformatted(detail);
-        if (grey)
+        if (retro_ui_list_item_detail(static_cast<uint32_t>(i), entry->name.c_str(),
+                                      pane->selected == static_cast<int32_t>(i), detail, grey) &&
+            pane->selected != static_cast<int32_t>(i))
         {
-            ImGui::PopStyleColor();
+            pane->selected = static_cast<int32_t>(i);
+            *picked = true;
         }
-        ImGui::PopID();
     }
     if (listed && !any_file && !pane->path.empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_no_files));
+        retro_ui_dim_text(piccolo_text(strings, Str::share_no_files), nullptr);
     }
     retro_ui_end_list();
 
-    ImGui::PopID();
-    ImGui::EndGroup();
+    retro_ui_pop_id();
+    retro_ui_end_group();
 
     if (up)
     {
@@ -537,22 +524,25 @@ static bool found_is_paired(const NetShareLinkStatus* link, int32_t index)
 static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, const PaneLayout* layout,
                          const Localization* strings)
 {
-    ImGui::BeginGroup();
-    ImGui::PushID("connect");
-    ImGui::TextUnformatted(piccolo_text(strings, Str::share_other_piccolo));
-    float height = layout->folders_height + layout->files_height + ImGui::GetStyle().ItemSpacing.y +
-                   ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing();
+    retro_ui_begin_group();
+    retro_ui_push_id("connect");
+    retro_ui_text(piccolo_text(strings, Str::share_other_piccolo));
+    // As tall as the side's combo, path and two lists (the spacing between
+    // two rows: a line step less a line).
+    float row_spacing = retro_ui_line_step() - retro_ui_line_height();
+    float height = layout->folders_height + layout->files_height + row_spacing + retro_ui_line_step() +
+                   retro_ui_text_line_step();
     retro_ui_begin_list("connect_box", layout->width, height);
-    ImGui::PushTextWrapPos(0.0f);
+    // Its text wraps at the box's edge (0).
     if (link == nullptr || link->state == NetShareLinkState::off)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_network_off));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_network_off), 0.0f);
     }
     else if (link->state == NetShareLinkState::ready)
     {
         // Connected, but not at OWNER: the other piccolo decides that.
-        ImGui::TextUnformatted(link->host_name.c_str());
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_needs_owner));
+        retro_ui_text_wrapped(link->host_name.c_str());
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_needs_owner), 0.0f);
         if (retro_ui_button(piccolo_text(strings, Str::share_disconnect)))
         {
             window->disconnect = true;
@@ -560,29 +550,28 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
     }
     else
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_found));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_found), 0.0f);
         if (window->found_selected >= static_cast<int32_t>(link->found.size()))
         {
             window->found_selected = -1;
         }
         for (size_t i = 0; i < link->found.size(); i++)
         {
-            ImGui::PushID(static_cast<int>(i));
             char address[64] = {};
             net_address_to_text(link->found[i].address, address, sizeof(address));
             char label[160] = {};
             std::snprintf(label, sizeof(label), "%s  %s", link->found[i].name.c_str(), address);
-            if (ImGui::Selectable(label, window->found_selected == static_cast<int32_t>(i)))
+            if (retro_ui_list_item(static_cast<uint32_t>(i), label, window->found_selected == static_cast<int32_t>(i),
+                                   nullptr))
             {
                 window->found_selected = static_cast<int32_t>(i);
                 window->paired_selected = -1;
                 window->invite_selected = false;
             }
-            ImGui::PopID();
         }
         if (link->found.empty())
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_found_none));
+            retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_found_none), 0.0f);
         }
         // The piccolos paired before, reached through the beacon when they
         // aren't on this network (Andrés, 2026-11-21).
@@ -592,12 +581,11 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         }
         if (!link->paired.empty())
         {
-            ImGui::Spacing();
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_internet));
+            retro_ui_spacing();
+            retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_internet), 0.0f);
             retro_ui_item_tooltip(piccolo_text(strings, Str::share_internet_help));
             for (size_t i = 0; i < link->paired.size(); i++)
             {
-                ImGui::PushID(static_cast<int>(1000 + i));
                 const char* state = "";
                 if (i < link->paired_online.size())
                 {
@@ -605,34 +593,36 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
                 }
                 char label[160] = {};
                 std::snprintf(label, sizeof(label), "%s  %s", link->paired[i].c_str(), state);
-                if (ImGui::Selectable(label, window->paired_selected == static_cast<int32_t>(i)))
+                if (retro_ui_list_item(static_cast<uint32_t>(1000 + i), label,
+                                       window->paired_selected == static_cast<int32_t>(i), nullptr))
                 {
                     window->paired_selected = static_cast<int32_t>(i);
                     window->found_selected = -1;
                     window->invite_selected = false;
                 }
-                ImGui::PopID();
             }
         }
         // Not paired yet and not on this network: our code, typed on the other
         // piccolo in TOOLS > INVITE, which waits for us on the beacon.
-        ImGui::Spacing();
-        if (ImGui::Selectable(piccolo_text(strings, Str::share_pair_internet), window->invite_selected))
+        retro_ui_spacing();
+        retro_ui_push_id("invite");
+        if (retro_ui_list_item(0, piccolo_text(strings, Str::share_pair_internet), window->invite_selected, nullptr))
         {
             window->invite_selected = true;
             window->found_selected = -1;
             window->paired_selected = -1;
         }
+        retro_ui_pop_id();
         retro_ui_item_tooltip(piccolo_text(strings, Str::share_pair_internet_help));
-        ImGui::Spacing();
+        retro_ui_spacing();
         bool connecting = link->state == NetShareLinkState::connecting;
         // A piccolo we aren't paired with (on this network, or "another
         // network"): PAIR opens TOOLS > PAIR on it, the one place pairing
         // happens (Andrés, 2026-11-22). A paired one: CONNECT.
         bool unpaired = window->invite_selected ||
                         (window->found_selected >= 0 && !found_is_paired(link, window->found_selected));
-        ImGui::BeginDisabled((window->found_selected < 0 && window->paired_selected < 0 && !window->invite_selected) ||
-                             connecting);
+        retro_ui_begin_disabled((window->found_selected < 0 && window->paired_selected < 0 && !window->invite_selected) ||
+                                connecting);
         if (retro_ui_button(piccolo_text(strings, unpaired ? Str::pair_button : Str::share_connect)))
         {
             if (window->invite_selected)
@@ -648,20 +638,19 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
                 window->connect = true;
             }
         }
-        ImGui::EndDisabled();
+        retro_ui_end_disabled();
         if (connecting)
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_connecting));
+            retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_connecting), 0.0f);
         }
         else if (link->refusal != NetClientRefusal::none)
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, refusal_text(link->refusal)));
+            retro_ui_dim_text_wrapped_at(piccolo_text(strings, refusal_text(link->refusal)), 0.0f);
         }
     }
-    ImGui::PopTextWrapPos();
     retro_ui_end_list();
-    ImGui::PopID();
-    ImGui::EndGroup();
+    retro_ui_pop_id();
+    retro_ui_end_group();
 }
 
 // The game's saves and states go into the other side's SAVES and STATES,
@@ -719,10 +708,10 @@ static void draw_arrow(ShareWindow* window, bool to_remote, bool connected, floa
     bool along = window->with_companions && companions_for(window, !to_remote, from);
     bool can = connected && file != nullptr && !to->path.empty() && !to->waiting &&
                !(along && companions_looking(&window->companions));
-    ImGui::BeginDisabled(!can);
+    retro_ui_begin_disabled(!can);
     bool clicked = retro_ui_arrow_button(to_remote ? "##to_remote" : "##to_local",
                                          to_remote ? RetroUiArrow::right : RetroUiArrow::left, width, height);
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     retro_ui_item_tooltip(piccolo_text(strings, to_remote ? Str::share_copy_to_remote_help : Str::share_copy_to_local_help));
     if (clicked && can)
     {
@@ -746,15 +735,14 @@ static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool c
 {
     if (line == nullptr || !line->active)
     {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("%s", window->message.empty() ? piccolo_text(strings, Str::share_hint) : window->message.c_str());
+        retro_ui_dim_label(window->message.empty() ? piccolo_text(strings, Str::share_hint) : window->message.c_str(),
+                           nullptr);
         if (connected)
         {
-            const char* label = piccolo_text(strings, Str::share_disconnect);
-            float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - width);
-            if (retro_ui_button(label))
+            RetroUiEndButton disconnect = {};
+            disconnect.id = "disconnect";
+            disconnect.label = piccolo_text(strings, Str::share_disconnect);
+            if (retro_ui_end_buttons(&disconnect, 1, true) == 0)
             {
                 window->disconnect = true;
             }
@@ -762,22 +750,20 @@ static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool c
         return;
     }
     const char* verb = piccolo_text(strings, line->sending ? Str::share_sending : Str::share_receiving);
-    ImGui::AlignTextToFramePadding();
-    ImGui::Text("%s %s", verb, line->name.c_str());
-    ImGui::SameLine();
+    char what[512] = {};
+    std::snprintf(what, sizeof(what), "%s %s", verb, line->name.c_str());
+    retro_ui_label(what);
+    retro_ui_same_line();
 
     // The bar: the field color, filled with the highlight as far as it's done.
     float bar_width = 80.0f * block;
     float bar_height = 6.0f * block;
-    ImVec2 at = ImGui::GetCursorScreenPos();
-    at.y += (ImGui::GetFrameHeight() - bar_height) * 0.5f;
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(at, ImVec2(at.x + bar_width, at.y + bar_height), ImGui::GetColorU32(ImGuiCol_FrameBg));
+    float bar_y = (retro_ui_line_height() - bar_height) * 0.5f;
+    retro_ui_canvas(bar_width, retro_ui_line_height());
+    retro_ui_canvas_rect(0.0f, bar_y, bar_width, bar_height, retro_ui_palette()->field_face);
     float done = line->size > 0 ? static_cast<float>(static_cast<double>(line->done) / static_cast<double>(line->size)) : 1.0f;
-    draw_list->AddRectFilled(at, ImVec2(at.x + bar_width * done, at.y + bar_height),
-                             ImGui::GetColorU32(ImGuiCol_HeaderActive));
-    ImGui::Dummy(ImVec2(bar_width, ImGui::GetFrameHeight()));
-    ImGui::SameLine();
+    retro_ui_canvas_rect(0.0f, bar_y, bar_width * done, bar_height, retro_ui_palette()->highlight);
+    retro_ui_same_line();
 
     char done_text[32] = {};
     char size_text[32] = {};
@@ -785,22 +771,21 @@ static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool c
     format_size(line->size, size_text, sizeof(size_text));
     if (line->paused)
     {
-        ImGui::Text("%s / %s  %s", done_text, size_text, piccolo_text(strings, Str::share_paused));
+        retro_ui_text_format("%s / %s  %s", done_text, size_text, piccolo_text(strings, Str::share_paused));
     }
     else
     {
-        ImGui::Text("%s / %s  %.1f MBIT/S", done_text, size_text, static_cast<double>(line->rate_kbps) / 1000.0);
+        retro_ui_text_format("%s / %s  %.1f MBIT/S", done_text, size_text, static_cast<double>(line->rate_kbps) / 1000.0);
     }
     if (line->queued > 0)
     {
-        ImGui::SameLine();
-        ImGui::Text("+%u", line->queued);
+        retro_ui_same_line();
+        retro_ui_text_format("+%u", line->queued);
     }
-    ImGui::SameLine();
-    const char* cancel = piccolo_text(strings, Str::share_cancel);
-    float cancel_width = ImGui::CalcTextSize(cancel).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - cancel_width);
-    if (retro_ui_button(cancel))
+    RetroUiEndButton cancel = {};
+    cancel.id = "cancel";
+    cancel.label = piccolo_text(strings, Str::share_cancel);
+    if (retro_ui_end_buttons(&cancel, 1, true) == 0)
     {
         window->cancel = true;
     }
@@ -824,8 +809,7 @@ static bool draw_companions(ShareWindow* window, bool remote, const Localization
     }
     if (companions_looking(companions))
     {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("...");
+        retro_ui_dim_label("...", nullptr);
         return true;
     }
     char text[96] = {};
@@ -849,52 +833,43 @@ static bool draw_companions(ShareWindow* window, bool remote, const Localization
     {
         std::snprintf(text, sizeof(text), "%s", piccolo_text(strings, Str::share_with_state));
     }
-    char label[128] = {};
-    std::snprintf(label, sizeof(label), "%s##with_%s", text, remote ? "remote" : "local");
-    retro_ui_checkbox(label, &window->with_companions);
+    retro_ui_check(remote ? "with_remote" : "with_local", text, &window->with_companions);
     retro_ui_item_tooltip(piccolo_text(strings, Str::share_with_help));
     return true;
 }
 
 static void draw_same_legend(const Localization* strings)
 {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_same_legend));
-    retro_ui_item_tooltip(piccolo_text(strings, Str::share_same_help));
+    retro_ui_dim_label(piccolo_text(strings, Str::share_same_legend), piccolo_text(strings, Str::share_same_help));
 }
 
 // A copy found another file with its name there: replace it? One at a
 // time, or all of them (a game with its states may bring several).
 static void draw_conflict(ShareWindow* window, const Localization* strings)
 {
-    char title[128] = {};
-    std::snprintf(title, sizeof(title), "%s###share_replace", piccolo_text(strings, Str::share_replace_title));
-    if (!window->conflicts.empty() && !ImGui::IsPopupOpen(title))
-    {
-        ImGui::OpenPopup(title);
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(static_cast<int>(viewport->Size.x * 0.4f)), 0.0f),
-                             ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove))
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
+    RetroUiModal modal = {};
+    modal.id = "share_replace";
+    modal.title = piccolo_text(strings, Str::share_replace_title);
+    modal.width = static_cast<float>(static_cast<int>(screen_width * 0.4f));
+    if (!retro_ui_begin_modal(&modal, !window->conflicts.empty()))
     {
         return;
     }
     if (window->conflicts.empty())
     {
-        ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        retro_ui_close_modal();
+        retro_ui_end_modal();
         return;
     }
     const ShareCopy* first = &window->conflicts[0];
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(piccolo_text(strings, Str::share_replace_text));
-    ImGui::TextDisabled("%s", first->to.c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::Spacing();
+    retro_ui_text_wrapped(piccolo_text(strings, Str::share_replace_text));
+    retro_ui_dim_text_wrapped_at(first->to.c_str(), 0.0f);
+    retro_ui_spacing();
     // Escape (B on a gamepad) skips them all: nothing is replaced unasked.
-    bool skip_all = ImGui::IsKeyPressed(ImGuiKey_Escape);
+    bool skip_all = retro_ui_key_pressed(RetroUiKey::escape, true);
     if (retro_ui_button(piccolo_text(strings, Str::share_replace)))
     {
         ShareCopy copy = *first;
@@ -902,7 +877,7 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
         window->copies.push_back(copy);
         window->conflicts.erase(window->conflicts.begin());
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::share_skip)) && !window->conflicts.empty())
     {
         window->conflicts.erase(window->conflicts.begin());
@@ -922,7 +897,7 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
             }
             window->conflicts.clear();
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button(piccolo_text(strings, Str::share_skip_all)))
         {
             skip_all = true;
@@ -934,9 +909,9 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
     }
     if (window->conflicts.empty())
     {
-        ImGui::CloseCurrentPopup();
+        retro_ui_close_modal();
     }
-    ImGui::EndPopup();
+    retro_ui_end_modal();
 }
 
 // ---------------------------------------------------------------------------
@@ -985,59 +960,61 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
     }
 
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
     // 560 x 300 retro pixels, never bigger than the window.
-    ImVec2 size(560.0f * block, 300.0f * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
-                            ImVec2(0.5f, 0.5f));
+    float width = 560.0f * block;
+    float height = 300.0f * block;
+    width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    RetroUiWindow frame = {};
+    frame.id = "share";
+    frame.title = piccolo_text(strings, Str::share_title);
+    frame.width = width;
+    frame.height = height;
+    frame.centered_on_open = true;
     bool keep_open = true;
-    char title[128] = {};
-    std::snprintf(title, sizeof(title), "%s###share", piccolo_text(strings, Str::share_title));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin(title, nullptr, flags))
+    bool closed = false;
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             keep_open = false;
         }
         // Two sides with the arrows between them; two rows left at the bottom.
         float middle = 30.0f * block;
-        float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float spacing = retro_ui_item_spacing();
         PaneLayout layout;
-        layout.width = static_cast<float>(static_cast<int32_t>((ImGui::GetContentRegionAvail().x - middle - spacing * 2.0f) * 0.5f));
+        layout.width = static_cast<float>(static_cast<int32_t>((retro_ui_width_left() - middle - spacing * 2.0f) * 0.5f));
         // (header: name, combo, path; below: WITH ITS SAVE..., the copy line)
-        float lists = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 3.0f -
-                      ImGui::GetTextLineHeightWithSpacing() * 2.0f - ImGui::GetFrameHeightWithSpacing() * 2.0f;
+        float lists = retro_ui_height_left() - retro_ui_line_step() * 3.0f - retro_ui_text_line_step() * 2.0f -
+                      retro_ui_line_step() * 2.0f;
         layout.folders_height = static_cast<float>(static_cast<int32_t>(lists * 0.38f));
         layout.files_height = static_cast<float>(static_cast<int32_t>(lists - layout.folders_height));
 
-        float left_x = ImGui::GetCursorPosX();
+        float left_x = retro_ui_cursor_x();
         bool local_picked = false;
         bool remote_picked = false;
         draw_pane(&window->local, &window->local_roots, piccolo_text(strings, Str::share_this_piccolo), true, &layout,
                   strings, &local_picked);
 
-        ImGui::SameLine();
-        ImGui::BeginGroup();
+        retro_ui_same_line();
+        retro_ui_begin_group();
         // The arrows, about level with where the two lists meet.
-        float top = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing() * 2.0f +
-                    layout.folders_height - 9.0f * block;
-        ImGui::Dummy(ImVec2(middle, top));
+        float top = retro_ui_line_step() + retro_ui_text_line_step() * 2.0f + layout.folders_height - 9.0f * block;
+        retro_ui_space(middle, top);
         float arrow_width = 22.0f * block;
         float arrow_height = 18.0f * block;
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (middle - arrow_width) * 0.5f);
+        retro_ui_set_cursor_x(retro_ui_cursor_x() + (middle - arrow_width) * 0.5f);
         draw_arrow(window, true, connected, arrow_width, arrow_height, strings);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (middle - arrow_width) * 0.5f);
+        retro_ui_set_cursor_x(retro_ui_cursor_x() + (middle - arrow_width) * 0.5f);
         draw_arrow(window, false, connected, arrow_width, arrow_height, strings);
-        ImGui::EndGroup();
-        ImGui::SameLine();
+        retro_ui_end_group();
+        retro_ui_same_line();
 
-        float right_x = ImGui::GetCursorPosX();
+        float right_x = retro_ui_cursor_x();
         if (connected)
         {
             draw_pane(&window->remote, &window->remote_roots, link->host_name.c_str(), true, &layout, strings,
@@ -1060,7 +1037,7 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
         // The legend takes the side without a checkbox (the right one first).
         bool legend = connected && window->any_same;
         bool right_box = connected && companions_shown(window, true);
-        ImGui::SetCursorPosX(left_x);
+        retro_ui_set_cursor_x(left_x);
         if (!draw_companions(window, false, strings))
         {
             if (legend && right_box)
@@ -1070,10 +1047,10 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
             }
             else
             {
-                ImGui::Dummy(ImVec2(1.0f, ImGui::GetFrameHeight()));
+                retro_ui_space(1.0f, retro_ui_line_height());
             }
         }
-        ImGui::SameLine(right_x);
+        retro_ui_same_line_at(right_x);
         if (!(connected && draw_companions(window, true, strings)))
         {
             if (legend)
@@ -1082,15 +1059,14 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, I
             }
             else
             {
-                ImGui::Dummy(ImVec2(1.0f, ImGui::GetFrameHeight()));
+                retro_ui_space(1.0f, retro_ui_line_height());
             }
         }
 
         draw_line(window, context->line, connected, strings, block);
         draw_conflict(window, strings);
-        retro_ui_end_window();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
     if (!keep_open)
     {
