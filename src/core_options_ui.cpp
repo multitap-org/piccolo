@@ -4,11 +4,11 @@
 #include <cstring>
 #include <vector>
 
-#include "imgui.h"
-
 #include "core_session.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
 // Marker colors (0xAARRGGBB): core and game as in settings_ui, folder its own.
 constexpr uint32_t MARKER_CORE   = 0xFFF0C040u;   // amber
@@ -67,26 +67,28 @@ static void draw_core_combo(CoreOptionsUiState* state, const CoreOptionsUiContex
     bool selected_running = state->selected_core == context->running_core;
     std::snprintf(preview, sizeof(preview), "%s%s%s%s", state->selected_core.c_str(), selected_running ? " (" : "",
                   selected_running ? piccolo_text(strings, Str::core_options_running) : "", selected_running ? ")" : "");
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::core_options_core));
-    ImGui::SameLine(start + context->label_width);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (retro_ui_begin_combo("##core", preview))
+    RetroUiRow row = {};
+    row.id = "core";
+    row.marker_column = false;
+    row.label = piccolo_text(strings, Str::core_options_core);
+    row.label_width = context->label_width;
+    retro_ui_row_begin(&row);
+    if (retro_ui_begin_choice("choice", preview))
     {
         for (size_t i = 0; i < cores->size(); i++)
         {
             char label[300] = {};
             bool is_running = (*cores)[i] == context->running_core;
-            std::snprintf(label, sizeof(label), "%s%s%s%s###core%zu", (*cores)[i].c_str(), is_running ? " (" : "",
-                          is_running ? piccolo_text(strings, Str::core_options_running) : "", is_running ? ")" : "", i);
-            if (ImGui::Selectable(label, (*cores)[i] == state->selected_core))
+            std::snprintf(label, sizeof(label), "%s%s%s%s", (*cores)[i].c_str(), is_running ? " (" : "",
+                          is_running ? piccolo_text(strings, Str::core_options_running) : "", is_running ? ")" : "");
+            if (retro_ui_choice_item(static_cast<uint32_t>(i), label, (*cores)[i] == state->selected_core))
             {
                 state->selected_core = (*cores)[i];
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
+    retro_ui_row_end(&row);
 }
 
 static const char* layer_name(const CoreOptionsUiContext* context, CoreOptionLayer layer, char* buffer, size_t size)
@@ -132,13 +134,14 @@ static void draw_layer_combo(CoreOptionsUiState* state, const CoreOptionsUiConte
     }
 
     char preview[600] = {};
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(context->strings, Str::core_options_save_to));
-    retro_ui_item_tooltip(piccolo_text(context->strings, Str::core_options_save_to_help));
-    ImGui::SameLine(start + context->label_width);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (retro_ui_begin_combo("##layer", layer_name(context, state->layer, preview, sizeof(preview))))
+    RetroUiRow row = {};
+    row.id = "layer";
+    row.marker_column = false;
+    row.label = piccolo_text(context->strings, Str::core_options_save_to);
+    row.help = piccolo_text(context->strings, Str::core_options_save_to_help);
+    row.label_width = context->label_width;
+    retro_ui_row_begin(&row);
+    if (retro_ui_begin_choice("choice", layer_name(context, state->layer, preview, sizeof(preview))))
     {
         CoreOptionLayer layers[3] = {CoreOptionLayer::core, CoreOptionLayer::directory, CoreOptionLayer::game};
         bool exists[3] = {true, has_folder, has_game};
@@ -149,36 +152,34 @@ static void draw_layer_combo(CoreOptionsUiState* state, const CoreOptionsUiConte
                 continue;
             }
             char label[600] = {};
-            layer_name(context, layers[i], label, sizeof(label) - 16);
-            std::snprintf(label + std::strlen(label), 16, "###layer%d", i);
-            if (ImGui::Selectable(label, state->layer == layers[i]))
+            layer_name(context, layers[i], label, sizeof(label));
+            if (retro_ui_choice_item(static_cast<uint32_t>(i), label, state->layer == layers[i]))
             {
                 state->layer = layers[i];
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
+    retro_ui_row_end(&row);
 }
 
-// C / D / G in front of an option that a layer stores for what runs.
-static void draw_marker(const CoreOptionsUiContext* context, const char* key)
+// C / D / G in front of an option that a layer stores for what runs, with
+// its tooltip, in the row's marker (none: its space is kept).
+static void set_marker(const CoreOptionsUiContext* context, const char* key, RetroUiRow* row)
 {
     CoreOptionLayer source = CoreOptionLayer::core;
     const char* stored = core_options_store_get(context->store, key, &source);
-    ImVec2 size = ImGui::CalcTextSize("C");
     if (stored == nullptr)
     {
-        ImGui::Dummy(size);
         return;
     }
-    const char* letter = source == CoreOptionLayer::game ? "G" : (source == CoreOptionLayer::directory ? "D" : "C");
-    uint32_t color = source == CoreOptionLayer::game ? MARKER_GAME
-                     : (source == CoreOptionLayer::directory ? MARKER_FOLDER : MARKER_CORE);
+    row->marker = source == CoreOptionLayer::game ? "G" : (source == CoreOptionLayer::directory ? "D" : "C");
+    row->marker_color = source == CoreOptionLayer::game ? MARKER_GAME
+                        : (source == CoreOptionLayer::directory ? MARKER_FOLDER : MARKER_CORE);
     Str help = source == CoreOptionLayer::game ? Str::core_options_marker_game_help
                : (source == CoreOptionLayer::directory ? Str::core_options_marker_folder_help
                                                        : Str::core_options_marker_core_help);
-    ImGui::TextColored(retro_ui_color_vec4(color), "%s", letter);
-    retro_ui_item_tooltip(piccolo_text(context->strings, help));
+    row->marker_help = piccolo_text(context->strings, help);
 }
 
 static const char* value_label(const LibretroOption* option, uint32_t index)
@@ -196,29 +197,23 @@ static const char* option_label(const LibretroOption* option, bool in_category)
 static void draw_option(const CoreOptionsUiState* state, const CoreOptionsUiContext* context,
                         const LibretroOption* option, bool in_category, float label_width)
 {
-    ImGui::PushID(option->key);
-    draw_marker(context, option->key);
-    ImGui::SameLine();
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
     // Labels longer than the column are cut, not drawn over the combo (the
     // whole label is in the tooltip with the core's help).
     const char* label = option_label(option, in_category);
-    ImVec2 text_min = ImGui::GetCursorScreenPos();
-    float column = label_width - ImGui::GetStyle().ItemSpacing.x;
-    ImGui::PushClipRect(text_min, ImVec2(text_min.x + column, text_min.y + ImGui::GetFrameHeight()), true);
-    ImGui::TextUnformatted(label);
-    ImGui::PopClipRect();
-    if (option->info != nullptr)
-    {
-        std::string help = std::string(label) + "\n\n" + option->info;
-        retro_ui_item_tooltip(help.c_str());
-    }
-    else
-    {
-        retro_ui_item_tooltip(label);
-    }
-    ImGui::SameLine(start + label_width);
+    std::string help = option->info != nullptr ? std::string(label) + "\n\n" + option->info : std::string(label);
+    // RESET keeps its room while hidden, so the combos line up.
+    bool stored_here = core_options_store_get_layer(context->store, state->layer, option->key) != nullptr;
+    RetroUiRow row = {};
+    row.id = option->key;
+    set_marker(context, option->key, &row);
+    row.label = label;
+    row.help = help.c_str();
+    row.label_width = label_width;
+    row.clip_label = true;
+    row.end_button = piccolo_text(context->strings, Str::reset);
+    row.end_button_hidden = !stored_here;
+    row.end_button_help = piccolo_text(context->strings, Str::reset_help_override);
+    retro_ui_row_begin(&row);
 
     // The value as it resolves at the edited layer (or the core's default).
     const char* at_layer = core_options_store_get_at(context->store, state->layer, option->key, nullptr);
@@ -230,34 +225,21 @@ static void draw_option(const CoreOptionsUiState* state, const CoreOptionsUiCont
             current = v;
         }
     }
-    const char* reset = piccolo_text(context->strings, Str::reset);
-    bool stored_here = core_options_store_get_layer(context->store, state->layer, option->key) != nullptr;
-    float reset_width = ImGui::CalcTextSize(reset).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - reset_width - ImGui::GetStyle().ItemSpacing.x);
-    if (retro_ui_begin_combo("##value", value_label(option, current)))
+    if (retro_ui_begin_choice("value", value_label(option, current)))
     {
         for (uint32_t v = 0; v < option->value_count; v++)
         {
-            ImGui::PushID(static_cast<int>(v));
-            bool picked = ImGui::Selectable(value_label(option, v), v == current);
-            ImGui::PopID();
-            if (picked && v != current)
+            if (retro_ui_choice_item(v, value_label(option, v), v == current))
             {
                 core_session_set_option(context->session, state->layer, option->key, option->values[v]);
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    if (stored_here)
+    if (retro_ui_row_end(&row))
     {
-        ImGui::SameLine(ImGui::GetContentRegionMax().x - reset_width);
-        if (retro_ui_button(reset))
-        {
-            core_session_reset_option(context->session, state->layer, option->key);
-        }
-        retro_ui_item_tooltip(piccolo_text(context->strings, Str::reset_help_override));
+        core_session_reset_option(context->session, state->layer, option->key);
     }
-    ImGui::PopID();
 }
 
 static bool in_section(const LibretroOptions* options, const LibretroOption* option, const std::string& section)
@@ -309,28 +291,29 @@ static void draw_section_combo(CoreOptionsUiState* state, const CoreOptionsUiCon
             preview = options->categories[c].label;
         }
     }
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(context->strings, Str::core_options_section));
-    ImGui::SameLine(start + context->label_width);
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    if (retro_ui_begin_combo("##section", preview))
+    RetroUiRow row = {};
+    row.id = "section";
+    row.marker_column = false;
+    row.label = piccolo_text(context->strings, Str::core_options_section);
+    row.label_width = context->label_width;
+    retro_ui_row_begin(&row);
+    if (retro_ui_begin_choice("choice", preview))
     {
-        if (has_general && ImGui::Selectable(general, state->section.empty()))
+        // GENERAL first, then the categories (item c + 1).
+        if (has_general && retro_ui_choice_item(0, general, state->section.empty()))
         {
             state->section.clear();
         }
         for (uint32_t c = 0; c < options->category_count; c++)
         {
-            char label[300] = {};
-            std::snprintf(label, sizeof(label), "%s###section%u", options->categories[c].label, c);
-            if (ImGui::Selectable(label, state->section == options->categories[c].key))
+            if (retro_ui_choice_item(c + 1, options->categories[c].label, state->section == options->categories[c].key))
             {
                 state->section = options->categories[c].key;
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
+    retro_ui_row_end(&row);
 }
 
 // The running core's options: SAVE TO, SECTION, then that section's options
@@ -341,7 +324,7 @@ static void draw_live(CoreOptionsUiState* state, const CoreOptionsUiContext* con
     draw_layer_combo(state, context);
     if (options->count == 0)
     {
-        ImGui::TextDisabled("%s", piccolo_text(context->strings, Str::core_options_none));
+        retro_ui_dim_text(piccolo_text(context->strings, Str::core_options_none), nullptr);
         return;
     }
     draw_section_combo(state, context);
@@ -354,26 +337,28 @@ static void draw_live(CoreOptionsUiState* state, const CoreOptionsUiContext* con
         const LibretroOption* option = &options->options[i];
         if (option->visible && in_section(options, option, state->section))
         {
-            float width = ImGui::CalcTextSize(option_label(option, categorized)).x;
+            float width = retro_ui_text_width(option_label(option, categorized));
             widest = width > widest ? width : widest;
         }
     }
-    float label_width = widest + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-    float most = ImGui::GetContentRegionAvail().x * 0.5f;
+    float label_width = retro_ui_label_column_width(widest);
+    float most = retro_ui_width_left() * 0.5f;
     label_width = label_width < most ? label_width : most;
 
-    float height = ImGui::GetContentRegionAvail().y;
-    float minimum = ImGui::GetFrameHeightWithSpacing() * 4.0f;
-    ImGui::BeginChild("options", ImVec2(0.0f, height > minimum ? height : minimum));
-    for (uint32_t i = 0; i < options->count; i++)
+    float height = retro_ui_height_left();
+    float minimum = retro_ui_line_step() * 4.0f;
+    if (retro_ui_begin_scroll_field("options", 0.0f, height > minimum ? height : minimum))
     {
-        const LibretroOption* option = &options->options[i];
-        if (option->visible && in_section(options, option, state->section))
+        for (uint32_t i = 0; i < options->count; i++)
         {
-            draw_option(state, context, option, categorized, label_width);
+            const LibretroOption* option = &options->options[i];
+            if (option->visible && in_section(options, option, state->section))
+            {
+                draw_option(state, context, option, categorized, label_width);
+            }
         }
     }
-    ImGui::EndChild();
+    retro_ui_end_scroll_area();
 }
 
 static const CachedCoreOption* cached_option(const std::vector<CachedCoreOption>* cached, const std::string& key)
@@ -411,24 +396,23 @@ static void draw_stored(const CoreOptionsUiState* state, const CoreOptionsUiCont
     const char* core = state->selected_core.c_str();
     std::vector<std::string> sections;
     core_options_store_sections_of(context->store, core, &sections);
-    if (!retro_ui_collapsing_header(piccolo_text(strings, Str::core_options_stored), ImGuiTreeNodeFlags_DefaultOpen))
+    if (!retro_ui_section_header("stored", piccolo_text(strings, Str::core_options_stored), true))
     {
         return;
     }
     if (sections.empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::core_options_stored_none));
+        retro_ui_dim_text(piccolo_text(strings, Str::core_options_stored_none), nullptr);
         return;
     }
     std::vector<CachedCoreOption> cached;
     core_options_cache_get(context->cache, core, &cached);
     bool changed = false;
     const char* delete_text = piccolo_text(strings, Str::core_options_delete);
-    float delete_width = ImGui::CalcTextSize(delete_text).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 
     for (size_t s = 0; s < sections.size() && !changed; s++)
     {
-        ImGui::PushID(static_cast<int>(s));
+        retro_ui_push_index(static_cast<uint32_t>(s));
         const std::string& name = sections[s];
         size_t core_length = std::strlen(core);
         char title[600] = {};
@@ -469,34 +453,41 @@ static void draw_stored(const CoreOptionsUiState* state, const CoreOptionsUiCont
                     value_text = option->labels[v].c_str();
                 }
             }
-            ImGui::PushID(static_cast<int>(e));
-            ImGui::AlignTextToFramePadding();
+            // A row: "OPTION = VALUE" (the key as its tooltip), DELETE at the right end.
+            char text[600] = {};
+            RetroUiRow row = {};
+            row.id = "entry";
+            row.marker_column = false;
+            row.label = text;
+            row.end_button = delete_text;
             if (option != nullptr)
             {
-                ImGui::Text("%s = %s", option->label.c_str(), value_text);
-                retro_ui_item_tooltip(entry->key.c_str());
+                std::snprintf(text, sizeof(text), "%s = %s", option->label.c_str(), value_text);
+                row.help = entry->key.c_str();
             }
             else
             {
                 // Without cached definitions (or a key the core dropped): the raw text.
-                ImGui::Text("%s = %s", entry->key.c_str(), value_text);
-                if (!cached.empty())
-                {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(%s)", piccolo_text(strings, Str::core_options_gone));
-                }
+                std::snprintf(text, sizeof(text), "%s = %s", entry->key.c_str(), value_text);
             }
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - delete_width);
-            if (retro_ui_button(delete_text))
+            retro_ui_push_index(static_cast<uint32_t>(e));
+            retro_ui_row_begin(&row);
+            if (option == nullptr && !cached.empty())
+            {
+                char gone[200] = {};
+                std::snprintf(gone, sizeof(gone), "(%s)", piccolo_text(strings, Str::core_options_gone));
+                retro_ui_dim_text(gone, nullptr);
+            }
+            if (retro_ui_row_end(&row))
             {
                 changed = core_options_store_remove(context->store, name.c_str(), entry->key.c_str());
             }
-            ImGui::PopID();
+            retro_ui_pop_id();
         }
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
 
-    ImGui::Spacing();
+    retro_ui_spacing();
     if (!changed && retro_ui_button(piccolo_text(strings, Str::core_options_delete_all)))
     {
         for (size_t s = 0; s < sections.size(); s++)
@@ -526,7 +517,7 @@ void core_options_ui_draw(CoreOptionsUiState* state, const CoreOptionsUiContext*
     core_list(context, &cores);
     if (cores.empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(context->strings, Str::core_options_no_cores));
+        retro_ui_dim_text(piccolo_text(context->strings, Str::core_options_no_cores), nullptr);
         return;
     }
     bool known = false;
@@ -543,11 +534,10 @@ void core_options_ui_draw(CoreOptionsUiState* state, const CoreOptionsUiContext*
     // The running core's options are changed in the quick menu; here only
     // what is stored is seen and deleted.
     bool selected_running = running(context) && state->selected_core == context->running_core;
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", piccolo_text(context->strings, selected_running ? Str::core_options_running_note
-                                                                               : Str::core_options_not_running));
-    ImGui::PopTextWrapPos();
-    ImGui::Spacing();
+    retro_ui_dim_text_wrapped_at(piccolo_text(context->strings, selected_running ? Str::core_options_running_note
+                                                                                  : Str::core_options_not_running),
+                                 0.0f);
+    retro_ui_spacing();
     draw_stored(state, context);
 }
 
@@ -568,40 +558,39 @@ void core_options_manager_draw(bool* open, CoreOptionsUiState* state, const Core
         return;
     }
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
     // The same size as SETTINGS: 360 x 240 retro pixels, never bigger than the window.
-    ImVec2 size(360.0f * block, 240.0f * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
-                            ImVec2(0.5f, 0.5f));
+    float width = 360.0f * block;
+    float height = 240.0f * block;
+    RetroUiWindow window = {};
+    window.id = "core_options_manager";
+    window.title = piccolo_text(context->strings, Str::core_options_manager_title);
+    window.width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    window.height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    window.centered_on_open = true;
     // The list scrolls in its own area (a scrolling window jumped back to the top).
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-    char title[200] = {};
-    std::snprintf(title, sizeof(title), "%s###core_options_manager",
-                  piccolo_text(context->strings, Str::core_options_manager_title));
-    if (ImGui::Begin(title, nullptr, flags))
+    window.scrolls = false;
+    bool closed = false;
+    if (retro_ui_window_begin(&window, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             *open = false;
         }
         CoreOptionsUiContext manager = *context;
         manager.label_width = 50.0f * block;   // CORE
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        ImGui::BeginChild("content", ImVec2(0.0f, 0.0f));
-        if (manager.store != nullptr && manager.cache != nullptr)
+        if (retro_ui_begin_scroll_area("content", 0.0f, 0.0f))
         {
-            core_options_ui_draw(state, &manager);
+            if (manager.store != nullptr && manager.cache != nullptr)
+            {
+                core_options_ui_draw(state, &manager);
+            }
         }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
-        retro_ui_end_window();
+        retro_ui_end_scroll_area();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
 }
