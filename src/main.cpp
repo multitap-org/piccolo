@@ -5391,7 +5391,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 
     settings_view(app, view, frame);
     file_picker_state(&view->picker, &app->picker, &app->catalog, &app->strings);
-    quick_menu_state(&view->quick, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
+    quick_menu_state(&view->quick, &app->quick_menu, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
     core_options_state(app, &view->config_options);
     core_config_window_state(&view->config, &app->core_config, &app->strings, &view->config_options, &app->input,
                              app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
@@ -5613,10 +5613,12 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     ports_widget_apply(&app->ports_widget, &actions->ports, &app->input);
     dvr_widget_apply(&app->dvr, &actions->dvr, frame->dvr_now);
+    // QUICK MENU's presses: the actions it shares with the GAME menu are the
+    // same functions; what stays up afterwards is QUICK MENU's own.
     switch (actions->quick.press)
     {
     case QuickMenuPress::save:
-        save_state_with_thumbnail(app);
+        save_state_with_thumbnail(app);   // QUICK MENU stays: the slot's new picture shows
         set_status(app, app->session.message);
         break;
     case QuickMenuPress::load:
@@ -5626,20 +5628,37 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         }
         set_status(app, app->session.message);
         break;
-    case QuickMenuPress::reset:
-        libretro_host_reset(app->session.host);
-        set_status(app, piccolo_text(&app->strings, Str::status_reset));
-        app_enter_game(app);
+    case QuickMenuPress::quick_save:
+        quick_save(app);   // QUICK MENU stays, as SAVE
+        break;
+    case QuickMenuPress::quick_load:
+        if (quick_load(app))
+        {
+            app_enter_game(app);
+        }
+        break;
+    case QuickMenuPress::screenshot:
+        app_enter_game(app);   // back to the game: the shutter plays on it (as GAME > TAKE SCREENSHOT)
+        take_screenshot(app);
+        break;
+    case QuickMenuPress::soft_reset:
+        if (soft_reset(app))
+        {
+            app_enter_game(app);
+        }
+        break;
+    case QuickMenuPress::hard_reset:
+        hard_reset(app);   // the game starts again straight into play
         break;
     case QuickMenuPress::close_game:
-        app->pending_close_game = true;   // the texture may be in this frame already
+        close_game(app);
         app_enter_game(app);
         break;
     case QuickMenuPress::pause:
         toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
         break;
     case QuickMenuPress::dvr:
-        app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
+        open_game_dvr(app);   // a window widget: it replaces the QUICK MENU
         break;
     case QuickMenuPress::config:
         app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes

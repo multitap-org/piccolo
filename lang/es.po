@@ -1286,9 +1286,25 @@ msgctxt "quick_menu_load"
 msgid "LOAD"
 msgstr "CARGAR"
 
+msgctxt "quick_menu_quick_save"
+msgid "QUICK SAVE"
+msgstr "GUARDAR YA"
+
+msgctxt "quick_menu_quick_load"
+msgid "QUICK LOAD"
+msgstr "CARGAR YA"
+
+msgctxt "quick_menu_screenshot"
+msgid "SCREENSHOT"
+msgstr "CAPTURA"
+
 msgctxt "quick_menu_reset"
-msgid "RESET"
+msgid "SOFT RESET"
 msgstr "REINICIAR"
+
+msgctxt "quick_menu_hard_reset"
+msgid "HARD RESET"
+msgstr "RECARGAR"
 
 msgctxt "quick_menu_close_game"
 msgid "CLOSE GAME"
@@ -1315,7 +1331,7 @@ msgid "GENERAL"
 msgstr "GENERAL"
 
 msgctxt "quick_menu_tab_states"
-msgid "SAVESTATES"
+msgid "SAVE STATES"
 msgstr "SAVESTATES"
 
 msgctxt "core_options_running_note"
@@ -3783,8 +3799,8 @@ msgid "Forget what AUTO chose for this game; it measures again the next time the
 msgstr "Olvida lo que AUTO eligió para este juego; vuelve a medir la próxima vez que empiece."
 
 msgctxt "quick_menu_dvr"
-msgid "DVR"
-msgstr "DVR"
+msgid "GAME DVR"
+msgstr "DVR DEL JUEGO"
 
 msgctxt "dvr_title"
 msgid "◀◀ DVR"
@@ -3928,8 +3944,8 @@ msgid "SCREENSHOT"
 msgstr "CAPTURA"
 
 msgctxt "quick_menu_config"
-msgid "CONFIG"
-msgstr "CONFIGURAR"
+msgid "CORE CONFIG"
+msgstr "CONFIG. CORE"
 
 msgctxt "quick_menu_config_help"
 msgid "CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND SHADER."
