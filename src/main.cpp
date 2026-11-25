@@ -5899,6 +5899,12 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         {
             share_pair(app, share_request == ShareWindowRequest::pair_internet);
         }
+        if (actions->share.mirror_folders_set &&
+            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_SHARE_MIRROR_FOLDERS,
+                              actions->share.mirror_folders))
+        {
+            save_settings(app);   // MIRROR FOLDER STRUCTURE: a global setting shown in FILE TRANSFER
+        }
     }
     if (view->pair_shown)
     {

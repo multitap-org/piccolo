@@ -3,7 +3,7 @@
 // Where FILE TRANSFER's copies land (share_window.h), without the GUI, so
 // tools/share_paths_test.cpp checks the rule.
 //
-// MIRROR FOLDER STRUCTURE (SETTINGS > NETWORK, on by default; Andrés,
+// MIRROR FOLDER STRUCTURE (a checkbox in FILE TRANSFER, global, on by default; Andrés,
 // 2026-11-25): a file goes to the same path relative to its shared folder on
 // the other side, whatever folder is open there: "roms/gba/Metroid
 // Fusion.gba" -> "ROMS/gba/Metroid Fusion.gba". The other side's shared

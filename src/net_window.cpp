@@ -256,12 +256,12 @@ static void draw_beacon_status(const NetWindowState* state, float label_width)
 }
 
 // INTERNET: being reachable from outside this network through the beacon.
-// Open at first (STATUS is worth seeing). The rows under the checkbox mean
+// Closed at first, like most sections (Andrés, testing round 2). The rows under the checkbox mean
 // nothing while it's off: greyed then (Andrés, testing round 1).
 static void draw_internet(const NetWindowState* state, const SettingsUiContext* rows)
 {
     const Localization* strings = state->strings;
-    if (!settings_ui_section("internet", piccolo_text(strings, Str::net_section_internet), nullptr, true))
+    if (!settings_ui_section("internet", piccolo_text(strings, Str::net_section_internet), nullptr, false))
     {
         return;
     }
@@ -562,11 +562,11 @@ static void draw_hosts(const DeviceColumns* columns, const NetWindowState* state
 //   +---------------+    +---------------+     +---------------+
 //
 // A device both connected and paired shows in both. The actions sit on the
-// device's card, splitting its width. Open at first.
+// device's card, splitting its width. Closed at first.
 static void draw_devices(NetWindow* window, const NetWindowState* state, NetWindowAction* action)
 {
     const Localization* strings = state->strings;
-    if (!settings_ui_section("devices", piccolo_text(strings, Str::net_section_network_devices), nullptr, true))
+    if (!settings_ui_section("devices", piccolo_text(strings, Str::net_section_network_devices), nullptr, false))
     {
         return;
     }
@@ -632,9 +632,6 @@ void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float l
     settings_ui_row(&rows, PICCOLO_NET_ENABLED, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_NAME, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_PORT, nullptr);
-    // FILE TRANSFER's (TOOLS), here with the network settings; it works
-    // with NETWORK off too (copying to another piccolo needs no listening).
-    settings_ui_row(&rows, PICCOLO_SHARE_MIRROR_FOLDERS, nullptr);
     draw_internet(state, &rows);
     draw_devices(window, state, action);
 }

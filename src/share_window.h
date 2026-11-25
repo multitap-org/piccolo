@@ -22,7 +22,9 @@
 // the middle (retro_ui_arrow_button) copy the selected file to the same path
 // in the other side's shared folder of its kind (MIRROR FOLDER STRUCTURE, on
 // by default: `mirror_folders`), or into the folder open on the other side
-// (share_paths.h has the rule). This side is this piccolo's own shared folders
+// (share_paths.h has the rule). MIRROR FOLDER STRUCTURE is a checkbox above
+// the bottom line; it's a global setting (share_mirror_folders) that main.cpp
+// hands in and writes back (`mirror_folders_set`). This side is this piccolo's own shared folders
 // (net_share_folders.h, read here directly); the other side is what its
 // list_results say, asked for and handed in by the caller
 // (share_window_remote_wants_list / share_window_set_remote_list). Copies
@@ -163,6 +165,8 @@ struct ShareWindowAction
     bool                   picked_local = false;    // a file selected on this side: look up its saves and states
     bool                   picked_remote = false;   // the same on the other side
     std::vector<ShareCopy> copies;                  // asked for (the arrows, REPLACE)
+    bool                   mirror_folders_set = false;   // MIRROR FOLDER STRUCTURE clicked: the setting
+    bool                   mirror_folders = true;        // becomes this (main.cpp writes it, global)
 };
 
 // What main.cpp does itself after share_window_apply.
