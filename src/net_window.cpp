@@ -4,13 +4,12 @@
 #include <cstdio>
 #include <cstring>
 
-#include "imgui.h"
-#include "port_indicators.h"
-
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "settings_ui.h"
+#include "ui_toolkit.h"
 
 static const Str ACCESS_LABELS[NET_ACCESS_LEVEL_COUNT] = {Str::net_access_gamepad, Str::net_access_stream,
                                                           Str::net_access_share, Str::net_access_full};
@@ -54,46 +53,32 @@ static void draw_owner_confirm(const NetWindowContext* context)
 {
     NetWindowState* state = context->state;
     const Localization* strings = context->strings;
-    char title[128] = {};
-    std::snprintf(title, sizeof(title), "%s###owner_confirm", piccolo_text(strings, Str::net_owner_confirm_title));
-    if (state->confirm_owner && !ImGui::IsPopupOpen(title))
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
+    RetroUiQuestion question = {};
+    question.id = "owner_confirm";
+    question.title = piccolo_text(strings, Str::net_owner_confirm_title);
+    question.text = piccolo_text(strings, Str::net_owner_confirm_text);
+    question.yes = piccolo_text(strings, Str::net_owner_confirm_yes);
+    question.no = piccolo_text(strings, Str::net_owner_cancel);
+    question.width = static_cast<float>(static_cast<int>(screen_width * 0.4f));
+    // Escape (B on a gamepad) answers NO, as CANCEL.
+    RetroUiAnswer answer = retro_ui_question(&question, state->confirm_owner);
+    if (answer == RetroUiAnswer::yes)
     {
-        ImGui::OpenPopup(title);
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(static_cast<int>(viewport->Size.x * 0.4f)), 0.0f),
-                             ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove))
-    {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(piccolo_text(strings, Str::net_owner_confirm_text));
-        ImGui::PopTextWrapPos();
-        ImGui::Spacing();
-        bool close = ImGui::IsKeyPressed(ImGuiKey_Escape);   // (B on a gamepad sends Escape while a popup is up)
-        if (retro_ui_button(piccolo_text(strings, Str::net_owner_confirm_yes)))
+        NetAccess* access = context->access;
+        for (size_t i = 0; i < access->trust.devices.size(); i++)
         {
-            NetAccess* access = context->access;
-            for (size_t i = 0; i < access->trust.devices.size(); i++)
+            if (std::memcmp(access->trust.devices[i].key, state->owner_key, NET_KEY_SIZE) == 0)
             {
-                if (std::memcmp(access->trust.devices[i].key, state->owner_key, NET_KEY_SIZE) == 0)
-                {
-                    net_access_set_level(access, static_cast<uint32_t>(i), state->confirm_level);
-                }
+                net_access_set_level(access, static_cast<uint32_t>(i), state->confirm_level);
             }
-            close = true;
         }
-        ImGui::SameLine();
-        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
-        {
-            close = true;
-        }
-        if (close)
-        {
-            state->confirm_owner = false;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
+    }
+    if (answer != RetroUiAnswer::none)
+    {
+        state->confirm_owner = false;
     }
 }
 
@@ -142,25 +127,25 @@ static void draw_connected(const NetWindowContext* context)
             continue;
         }
         const NetTrustedDevice* device = &access->trust.devices[static_cast<size_t>(entry->device)];
-        ImGui::PushID(static_cast<int>(peer));
+        retro_ui_push_index(peer);
         if (any)
         {
-            ImGui::Spacing();
+            retro_ui_spacing();
         }
         any = true;
-        ImGui::TextUnformatted(device->name.empty() ? "?" : device->name.c_str());
+        retro_ui_text(device->name.empty() ? "?" : device->name.c_str());
         NetAddress address;
         if (net_access_peer_address(access, peer, &address))
         {
             char text[64];
             net_address_to_text(address, text, sizeof(text));
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", text);
+            retro_ui_same_line();
+            retro_ui_dim_text(text, nullptr);
         }
         NetLinkStats stats;
         if (net_access_peer_stats(access, peer, &stats))
         {
-            ImGui::Text("%u MS  %s %u MS  %s %.0f%%", stats.round_trip_ms, piccolo_text(strings, Str::net_jitter),
+            retro_ui_text_format("%u MS  %s %u MS  %s %.0f%%", stats.round_trip_ms, piccolo_text(strings, Str::net_jitter),
                         stats.jitter_ms, piccolo_text(strings, Str::net_loss), static_cast<double>(stats.loss) * 100.0);
             retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_ping_help));
         }
@@ -171,15 +156,15 @@ static void draw_connected(const NetWindowContext* context)
             char up[32];
             speed_text(speed->down_tested, speed->down_kbps, down, sizeof(down));
             speed_text(speed->up_tested, speed->up_kbps, up, sizeof(up));
-            ImGui::Text("%s: %s %s, %s %s", piccolo_text(strings, Str::net_speed_test),
+            retro_ui_text_format("%s: %s %s, %s %s", piccolo_text(strings, Str::net_speed_test),
                         piccolo_text(strings, Str::net_speed_down), down, piccolo_text(strings, Str::net_speed_up), up);
             retro_ui_item_tooltip(piccolo_text(strings, Str::net_speed_test_help));
         }
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
     if (!any)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_no_connected));
+        retro_ui_dim_text(piccolo_text(strings, Str::net_no_connected), nullptr);
     }
 }
 
@@ -205,7 +190,7 @@ static void draw_devices(const NetWindowContext* context)
     const Localization* strings = context->strings;
     if (access->trust.devices.empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_no_devices));
+        retro_ui_dim_text(piccolo_text(strings, Str::net_no_devices), nullptr);
         return;
     }
     // FORGET changes the list: act after drawing it.
@@ -213,39 +198,40 @@ static void draw_devices(const NetWindowContext* context)
     for (size_t i = 0; i < access->trust.devices.size(); i++)
     {
         const NetTrustedDevice* device = &access->trust.devices[i];
-        ImGui::PushID(static_cast<int>(i));
+        retro_ui_push_index(static_cast<uint32_t>(i));
         if (i > 0)
         {
-            ImGui::Spacing();
+            retro_ui_spacing();
         }
         char fingerprint[32];
         net_key_fingerprint(device->key, fingerprint, sizeof(fingerprint));
-        ImGui::TextUnformatted(device->name.empty() ? "?" : device->name.c_str());
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", fingerprint);
+        retro_ui_text(device->name.empty() ? "?" : device->name.c_str());
+        retro_ui_same_line();
+        retro_ui_dim_text(fingerprint, nullptr);
         if (net_access_device_connected(access, static_cast<uint32_t>(i)))
         {
-            ImGui::SameLine();
+            retro_ui_same_line();
             retro_ui_push_section_text();
-            ImGui::TextUnformatted(piccolo_text(strings, Str::net_device_connected));
+            retro_ui_text(piccolo_text(strings, Str::net_device_connected));
             retro_ui_pop_section_text();
             NetLinkStats stats;
             if (device_ping(access, static_cast<uint32_t>(i), &stats))
             {
                 // The round trip in milliseconds, as ENet measures it.
-                ImGui::SameLine();
-                ImGui::TextDisabled("%u MS", stats.round_trip_ms);
-                retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_ping_help));
+                char ping[32];
+                std::snprintf(ping, sizeof(ping), "%u MS", stats.round_trip_ms);
+                retro_ui_same_line();
+                retro_ui_dim_text(ping, piccolo_text(strings, Str::net_device_ping_help));
             }
         }
         draw_access(context, static_cast<uint32_t>(i));
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button(piccolo_text(strings, Str::net_device_forget)))
         {
             forget = static_cast<int32_t>(i);
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_forget_help));
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
     if (forget >= 0)
     {
@@ -280,21 +266,21 @@ static void draw_beacon_status(const NetWindowContext* context, float label_widt
         text = Str::net_beacon_unreachable;
         break;
     }
-    ImGui::Dummy(ImGui::CalcTextSize("C"));
-    ImGui::SameLine();
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::net_beacon_status));
-    retro_ui_item_tooltip(piccolo_text(strings, Str::net_beacon_status_help));
-    ImGui::SameLine(start + label_width);
+    RetroUiRow row = {};
+    row.id = "beacon_status";
+    row.label = piccolo_text(strings, Str::net_beacon_status);
+    row.help = piccolo_text(strings, Str::net_beacon_status_help);
+    row.label_width = label_width;
+    retro_ui_row_begin(&row);
     if (good)
     {
-        ImGui::TextUnformatted(piccolo_text(strings, text));
+        retro_ui_text(piccolo_text(strings, text));
     }
     else
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, text));
+        retro_ui_dim_text(piccolo_text(strings, text), nullptr);
     }
+    retro_ui_row_end(&row);
 }
 
 // The piccolos we connect to (paired with TOOLS > PAIR / SHARE): FORGET only;
@@ -304,35 +290,34 @@ static void draw_hosts(const NetWindowContext* context)
     const Localization* strings = context->strings;
     if (context->hosts == nullptr || context->hosts->empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_no_hosts));
+        retro_ui_dim_text(piccolo_text(strings, Str::net_no_hosts), nullptr);
         return;
     }
     for (size_t i = 0; i < context->hosts->size(); i++)
     {
-        ImGui::PushID(static_cast<int>(5000 + i));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted((*context->hosts)[i].empty() ? "?" : (*context->hosts)[i].c_str());
+        retro_ui_push_index(static_cast<uint32_t>(5000 + i));
+        retro_ui_label((*context->hosts)[i].empty() ? "?" : (*context->hosts)[i].c_str());
         if (context->hosts_online != nullptr && i < context->hosts_online->size())
         {
-            ImGui::SameLine();
+            retro_ui_same_line();
             if ((*context->hosts_online)[i] != 0)
             {
                 retro_ui_push_section_text();
-                ImGui::TextUnformatted(piccolo_text(strings, Str::net_online));
+                retro_ui_text(piccolo_text(strings, Str::net_online));
                 retro_ui_pop_section_text();
             }
             else
             {
-                ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_offline));
+                retro_ui_dim_text(piccolo_text(strings, Str::net_offline), nullptr);
             }
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button(piccolo_text(strings, Str::net_device_forget)) && context->forget_host != nullptr)
         {
             *context->forget_host = static_cast<int32_t>(i);
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::net_host_forget_help));
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
 }
 
@@ -348,20 +333,20 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
     settings_ui_row(&rows, PICCOLO_NET_NAME, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_PORT, nullptr);
     // The browser: the beacon is its only way (no UDP), INTERNET shows checked and greyed.
-    ImGui::BeginDisabled(PICCOLO_BROWSER);
+    retro_ui_begin_disabled(PICCOLO_BROWSER);
     settings_ui_row(&rows, PICCOLO_NET_INTERNET, nullptr);
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     settings_ui_row(&rows, PICCOLO_NET_BEACON, nullptr);
 
     // As a row: the marker column, then the label column.
-    ImGui::Dummy(ImGui::CalcTextSize("C"));
-    ImGui::SameLine();
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::net_this_device));
-    retro_ui_item_tooltip(piccolo_text(strings, Str::net_this_device_help));
-    ImGui::SameLine(start + label_width);
-    ImGui::TextUnformatted(context->this_device[0] != '\0' ? context->this_device : "-");
+    RetroUiRow row = {};
+    row.id = "this_device";
+    row.label = piccolo_text(strings, Str::net_this_device);
+    row.help = piccolo_text(strings, Str::net_this_device_help);
+    row.label_width = label_width;
+    retro_ui_row_begin(&row);
+    retro_ui_text(context->this_device[0] != '\0' ? context->this_device : "-");
+    retro_ui_row_end(&row);
 
     if (context->access != nullptr && context->internet)
     {
@@ -370,8 +355,8 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
 
     if (context->access == nullptr)
     {
-        ImGui::Spacing();
-        ImGui::TextDisabled("%s", piccolo_text(strings, context->listen_failed ? Str::net_listen_failed : Str::net_off));
+        retro_ui_spacing();
+        retro_ui_dim_text(piccolo_text(strings, context->listen_failed ? Str::net_listen_failed : Str::net_off), nullptr);
         return;
     }
     retro_ui_separator_text(piccolo_text(strings, Str::net_section_connected));
@@ -410,15 +395,12 @@ void net_pairing_request_close(NetPairingRequest* request)
 void net_window_waiting_leds(const char* label)
 {
     static const int32_t CYCLE[6] = {0, 1, 2, 3, 2, 1};
-    int32_t lit = CYCLE[static_cast<uint32_t>(ImGui::GetTime() * 6.0) % 6];
-    float block = std::floor(ImGui::GetTextLineHeight() / 7.0f);
+    int32_t lit = CYCLE[static_cast<uint32_t>(retro_ui_seconds() * 6.0) % 6];
+    float block = std::floor(retro_ui_font_size() / 7.0f);
     block = block < 1.0f ? 1.0f : block;
-    ImVec2 at = ImGui::GetCursorScreenPos();
-    float top = at.y + std::floor((ImGui::GetTextLineHeight() - PORT_LED_SIZE * block) * 0.5f);
-    float width = port_indicators_draw_leds(at.x, top, block, 4, lit, retro_ui_palette()->panel_dark);
-    ImGui::Dummy(ImVec2(width, ImGui::GetTextLineHeight()));
-    ImGui::SameLine();
-    ImGui::TextUnformatted(label);
+    retro_ui_port_leds(4, lit, block);
+    retro_ui_same_line();
+    retro_ui_text(label);
 }
 
 //   +- PAIRING REQUEST -------------------------------+
@@ -436,80 +418,69 @@ void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, con
     {
         return;
     }
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    char title[96];
-    std::snprintf(title, sizeof(title), "%s###pairing_request", piccolo_text(strings, Str::net_request_title));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
-    ImGui::SetNextWindowFocus();
+    RetroUiWindow frame = {};
+    frame.id = "pairing_request";
+    frame.title = piccolo_text(strings, Str::net_request_title);
+    frame.centered = true;
+    frame.closable = false;
+    frame.focus = true;
     // Themed like every other window: the pixel font, the palette and the window's edge.
     retro_ui_push_theme(pixel_font, scale);
-    if (!ImGui::Begin(title, nullptr, flags))
+    if (retro_ui_window_begin(&frame, scale, nullptr))
     {
-        ImGui::End();
-        retro_ui_pop_theme();
-        return;
-    }
-    retro_ui_begin_window(scale);
-    retro_ui_push_section_text();
-    ImGui::Text("%s (%s)", request->name,
-                piccolo_text(strings, request->kind == NetPairKind::piccoletto ? Str::net_kind_piccoletto
-                                                                              : Str::net_kind_piccolo));
-    retro_ui_pop_section_text();
-    ImGui::TextDisabled("%s", piccolo_text(strings, request->retry ? Str::net_request_wrong : Str::net_request_text));
-    ImGui::BeginDisabled(request->waiting);
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000000000").x);
-    if (request->focus)
-    {
-        ImGui::SetKeyboardFocusHere();
+        retro_ui_push_section_text();
+        retro_ui_text_format("%s (%s)", request->name,
+                             piccolo_text(strings, request->kind == NetPairKind::piccoletto ? Str::net_kind_piccoletto
+                                                                                           : Str::net_kind_piccolo));
+        retro_ui_pop_section_text();
+        retro_ui_dim_text(piccolo_text(strings, request->retry ? Str::net_request_wrong : Str::net_request_text), nullptr);
+        retro_ui_begin_disabled(request->waiting);
+        retro_ui_next_width(retro_ui_text_width("0000000000000"));
+        RetroUiEditField code_field = {};
+        code_field.digits_only = true;
+        code_field.focus = request->focus;
         request->focus = false;
-    }
-    retro_ui_push_field_text();
-    bool enter = ImGui::InputText("##code", request->code, sizeof(request->code),
-                                  ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
-    retro_ui_pop_field_text();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::net_request_access));
-    ImGui::SameLine();
-    const char* labels[NET_ACCESS_LEVEL_COUNT];
-    for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
-    {
-        labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
-    }
-    retro_ui_choice_buttons("##request_access", labels, NET_ACCESS_LEVEL_COUNT, &request->level);
-    ImGui::EndDisabled();
-    if (request->waiting)
-    {
-        net_window_waiting_leds(piccolo_text(strings, Str::net_request_waiting));
-        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        bool enter = retro_ui_edit_field("code", request->code, sizeof(request->code), &code_field);
+        retro_ui_label(piccolo_text(strings, Str::net_request_access));
+        retro_ui_same_line();
+        const char* labels[NET_ACCESS_LEVEL_COUNT];
+        for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
         {
-            net_access_refuse_pairing(access, request->peer);
-            net_pairing_request_close(request);
+            labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
         }
-    }
-    else
-    {
-        bool complete = net_pair_code_valid(request->code);
-        ImGui::BeginDisabled(!complete);
-        if (retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete))
+        retro_ui_choice_buttons("##request_access", labels, NET_ACCESS_LEVEL_COUNT, &request->level);
+        retro_ui_end_disabled();
+        if (request->waiting)
         {
-            if (net_access_answer_pairing(access, request->peer, request->code,
-                                          static_cast<NetAccessLevel>(request->level)))
+            net_window_waiting_leds(piccolo_text(strings, Str::net_request_waiting));
+            if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
             {
-                request->waiting = true;
+                net_access_refuse_pairing(access, request->peer);
+                net_pairing_request_close(request);
             }
         }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (retro_ui_button(piccolo_text(strings, Str::net_request_refuse)))
+        else
         {
-            net_access_refuse_pairing(access, request->peer);
-            net_pairing_request_close(request);
+            bool complete = net_pair_code_valid(request->code);
+            retro_ui_begin_disabled(!complete);
+            if (retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete))
+            {
+                if (net_access_answer_pairing(access, request->peer, request->code,
+                                              static_cast<NetAccessLevel>(request->level)))
+                {
+                    request->waiting = true;
+                }
+            }
+            retro_ui_end_disabled();
+            retro_ui_same_line();
+            if (retro_ui_button(piccolo_text(strings, Str::net_request_refuse)))
+            {
+                net_access_refuse_pairing(access, request->peer);
+                net_pairing_request_close(request);
+            }
         }
     }
-    retro_ui_end_window();
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
 }
 
@@ -562,80 +533,67 @@ void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* s
     {
         return;
     }
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    char title[96];
-    std::snprintf(title, sizeof(title), "%s###invite", piccolo_text(strings, Str::net_invite_title));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
-                             ImGuiWindowFlags_NoSavedSettings;
+    RetroUiWindow frame = {};
+    frame.id = "invite";
+    frame.title = piccolo_text(strings, Str::net_invite_title);
+    frame.centered_on_open = true;
     bool keep = true;
+    bool closed = false;
     // Themed like every other window; the close button is the pixel font's X.
     retro_ui_push_theme(pixel_font, scale);
-    if (!ImGui::Begin(title, nullptr, flags))
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        ImGui::End();
-        retro_ui_pop_theme();
-        return;
-    }
-    retro_ui_begin_window(scale);
-    if (retro_ui_close_button())
-    {
-        keep = false;
-    }
-    if (access == nullptr)
-    {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_off));
-    }
-    else
-    {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
-        ImGui::TextUnformatted(piccolo_text(strings, Str::net_invite_text));
-        ImGui::PopTextWrapPos();
-        ImGui::BeginDisabled(invite->waiting);
-        ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000000000000").x);
-        if (invite->focus)
-        {
-            ImGui::SetKeyboardFocusHere();
-            invite->focus = false;
-        }
-        retro_ui_push_field_text();
-        bool enter = ImGui::InputText("##invite_code", invite->code, sizeof(invite->code),
-                                      ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
-        retro_ui_pop_field_text();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(piccolo_text(strings, Str::net_request_access));
-        ImGui::SameLine();
-        const char* labels[NET_ACCESS_LEVEL_COUNT];
-        for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
-        {
-            labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
-        }
-        retro_ui_choice_buttons("##invite_access", labels, NET_ACCESS_LEVEL_COUNT, &invite->level);
-        ImGui::EndDisabled();
-        if (invite->waiting)
-        {
-            net_window_waiting_leds(piccolo_text(strings, invite->answered ? Str::net_request_waiting
-                                                                           : Str::net_invite_waiting));
-        }
-        else
-        {
-            bool complete = net_pair_code_valid(invite->code);
-            ImGui::BeginDisabled(!complete);
-            if ((retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete)) &&
-                net_access_invite(access, invite->code))
-            {
-                invite->waiting = true;
-            }
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-        }
-        if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+        if (closed)
         {
             keep = false;
         }
+        if (access == nullptr)
+        {
+            retro_ui_dim_text(piccolo_text(strings, Str::net_off), nullptr);
+        }
+        else
+        {
+            retro_ui_text_wrapped_at(piccolo_text(strings, Str::net_invite_text), retro_ui_font_size() * 28.0f);
+            retro_ui_begin_disabled(invite->waiting);
+            retro_ui_next_width(retro_ui_text_width("0000000000000"));
+            RetroUiEditField code_field = {};
+            code_field.digits_only = true;
+            code_field.focus = invite->focus;
+            invite->focus = false;
+            bool enter = retro_ui_edit_field("invite_code", invite->code, sizeof(invite->code), &code_field);
+            retro_ui_label(piccolo_text(strings, Str::net_request_access));
+            retro_ui_same_line();
+            const char* labels[NET_ACCESS_LEVEL_COUNT];
+            for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
+            {
+                labels[level] = piccolo_text(strings, ACCESS_LABELS[level]);
+            }
+            retro_ui_choice_buttons("##invite_access", labels, NET_ACCESS_LEVEL_COUNT, &invite->level);
+            retro_ui_end_disabled();
+            if (invite->waiting)
+            {
+                net_window_waiting_leds(piccolo_text(strings, invite->answered ? Str::net_request_waiting
+                                                                               : Str::net_invite_waiting));
+            }
+            else
+            {
+                bool complete = net_pair_code_valid(invite->code);
+                retro_ui_begin_disabled(!complete);
+                if ((retro_ui_button(piccolo_text(strings, Str::net_request_allow)) || (enter && complete)) &&
+                    net_access_invite(access, invite->code))
+                {
+                    invite->waiting = true;
+                }
+                retro_ui_end_disabled();
+                retro_ui_same_line();
+            }
+            if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
+            {
+                keep = false;
+            }
+        }
     }
-    retro_ui_end_window();
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
     if (!keep)
     {
