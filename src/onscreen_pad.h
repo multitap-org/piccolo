@@ -80,7 +80,7 @@ void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const c
 void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir);
 void onscreen_pad_shutdown(OnscreenPad* pad);
 
-// Every SDL event (fingers; ImGui's display size for their positions).
+// Every SDL event (fingers; the toolkit's screen size for their positions).
 void onscreen_pad_event(OnscreenPad* pad, const SDL_Event* event, float display_width, float display_height);
 
 // SHOW resolved: AUTO = a touch screen (seen at start, or a finger since).

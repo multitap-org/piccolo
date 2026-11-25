@@ -2,12 +2,12 @@
 
 #include <SDL3/SDL.h>
 
-#include "imgui.h"
-#include "imgui_internal.h"   // BringWindowToDisplayFront (EDIT LAYOUT on top)
 #include "input_devices.h"
 #include "pad_layout.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "touch_ui.h"
+#include "ui_toolkit.h"
 
 constexpr float BELOW_GAP = 4.0f;   // retro pixels between the picture and the pad (pad_layouts_place)
 
@@ -244,10 +244,12 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     {
         return;
     }
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     TouchUi ui;
     ui.font = pixel_font;
-    ui.scale = touch_ui_scale_for(io.DisplaySize.x, io.DisplaySize.y);
+    ui.scale = touch_ui_scale_for(screen_width, screen_height);
     ui.palette = *retro_ui_palette();
     ui.fingers = &pad->fingers;
     ui.pad = &pad->pad;
@@ -266,7 +268,7 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     touch_ui_begin_overlay(&ui, "##onscreen_pad");
     if (pad->editor.active)
     {
-        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());   // EDIT LAYOUT: above everything
+        retro_ui_bring_window_to_front();   // EDIT LAYOUT: above everything
     }
     if (pad->below)
     {
