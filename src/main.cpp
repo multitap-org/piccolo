@@ -75,6 +75,8 @@
 #include "map_window.h"
 #include "input_net.h"
 #include "net_access.h"
+#include "net_build.h"
+#include "net_caps_ui.h"
 #include "net_service.h"
 #include "net_games.h"
 #include "net_remote.h"
@@ -138,6 +140,8 @@ struct App
     bool       net_has_identity = false;
     NetKeypair net_identity = {};
     char       net_fingerprint[32] = "";
+    NetDeviceInfo net_info;              // this device, as the hello tells it (net_device_info)
+    bool       net_proof_tried = false;  // the build proof was looked for (net_device_info)
     uint16_t   net_port = 0;             // what `net` listens on
     std::string net_beacon_applied;      // the beacon server handed to the service ("" = INTERNET off)
     std::string net_share_applied;     // the shared folders the service has (piccolo-share), as one text
@@ -188,12 +192,10 @@ struct App
     NetSpeedSender   net_speed_sender;     // a speed test, down (one at a time)
     NetSpeedReceiver net_speed_receiver;   // a speed test, up
     bool             net_speed_reporting = false;   // the sender finished: its report goes out
-    NetWindow      net_window;         // SETTINGS > NETWORK between frames (OWNER's confirmation)
-    std::vector<NetTrustedDevice> ui_net_devices;   // SETTINGS > NETWORK's paired devices as drawn (copied
-                                                    // under the network lock: drawn without it)
+    NetWindow      net_window;         // SETTINGS > NETWORK between frames (the red question)
     GuestWindow    guest_window;       // TOOLS > REMOTE PLAY (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
-    NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
+    NetCaps          net_actions_caps[NET_MAX_PEERS] = {};    // what each device's action list was made for
     // What the devices were last told runs (game_state): sent again when it changes.
     std::string net_sent_core;           // "" = nothing runs
     std::string net_sent_content;
@@ -1358,23 +1360,65 @@ static void open_cores_window(App* app)
     cores_window_open(&app->cores_window, &app->core_updater);
 }
 
-// What this piccolo shares with OWNER devices (and lists on SHARE's own
-// side): the game folders, SAVES and STATES as the settings say now.
-static void share_folder_paths(const App* app, std::vector<std::string>* game_folders, std::string* saves,
-                               std::string* states, std::string* screenshots)
+// What this piccolo shares with devices granted FILE TRANSFER (and lists
+// on FILE TRANSFER's own side): the game folders, SAVES, STATES and
+// SCREENSHOTS as the settings say now, and CONFIG, the settings folder
+// without what belongs to this device (Andrés, 2026-11-25): the global
+// settings, the recent games and this machine's own files (multitap-net
+// refuses the identity, the paired devices and cache/ itself). No RECORDINGS
+// folder yet: piccolo has none of its own.
+static void share_folder_paths(const App* app, NetShareFolderPaths* paths)
 {
-    piccolo_settings_game_folders(&app->settings, game_folders);
-    *saves = folder_setting(app, PICCOLO_PATH_SAVES, app->paths.saves);
-    *states = folder_setting(app, PICCOLO_PATH_STATES, app->paths.states);
-    *screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
+    *paths = {};
+    piccolo_settings_game_folders(&app->settings, &paths->games);
+    paths->saves = folder_setting(app, PICCOLO_PATH_SAVES, app->paths.saves);
+    paths->states = folder_setting(app, PICCOLO_PATH_STATES, app->paths.states);
+    paths->screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
+    paths->config = app->paths.settings;
+    paths->config_refused = {"piccolo.cfg",        "recent.cfg",      "last_used.cfg",   "imgui.ini",
+                             "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig"};
     // The default screenshots folder is made by the first screenshot; made
     // here too, so SCREENSHOTS is offered (and can receive) before that, like
     // SAVES and STATES. A folder of the user's that isn't there (a drive not
     // mounted) is left alone and not offered.
-    if (*screenshots == app->paths.screenshots && !screenshots->empty())
+    if (paths->screenshots == app->paths.screenshots && !paths->screenshots.empty())
     {
-        host_fs_make_directories(screenshots->c_str());
+        host_fs_make_directories(paths->screenshots.c_str());
     }
+}
+
+// This device as its hello tells it (net_pairing.h): its name (read again
+// each time: SETTINGS may have changed it), piccolo, what it offers and
+// uses, and its build proof when this is a signed release (net_build.h; only
+// tags are signed). A proof not kept yet is fetched on a thread of its own
+// and used from the next launch.
+static const NetDeviceInfo* net_device_info(App* app)
+{
+    NetDeviceInfo* info = &app->net_info;
+    std::snprintf(info->name, sizeof(info->name), "%s", settings_get_text(&app->settings, PICCOLO_NET_NAME));
+    info->kind = NetAppKind::piccolo;
+    info->offers = net_caps_ui_kind_offers(NetAppKind::piccolo);
+    info->uses = net_caps_ui_kind_uses(NetAppKind::piccolo);
+    if (!app->net_proof_tried && !app->paths.settings.empty())
+    {
+        app->net_proof_tried = true;
+        const char* base = SDL_GetBasePath();
+        NetBuildIdentity build;
+        build.app = "piccolo";
+        build.version = PICCOLO_VERSION;
+        build.target = core_index_build_target();
+#if defined(_WIN32)
+        build.exe_path = std::string(base != nullptr ? base : "") + "piccolo.exe";
+#else
+        build.exe_path = std::string(base != nullptr ? base : "") + "piccolo";
+#endif
+        if (!net_build_proof_load(&build, app->paths.settings.c_str(), false, info))
+        {
+            net_build_proof_fetch_later(&build, app->paths.settings.c_str());
+        }
+        SDL_Log("Network: this build is %s", info->record_size > 0 ? "signed" : "unsigned");
+    }
+    return info;
 }
 
 static bool net_prepare(App* app);
@@ -1388,9 +1432,8 @@ static bool start_share_link(App* app)
 {
     if (!net_share_link_started(&app->share_link) && net_prepare(app))
     {
-        std::string hosts_path = app->paths.settings + "/net_hosts.cfg";
-        net_share_link_start(&app->share_link, &app->net_identity, settings_get_text(&app->settings, PICCOLO_NET_NAME),
-                             hosts_path.c_str());
+        std::string devices_path = app->paths.settings + "/net_devices.cfg";
+        net_share_link_start(&app->share_link, &app->net_identity, net_device_info(app), devices_path.c_str());
     }
     return net_share_link_started(&app->share_link);
 }
@@ -1405,23 +1448,22 @@ static void pair_update(App* app)
     }
 }
 
-// TOOLS > PAIR...: what was pressed. PAIR WITH A HOST on FILE TRANSFER's
-// connection; PAIR WITH A CLIENT on the NetAccess, so under the network lock
-// (the network thread waits meanwhile).
+// TOOLS > PAIR...: what was pressed. PAIR A DEVICE on FILE TRANSFER's
+// connection; GENERATE PAIRING CODE (and a device's request) on the
+// NetAccess, so under the network lock (the network thread waits meanwhile).
 static void pair_apply(App* app, const PairWindowAction* action)
 {
-    NetService* service = app->net_running ? &app->net_service : nullptr;   // access back needs our listener
-    pair_window_apply_host(&app->pair_window, action, &app->share_link, &app->share_status,
-                           settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
-    if (service != nullptr)
+    pair_window_apply_device(&app->pair_window, action, &app->share_link, &app->share_status,
+                             settings_get_text(&app->settings, PICCOLO_NET_BEACON), app->share_window.open);
+    if (app->net_running)
     {
-        net_service_lock(service);
-        pair_window_apply_client(&app->pair_window, action, &service->access);
-        net_service_unlock(service);
+        net_service_lock(&app->net_service);
+        pair_window_apply_code(&app->pair_window, action, &app->net_service.access);
+        net_service_unlock(&app->net_service);
     }
     else
     {
-        pair_window_apply_client(&app->pair_window, action, nullptr);
+        pair_window_apply_code(&app->pair_window, action, nullptr);
     }
 }
 
@@ -1432,7 +1474,7 @@ static void pair_expire(App* app)
 {
     uint64_t now_ms = SDL_GetTicks();
     // (The lock only when a NetAccess step waits: not taken every frame for nothing.)
-    if (app->net_running && (app->pair_window.request.active || app->pair_window.invite.waiting))
+    if (app->net_running && (app->pair_window.request.active || app->pair_window.shown.active))
     {
         net_service_lock(&app->net_service);
         pair_window_expire(&app->pair_window, &app->share_link, &app->net_service.access, now_ms);
@@ -1446,17 +1488,14 @@ static void pair_expire(App* app)
 
 static void open_share_window(App* app)
 {
-    std::vector<std::string> game_folders;
-    std::string saves;
-    std::string states;
-    std::string screenshots;
-    share_folder_paths(app, &game_folders, &saves, &states, &screenshots);
-    net_share_set_folders(&app->share_folders, &game_folders, saves.c_str(), states.c_str(), screenshots.c_str());
+    NetShareFolderPaths paths;
+    share_folder_paths(app, &paths);
+    net_share_set_folders(&app->share_folders, &paths);
     if (start_share_link(app))
     {
         // The paired piccolos' ONLINE / OFFLINE is asked through BEACON SERVER.
         net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        net_share_link_set_folders(&app->share_link, &game_folders, saves.c_str(), states.c_str(), screenshots.c_str());
+        net_share_link_set_folders(&app->share_link, &paths);
     }
     share_window_open(&app->share_window);
 }
@@ -1500,12 +1539,11 @@ static void share_update(App* app, ShareTransferLine* line)
         net_share_link_status(link, &app->share_status);
     }
     bool connected = app->share_status.state == NetShareLinkState::ready &&
-                     net_access_allows(app->share_status.access, NetAccessLevel::share);
+                     (app->share_status.caps & NET_CAP_SHARE) != 0;
     if (connected != app->share_connected)
     {
         app->share_connected = connected;
         share_window_remote_reset(window);   // a new piccolo, or none: its side starts over
-        window->code[0] = '\0';             // used (or not needed any more)
     }
     std::string path;
     if (connected && share_window_remote_wants_list(window, &path))
@@ -1577,21 +1615,22 @@ static void share_update(App* app, ShareTransferLine* line)
     }
 }
 
-// SHARE's PAIR: pairing lives in TOOLS > PAIR... only: it opens on PAIR
-// WITH A HOST with that piccolo and starts at once (unless the window is in
-// the middle of something else). Once paired and closed, SHARE stays
-// connected.
+// SHARE's PAIR: pairing lives in TOOLS > PAIR... only: it opens on PAIR A
+// DEVICE with that piccolo (or ENTER A CODE) and starts at once (unless the
+// window is in the middle of something else). Once paired and closed, SHARE
+// stays connected.
 static void share_pair(App* app, bool internet)
 {
     pair_window_open(&app->pair_window, nullptr);
-    if (app->pair_window.mode != PairMode::host || app->pair_window.phase != PairWindowPhase::list)
+    if (app->pair_window.mode != PairMode::device || app->pair_window.phase != PairDevicePhase::list)
     {
         return;
     }
-    app->pair_window.selected = app->share_window.found_selected;
+    app->pair_window.selected = internet ? -1 : app->share_window.found_selected;
+    app->pair_window.enter_selected = internet;
     PairWindowAction pair_action = {};
-    pair_action.press = internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
-    pair_action.mode = PairMode::host;
+    pair_action.press = PairWindowPress::pair;
+    pair_action.mode = PairMode::device;
     pair_apply(app, &pair_action);
 }
 
@@ -3580,14 +3619,8 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
     image.controls_available = app->shader_library.loaded || app->shell.api == GpuApi::gl;
     SettingsWindowNotes notes = {};
     // The NETWORK tab: its state is filled under the network lock, below.
-    // The hosts list (our client side): read in app_ui_update.
-    const std::vector<std::string>* hosts = nullptr;
-    const std::vector<uint8_t>* hosts_online = nullptr;
-    if (frame->hosts_known)
-    {
-        hosts = &view->settings_hosts.paired;
-        hosts_online = &view->settings_hosts.paired_online;
-    }
+    // FILE TRANSFER's connection (our side): read in app_ui_update.
+    const NetShareLinkStatus* link = frame->hosts_known ? &view->settings_hosts : nullptr;
     // Text with numbers: the translated part, then the numbers (no formats in translations).
     const char* window_label = piccolo_text(&app->strings, Str::section_window);
     char* window_size = view->settings_text.window_size;
@@ -3743,50 +3776,16 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
         net_service_lock(&app->net_service);
     }
     NetAccess* network_access = app->net_running ? &app->net_service.access : nullptr;
-    net_window_state(&view->network, &app->settings, &app->strings, network_access, app->net_listen_failed,
+    net_window_state(&view->network, &app->settings, &app->strings, network_access, link, app->net_listen_failed,
                      app->net_fingerprint, &app->net_speed_results,
-                     PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET), hosts, hosts_online);
-    if (view->network.devices != nullptr)
-    {
-        app->ui_net_devices = *view->network.devices;
-        view->network.devices = &app->ui_net_devices;
-    }
+                     PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET),
+                     net_caps_ui_kind_offers(NetAppKind::piccolo), net_caps_ui_kind_uses(NetAppKind::piccolo));
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
     }
     settings_window_state(&view->settings, &app->settings_window, &app->settings, &app->strings, &app->paths,
                           app->core_name, app->game_name, &notes, &app->themes, &image, &view->network);
-}
-
-// The paired devices SETTINGS > NETWORK was drawn with are still the
-// NetAccess's (under the network lock): same count, same keys.
-static bool net_devices_unchanged(const std::vector<NetTrustedDevice>* shown, const NetAccess* access)
-{
-    const std::vector<NetTrustedDevice>* devices = &access->trust.devices;
-    if (shown->size() != devices->size())
-    {
-        return false;
-    }
-    for (size_t i = 0; i < devices->size(); i++)
-    {
-        if (std::memcmp((*shown)[i].key, (*devices)[i].key, NET_KEY_SIZE) != 0)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-// A host's FORGET / CONNECT names it by its index in the hosts list as
-// drawn (a copy); the live list may have changed since (a pairing, a host
-// forgotten), so the press counts only if that index still holds the same
-// host. By name: FILE TRANSFER's connection doesn't tell the hosts' keys.
-static bool share_host_unchanged(App* app, uint32_t index, const char* name)
-{
-    NetShareLinkStatus live;
-    net_share_link_status(&app->share_link, &live);
-    return index < live.paired.size() && live.paired[index] == name;
 }
 
 // What was done in SETTINGS (its NETWORK tab under the network lock: it
@@ -3799,36 +3798,35 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
         net_service_lock(&app->net_service);
     }
     NetAccess* network_access = app->net_running ? &app->net_service.access : nullptr;
-    // A device's ACCESS or FORGET is its index in the list as drawn: if the
-    // network thread changed the list since (a pairing ended, a device
-    // unpaired itself), the index may name another device, so the press is
-    // dropped (it's pressed again on the new list).
-    if (network_access != nullptr && (action->network.set_level || action->network.forget) &&
-        !net_devices_unchanged(&app->ui_net_devices, network_access))
+    // DEVICES names its devices by key: whatever the network thread changed
+    // since drawing, a press reaches the device it was meant for (or none).
+    NetShareLinkStatus link_status;
+    NetShareLink* link = nullptr;
+    if (frame->hosts_known)
     {
-        action->network.set_level = false;
-        action->network.forget = false;
+        net_share_link_status(&app->share_link, &link_status);
+        link = &app->share_link;
     }
     settings_window_apply(action, &app->settings);   // SETTINGS saves on closing
-    net_window_apply(&app->net_window, &action->network, &app->settings, network_access);
+    net_window_apply(&action->network, &app->settings, network_access, link, &link_status);
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
     }
-    if (action->network.forget_host && frame->hosts_known &&
-        share_host_unchanged(app, action->network.forget_host_index, action->network.host_name))
-    {
-        net_share_link_forget_host(&app->share_link, action->network.forget_host_index);
-    }
-    // CONNECT on a paired host: FILE TRANSFER opens, connected to it (the
-    // only thing a connection to a host is for here), across the internet
+    // CONNECT on a paired device: FILE TRANSFER opens, connected to it (the
+    // only thing a connection to it is for here), across the internet
     // through BEACON SERVER as FILE TRANSFER's own CONNECT does.
-    if (action->network.connect_host && frame->hosts_known &&
-        share_host_unchanged(app, action->network.connect_host_index, action->network.host_name))
+    if (action->network.connect && link != nullptr)
     {
-        open_share_window(app);
-        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        net_share_link_connect_paired(&app->share_link, action->network.connect_host_index);
+        for (size_t i = 0; i < link_status.paired_devices.size(); i++)
+        {
+            if (std::memcmp(link_status.paired_devices[i].key, action->network.key, NET_KEY_SIZE) == 0)
+            {
+                open_share_window(app);
+                net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+                net_share_link_connect_paired(&app->share_link, static_cast<uint32_t>(i));
+            }
+        }
     }
     choose_folder_start(app, action->choose_folder);
     if (action->search_frame_delay)
@@ -4109,14 +4107,10 @@ static NetRemoteGame net_remote_game(const App* app)
     return game;
 }
 
-static NetAccessLevel net_peer_access(const App* app, uint32_t peer)
+// What a connected device may use here now (its grants, what we offer and it uses).
+static NetCaps net_peer_caps(const App* app, uint32_t peer)
 {
-    int32_t device = app->net_service.access.peers[peer].device;
-    if (device < 0 || static_cast<size_t>(device) >= app->net_service.access.trust.devices.size())
-    {
-        return NetAccessLevel::gamepad;
-    }
-    return app->net_service.access.trust.devices[static_cast<size_t>(device)].access;
+    return net_access_peer_caps(&app->net_service.access, peer);
 }
 
 // GO HEADLESS (headless.h, net_stream.h): the state, to every authorized
@@ -4126,7 +4120,7 @@ static void headless_tell(App* app)
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
         if (app->net_service.access.peers[i].state != NetAccessPeerState::authorized ||
-            !net_access_allows(net_peer_access(app, i), NetAccessLevel::stream))
+            (net_peer_caps(app, i) & NET_CAP_STREAM) == 0)
         {
             continue;
         }
@@ -4171,9 +4165,9 @@ static void net_send_actions(App* app, uint32_t peer, uint32_t id)
     {
         if ((peer == NET_NO_PEER || peer == i) && app->net_service.access.peers[i].state == NetAccessPeerState::authorized)
         {
-            app->net_actions_level[i] = net_peer_access(app, i);
+            app->net_actions_caps[i] = net_peer_caps(app, i);
             size_t size = net_remote_write_actions(&app->net_remote, id, app->net_peer_language[i],
-                                                   app->paths.root.c_str(), app->net_actions_level[i], &game);
+                                                   app->paths.root.c_str(), app->net_actions_caps[i], &game);
             net_access_send(&app->net_service.access, i, NetChannel::control, app->net_remote.reply.data(), size);
         }
     }
@@ -4436,28 +4430,27 @@ static void net_follow_remote(App* app)
         for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
         {
             if (app->net_service.access.peers[i].state == NetAccessPeerState::authorized &&
-                net_peer_access(app, i) == NetAccessLevel::full)
+                (net_peer_caps(app, i) & NET_CAP_SETTINGS) != 0)
             {
                 net_access_send(&app->net_service.access, i, NetChannel::control, app->net_remote.reply.data(), size);
             }
         }
         size = net_remote_next_change(&app->net_remote, &app->settings);
     }
-    // A device whose access changed (NETWORK): its new welcome went out with
-    // net_access_set_level; its action list follows at once, and what its new
-    // level doesn't cover stops: remote play and a FAST FORWARD it holds
+    // A device whose permissions changed (DEVICES): its new welcome went out
+    // with net_access_set_grants; its action list follows at once, and what it
+    // may no longer use stops: remote play and a FAST FORWARD it holds
     // (STREAM since 2026-11-20; a PAUSE it made stays: only a player lifts
     // it). Speed tests and pads are GAMEPAD.
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
         if (app->net_service.access.peers[i].state != NetAccessPeerState::authorized ||
-            net_peer_access(app, i) == app->net_actions_level[i])
+            net_peer_caps(app, i) == app->net_actions_caps[i])
         {
             continue;
         }
         net_send_actions(app, i, 0);
-        NetAccessLevel level = net_peer_access(app, i);
-        if (!net_access_allows(level, NetAccessLevel::stream))
+        if ((net_peer_caps(app, i) & NET_CAP_STREAM) == 0)
         {
             app->net_fast_forward[i] = false;
             if (app->headless.on && app->headless.peer == i)
@@ -4472,7 +4465,7 @@ static void net_follow_remote(App* app)
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
         if (app->net_devices_wanted[i] && app->net_service.access.peers[i].state == NetAccessPeerState::authorized &&
-            net_peer_access(app, i) == NetAccessLevel::full && net_devices_summary(app, i) != app->net_devices_sent[i])
+            (net_peer_caps(app, i) & NET_CAP_SETTINGS) != 0 && net_devices_summary(app, i) != app->net_devices_sent[i])
         {
             net_send_devices(app, i, 0);   // someone joined, left or moved
         }
@@ -4499,7 +4492,7 @@ static void net_follow_remote(App* app)
 static void net_do_action(App* app, uint32_t peer, const std::string* key, bool pressed, const char* device)
 {
     NetRemoteGame game = net_remote_game(app);
-    if (!net_remote_action_allowed(key->c_str(), net_peer_access(app, peer), &game))
+    if (!net_remote_action_allowed(key->c_str(), net_peer_caps(app, peer), &game))
     {
         return;
     }
@@ -4603,7 +4596,7 @@ static void net_remote_message(App* app, const NetAccessEvent* event, const char
         }
         NetRemoteGame game = net_remote_game(app);
         size = net_remote_write_actions(&app->net_remote, id, language.c_str(), app->paths.root.c_str(),
-                                        net_peer_access(app, event->peer), &game);
+                                        net_peer_caps(app, event->peer), &game);
         net_access_send(&app->net_service.access, event->peer, NetChannel::control, app->net_remote.reply.data(), size);
         return;
     }
@@ -5030,6 +5023,15 @@ static bool net_prepare(App* app)
         }
         net_key_fingerprint(app->net_identity.public_key, app->net_fingerprint, sizeof(app->net_fingerprint));
         SDL_Log("Network: this device is %s", app->net_fingerprint);
+        // Before 2026-11-25 the devices we connect to had a list of their
+        // own: it joins the paired devices once (one record per device).
+        std::string devices_path = app->paths.settings + "/net_devices.cfg";
+        std::string hosts_path = app->paths.settings + "/net_hosts.cfg";
+        NetTrust trust;
+        net_trust_file_lock();
+        net_trust_load(&trust, devices_path.c_str());
+        net_trust_merge_old_hosts(&trust, devices_path.c_str(), hosts_path.c_str());
+        net_trust_file_unlock();
     }
     return true;
 }
@@ -5051,8 +5053,8 @@ static void net_start(App* app)
         app->net_remote_ready = net_remote_init(&app->net_remote, &app->settings);
     }
     std::string devices_path = app->paths.settings + "/net_devices.cfg";
-    if (!net_service_start(&app->net_service, app->net_port, settings_get_text(&app->settings, PICCOLO_NET_NAME),
-                           &app->net_identity, devices_path.c_str()))
+    if (!net_service_start(&app->net_service, app->net_port, net_device_info(app), &app->net_identity,
+                           devices_path.c_str()))
     {
         return;
     }
@@ -5135,19 +5137,17 @@ static void net_update(App* app)
     // The shared folders OWNER devices reach (piccolo-share): looked at
     // again only when a setting changed, handed over only when they did.
     bool share_check = !app->net_share_set || app->settings.revision != app->net_share_revision;
-    std::vector<std::string> share_games;
-    std::string share_saves;
-    std::string share_states;
-    std::string share_screenshots;
+    NetShareFolderPaths share_paths;
     std::string share_key;
     if (share_check)
     {
         app->net_share_revision = app->settings.revision;
-        share_folder_paths(app, &share_games, &share_saves, &share_states, &share_screenshots);
-        share_key = share_saves + "\n" + share_states + "\n" + share_screenshots;
-        for (size_t i = 0; i < share_games.size(); i++)
+        share_folder_paths(app, &share_paths);
+        share_key = share_paths.saves + "\n" + share_paths.states + "\n" + share_paths.screenshots + "\n" +
+                    share_paths.config;
+        for (size_t i = 0; i < share_paths.games.size(); i++)
         {
-            share_key += "\n" + share_games[i];
+            share_key += "\n" + share_paths.games[i];
         }
     }
     // The network thread polls; this loop handles what it queued, holding
@@ -5157,8 +5157,7 @@ static void net_update(App* app)
     {
         app->net_share_applied = share_key;
         app->net_share_set = true;
-        net_service_set_share_folders(&app->net_service, &share_games, share_saves.c_str(), share_states.c_str(),
-                                      share_screenshots.c_str());
+        net_service_set_share_folders(&app->net_service, &share_paths);
     }
     net_update_locked(app);
     net_service_unlock(&app->net_service);
@@ -5210,15 +5209,15 @@ static void net_update_locked(App* app)
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
-            // PAIR WITH A CLIENT, if it waited for it: PAIRED WITH.
-            pair_window_paired(&app->pair_window, &app->net_service.access, &event, device);
+            // GENERATE PAIRING CODE, if it waited for it: PAIRED WITH.
+            pair_window_paired(&app->pair_window, &event, device);
             break;
         }
         case NetAccessEventType::closed:
             if (event.device < 0)
             {
                 // It cancelled, or left.
-                pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
+                pair_window_request_gone(&app->pair_window, event.peer);
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -5254,54 +5253,51 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
+            pair_window_request_gone(&app->pair_window, event.peer);
             break;
         case NetAccessEventType::pairing_requested:
-            // A device asks (Andrés, 2026-11-22): TOOLS > PAIR... opens on
-            // PAIR WITH A CLIENT to take its code and the role; the game pauses
-            // while it's up. One at a time: another waits until this one is
-            // done (it asks again on its own if refused).
-            if (pair_window_take_request(&app->pair_window, &app->net_service.access, &event))
+            // A device asks (Andrés, 2026-11-25: the one asked has the code):
+            // TOOLS > PAIR... opens on GENERATE PAIRING CODE showing it, with
+            // the permissions to tick; the game pauses while it's up. One at a
+            // time: another waits until this one is done (it asks again on its
+            // own if refused).
+            pair_window_take_request(&app->pair_window, &event);
+            if (app->pair_window.request.active && app->pair_window.request.peer == event.peer)
             {
-                SDL_Log("Network: \"%s\" came with our own code", event.name);
+                SDL_Log("Network: \"%s\" asks to pair%s", event.info.name, event.retry ? " (new code)" : "");
             }
-            else if (app->pair_window.request.active && app->pair_window.request.peer == event.peer)
-            {
-                SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
-            }
+            break;
+        case NetAccessEventType::code_expired:
+            pair_window_code_expired(&app->pair_window, SDL_GetTicks());
             break;
         case NetAccessEventType::guest_joined:
         {
             // A guest from the link: what runs at once (it starts the stream itself).
-            SDL_Log("Network: guest \"%s\" joined from %s", event.name, address);
+            SDL_Log("Network: guest \"%s\" joined from %s", event.info.name, address);
             char status[128];
             std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_guest_joined),
-                          event.name);
+                          event.info.name);
             set_status(app, status);
             net_send_game_state(app, event.peer);
             break;
         }
         case NetAccessEventType::guest_full:
-            SDL_Log("Network: guest \"%s\" turned away: every seat is taken", event.name);
+            SDL_Log("Network: guest \"%s\" turned away: every seat is taken", event.info.name);
             break;
-        case NetAccessEventType::granted_back:
-            // The piccolo that just paired lets us come to it: it's a host we
-            // may connect to now (SHARE lists it).
-            SDL_Log("Network: \"%s\" lets us connect to it (%s)", device, net_access_level_name(event.access));
-            if (event.device >= 0 && start_share_link(app))
-            {
-                const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(event.device)];
-                net_share_link_add_host(&app->share_link, paired->key, paired->name.c_str());
-            }
+        case NetAccessEventType::granted:
+            // A paired device says what we may use on it (stored as granted):
+            // the DONE screen shows it, SETTINGS > NETWORK > DEVICES too.
+            SDL_Log("Network: \"%s\" lets us use: %s", device, net_caps_name(event.caps).c_str());
+            pair_window_granted(&app->pair_window, &event);
             break;
         case NetAccessEventType::unpaired:
         {
             // The device forgot this piccolo, so it's gone from PAIRED DEVICES too.
             char status[256];
             std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_net_unpaired),
-                          event.name);
+                          event.info.name);
             set_status(app, status);
-            SDL_Log("Network: \"%s\" unpaired itself", event.name);
+            SDL_Log("Network: \"%s\" unpaired itself", event.info.name);
             break;
         }
         case NetAccessEventType::message:
@@ -5325,7 +5321,7 @@ static void net_update_locked(App* app)
             {
                 const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(event.device)];
                 input_net_set_hotkeys(&app->input_net, &app->input, event.peer,
-                                      net_access_allows(event.access, NetAccessLevel::stream));
+                                      (event.caps & NET_CAP_STREAM) != 0);
                 input_net_receive(&app->input_net, &app->input, event.peer, paired->key, paired->name.c_str(),
                                   event.data, event.size);
             }
@@ -5642,7 +5638,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
             pair_link = &app->share_status;
         }
         // (A request shows it over anything, the game paused: ui_derive.)
-        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running, app->net_running);
+        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running);
     }
     // TOOLS > REMOTE PLAY: reads the NetAccess, so under the lock.
     view->guest_shown = app->guest_window.open;

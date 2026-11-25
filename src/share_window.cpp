@@ -295,8 +295,7 @@ void share_window_update(ShareWindow* window, const NetShareFolders* local_folde
     {
         return;
     }
-    bool connected = link != nullptr && link->state == NetShareLinkState::ready &&
-                     net_access_allows(link->access, NetAccessLevel::share);
+    bool connected = link != nullptr && link->state == NetShareLinkState::ready && (link->caps & NET_CAP_SHARE) != 0;
     if (window->local.stale && local_folders != nullptr)
     {
         window->local.stale = false;
@@ -335,8 +334,7 @@ void share_window_state(ShareWindowState* state, const Localization* strings, co
     state->strings = strings;
     state->link = link;
     state->line = line;
-    state->connected = link != nullptr && link->state == NetShareLinkState::ready &&
-                       net_access_allows(link->access, NetAccessLevel::share);
+    state->connected = link != nullptr && link->state == NetShareLinkState::ready && (link->caps & NET_CAP_SHARE) != 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,22 +1125,13 @@ ShareWindowRequest share_window_apply(ShareWindow* window, const ShareWindowActi
         net_share_link_set_beacon(link, beacon);
         if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < status->found.size())
         {
-            // Always with a fresh code: a piccolo that knows us welcomes us
-            // and it's never used; one that doesn't asks its user to type it.
-            net_pair_code_generate(window->code);
-            net_share_link_connect(link, status->found[static_cast<size_t>(window->found_selected)].address,
-                                   window->code);
+            // A device that knows us welcomes us; pairing with a new one is
+            // the PAIR window's (the press above opens it instead).
+            net_share_link_connect(link, status->found[static_cast<size_t>(window->found_selected)].address, false);
         }
         else if (window->paired_selected >= 0)
         {
             net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
-        }
-        else if (window->invite_selected)
-        {
-            // Across the internet to a piccolo that doesn't know us: our code,
-            // which its user types in TOOLS > INVITE.
-            net_pair_code_generate(window->code);
-            net_share_link_pair_beacon(link, window->code);
         }
         break;
     case ShareWindowPress::disconnect:

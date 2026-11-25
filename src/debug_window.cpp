@@ -105,16 +105,16 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
 {
     retro_ui_dim_text("Fake state: presses do nothing; X, CLOSE or Escape ends a preview.", nullptr);
     retro_ui_begin_disabled(state->pair_open);
-    retro_ui_text("PAIR WITH A HOST");
-    preview_button(action, "Devices", DebugPreview::pair_host_list, false);
-    preview_button(action, "Code: this network", DebugPreview::pair_host_code_lan, true);
-    preview_button(action, "Code: internet", DebugPreview::pair_host_code_internet, true);
-    preview_button(action, "Paired: YES / NO", DebugPreview::pair_host_paired, true);
-    retro_ui_text("PAIR WITH A CLIENT");
-    preview_button(action, "Type the code", DebugPreview::pair_client_type, false);
-    preview_button(action, "Waiting", DebugPreview::pair_client_waiting, true);
-    preview_button(action, "A request", DebugPreview::pair_client_request, true);
-    preview_button(action, "Paired", DebugPreview::pair_client_paired, true);
+    retro_ui_text("PAIR A DEVICE");
+    preview_button(action, "Devices", DebugPreview::pair_device_list, false);
+    preview_button(action, "Code: this network", DebugPreview::pair_device_type, true);
+    preview_button(action, "Enter a code", DebugPreview::pair_device_internet, true);
+    preview_button(action, "Paired", DebugPreview::pair_device_done, true);
+    retro_ui_text("GENERATE PAIRING CODE");
+    preview_button(action, "Our code", DebugPreview::pair_code_shown, false);
+    preview_button(action, "A request", DebugPreview::pair_code_request, true);
+    preview_button(action, "Unsigned build", DebugPreview::pair_code_unsigned, true);
+    preview_button(action, "Paired", DebugPreview::pair_code_done, true);
     retro_ui_end_disabled();
     if (state->pair_open)
     {

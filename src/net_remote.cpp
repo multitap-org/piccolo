@@ -295,23 +295,23 @@ struct ActionInfo
     const char*    key;
     Str            label;
     NetActionKind  kind;
-    NetAccessLevel access;
+    NetCaps        needs;   // the capability it takes
 };
 
 static const ActionInfo ACTIONS[] = {
-    {"save_state", Str::menu_save_state, NetActionKind::press, NetAccessLevel::stream},
-    {"load_state", Str::menu_load_state, NetActionKind::press, NetAccessLevel::stream},
-    {"slot_previous", Str::action_slot_previous, NetActionKind::press, NetAccessLevel::stream},
-    {"slot_next", Str::action_slot_next, NetActionKind::press, NetAccessLevel::stream},
-    {"fast_forward", Str::input_action_hotkey_fast_forward, NetActionKind::hold, NetAccessLevel::stream},
-    {"pause", Str::action_pause, NetActionKind::toggle, NetAccessLevel::stream},
-    {"reset", Str::action_reset, NetActionKind::press, NetAccessLevel::full},
-    {"close_game", Str::quick_menu_close_game, NetActionKind::press, NetAccessLevel::full},
+    {"save_state", Str::menu_save_state, NetActionKind::press, NET_CAP_STREAM},
+    {"load_state", Str::menu_load_state, NetActionKind::press, NET_CAP_STREAM},
+    {"slot_previous", Str::action_slot_previous, NetActionKind::press, NET_CAP_STREAM},
+    {"slot_next", Str::action_slot_next, NetActionKind::press, NET_CAP_STREAM},
+    {"fast_forward", Str::input_action_hotkey_fast_forward, NetActionKind::hold, NET_CAP_STREAM},
+    {"pause", Str::action_pause, NetActionKind::toggle, NET_CAP_STREAM},
+    {"reset", Str::action_reset, NetActionKind::press, NET_CAP_SETTINGS},
+    {"close_game", Str::quick_menu_close_game, NetActionKind::press, NET_CAP_SETTINGS},
 };
 constexpr size_t ACTION_COUNT = sizeof(ACTIONS) / sizeof(ACTIONS[0]);
 
 size_t net_remote_write_actions(NetRemote* remote, uint32_t id, const char* language, const char* root,
-                                NetAccessLevel access, const NetRemoteGame* game)
+                                NetCaps caps, const NetRemoteGame* game)
 {
     if (language != nullptr)
     {
@@ -320,7 +320,7 @@ size_t net_remote_write_actions(NetRemote* remote, uint32_t id, const char* lang
     std::vector<NetAction> actions;
     for (size_t i = 0; i < ACTION_COUNT && game->running; i++)
     {
-        if (!net_access_allows(access, ACTIONS[i].access))
+        if ((caps & ACTIONS[i].needs) == 0)
         {
             continue;
         }
@@ -341,7 +341,7 @@ size_t net_remote_write_actions(NetRemote* remote, uint32_t id, const char* lang
     return net_settings_write_actions(remote->reply.data(), remote->reply.size(), id, &actions);
 }
 
-bool net_remote_action_allowed(const char* key, NetAccessLevel access, const NetRemoteGame* game)
+bool net_remote_action_allowed(const char* key, NetCaps caps, const NetRemoteGame* game)
 {
     if (!game->running)
     {
@@ -351,7 +351,7 @@ bool net_remote_action_allowed(const char* key, NetAccessLevel access, const Net
     {
         if (std::strcmp(key, ACTIONS[i].key) == 0)
         {
-            return net_access_allows(access, ACTIONS[i].access);
+            return (caps & ACTIONS[i].needs) != 0;
         }
     }
     return false;

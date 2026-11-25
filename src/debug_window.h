@@ -29,14 +29,14 @@ enum class DebugPreview
 {
     none,
     // PAIR, each step of both modes (pair_window.h).
-    pair_host_list,            // PAIR WITH A HOST: the devices found
-    pair_host_code_lan,        // our code, for a device on this network
-    pair_host_code_internet,   // our code, across the internet
-    pair_host_paired,          // paired, with LET IT CONNECT ...? YES / NO
-    pair_client_type,          // PAIR WITH A CLIENT: type the code
-    pair_client_waiting,       // ALLOW pressed: waiting
-    pair_client_request,       // a device asking
-    pair_client_paired,        // paired
+    pair_device_list,          // PAIR A DEVICE: the devices found, ENTER A CODE
+    pair_device_type,          // the code a device on this network popped up, to type
+    pair_device_internet,      // ENTER A CODE: the code from a device elsewhere
+    pair_device_done,          // paired: its permissions here (an unsigned build)
+    pair_code_shown,           // GENERATE PAIRING CODE: our code, waiting
+    pair_code_request,         // a device asking: its code and permissions
+    pair_code_unsigned,        // the red UNSIGNED BUILD question (FILE TRANSFER ticked)
+    pair_code_done,            // paired: permissions granted here and there
     about,                     // MISC > ABOUT (about_window.h)
     // REMOTE PLAY (guest_window.h).
     remote_no_link,            // before CREATE LINK

@@ -2,18 +2,18 @@
 
 // Settings and actions from paired devices (net_settings.h): piccolo's side.
 //
-// Settings (FULL access): the ones SETTINGS shows, laid out in its pages
+// Settings (SETTINGS capability): the ones SETTINGS shows, laid out in its pages
 // and sections (GENERAL, INTERFACE, VIDEO > PICTURE / DISPLAY / SYNC, SOUND),
 // with labels in the language the device asks for. Not offered: NETWORK (a
 // device could cut its own connection) and the folders (paths on this
 // machine). A change goes to the layer the device names, as SETTINGS'
-// scope; every connected FULL device is told when a value changes, from
+// scope; every connected device with SETTINGS is told when a value changes, from
 // wherever (net_remote_next_change).
 //
-// Actions: what a device may trigger while a game runs. GAMEPAD access:
-// SAVE STATE, LOAD STATE, NEXT / PREVIOUS SLOT, FAST FORWARD (held),
-// PAUSE (toggle). FULL access also: RESET, CLOSE GAME. main.cpp carries them
-// out with the same functions as the hotkeys and the quick menu.
+// Actions: what a device may trigger while a game runs. With REMOTE PLAY
+// (STREAM): SAVE STATE, LOAD STATE, NEXT / PREVIOUS SLOT, FAST FORWARD
+// (held), PAUSE (toggle). With SETTINGS: RESET, CLOSE GAME. main.cpp carries
+// them out with the same functions as the hotkeys and the quick menu.
 
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "localization.h"
-#include "net_pairing.h"   // NetAccessLevel, net_access_allows
+#include "net_pairing.h"   // NetCaps
 #include "net_settings.h"
 #include "net_trust.h"
 #include "settings.h"
@@ -62,11 +62,11 @@ size_t net_remote_answer_settings(NetRemote* remote, Settings* settings, const c
 // Settings::revision first).
 size_t net_remote_next_change(NetRemote* remote, const Settings* settings);
 
-// The actions a device with `access` may trigger now, in `language` (or
-// the last one asked for when nullptr), as an actions_result into `reply`.
+// The actions a device with `caps` may trigger now, in `language` (or the
+// last one asked for when nullptr), as an actions_result into `reply`.
 size_t net_remote_write_actions(NetRemote* remote, uint32_t id, const char* language, const char* root,
-                                NetAccessLevel access, const NetRemoteGame* game);
+                                NetCaps caps, const NetRemoteGame* game);
 
-// May a device with `access` trigger `key` now? (The list above, checked
+// May a device with `caps` trigger `key` now? (The list above, checked
 // again when an action arrives.)
-bool net_remote_action_allowed(const char* key, NetAccessLevel access, const NetRemoteGame* game);
+bool net_remote_action_allowed(const char* key, NetCaps caps, const NetRemoteGame* game);

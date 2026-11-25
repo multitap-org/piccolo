@@ -13,61 +13,77 @@
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
 
-// ROLE's values: today's access levels.
-static const Str LEVEL_NAMES[NET_ACCESS_LEVEL_COUNT] = {Str::net_access_gamepad, Str::net_access_stream,
-                                                        Str::net_access_share, Str::net_access_full};
-
-static const char* level_name(const Localization* strings, uint32_t level)
-{
-    return piccolo_text(strings, LEVEL_NAMES[level < NET_ACCESS_LEVEL_COUNT ? level : 0]);
-}
+// Whose ticks the red question is for (NetCapsUnsignedAsk::target).
+constexpr uint32_t ASK_REQUEST = 1;   // a request's (GENERATE PAIRING CODE)
+constexpr uint32_t ASK_DEVICE = 2;    // the device just paired (PAIR A DEVICE's last screen)
 
 // A step of one mode is in progress: the other mode is greyed out.
-static bool host_in_progress(const PairWindow* window)
+static bool device_in_progress(const PairWindow* window)
 {
-    return window->phase != PairWindowPhase::list;
+    return window->phase != PairDevicePhase::list;
 }
 
-static bool client_in_progress(const PairWindow* window)
+static bool code_in_progress(const PairWindow* window)
 {
-    return window->request.active || window->invite.waiting || window->client_done;
+    return window->request.active || window->code_done;
 }
 
-// PAIR WITH A HOST back to its list, with a new code.
-static void reset_host(PairWindow* window)
+// PAIR A DEVICE back to its list.
+static void reset_device(PairWindow* window)
 {
-    window->phase = PairWindowPhase::list;
+    window->phase = PairDevicePhase::list;
     window->selected = -1;
-    window->internet_selected = false;
+    window->enter_selected = false;
     window->internet = false;
+    std::memset(window->typed, 0, sizeof(window->typed));
+    window->wrong = false;
     window->host_name.clear();
-    window->given = NetAccessLevel::gamepad;
-    std::memset(window->host_key, 0, sizeof(window->host_key));
-    window->seen_connecting = false;
+    window->host_kind = NetAppKind::piccolo;
+    window->host_signed = false;
+    window->host_uses = 0;
+    window->given = 0;
+    window->ticks = 0;
+    window->device = -1;
     window->newly_paired = false;
-    window->host_since_ms = 0;
+    window->seen_connecting = false;
+    window->device_since_ms = 0;
     window->preselect.clear();
-    net_pair_code_generate(window->code);
 }
 
-// The window on PAIR WITH A CLIENT, over every other one, for the request.
+// The window on GENERATE PAIRING CODE, over every other one, for the request.
 static void open_on_request(PairWindow* window)
 {
     if (!window->open)
     {
-        reset_host(window);
+        reset_device(window);
     }
     window->open = true;
-    window->mode = PairMode::client;
+    window->mode = PairMode::code;
     window->select_mode = true;
     window->raise = true;
-    window->request.focus = true;
-    window->client_done = false;
-    window->client_name.clear();
+    window->code_done = false;
+}
+
+static void set_notice(PairWindow* window, PairNotice notice, uint64_t now_ms)
+{
+    window->notice = notice;
+    window->notice_ms = now_ms;
 }
 
 // ---------------------------------------------------------------------------
 // State
+
+// What a device just paired may use here at first: what it uses that we
+// offer, without FILE TRANSFER and SETTINGS for an unsigned build.
+static NetCaps default_ticks(NetCaps uses, bool signed_build)
+{
+    NetCaps ticks = uses & NET_CAPS_ALL;
+    if (!signed_build)
+    {
+        ticks &= ~NET_CAPS_UNSIGNED_OFF;
+    }
+    return ticks;
+}
 
 void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool in_game, uint64_t now_ms)
 {
@@ -76,30 +92,29 @@ void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool
     {
         window->request.since_ms = now_ms;   // (a card slides in from then too)
     }
-    if (window->invite.waiting && window->invite.since_ms == 0)
+    if (window->shown.active && window->shown.since_ms == 0)
     {
-        window->invite.since_ms = now_ms;
+        window->shown.since_ms = now_ms;
     }
-    if (window->phase != PairWindowPhase::waiting)
+    if (window->phase != PairDevicePhase::typing && window->phase != PairDevicePhase::checking)
     {
-        window->host_since_ms = 0;
+        window->device_since_ms = 0;
     }
-    else if (window->host_since_ms == 0)
+    else if (window->device_since_ms == 0)
     {
-        window->host_since_ms = now_ms;
+        window->device_since_ms = now_ms;
     }
-    // A device asks to pair: the window opens on PAIR WITH A CLIENT, unless
-    // PAIR WITH A HOST is halfway through a step (it waits until that ends),
-    // or the player is in the game with the window closed (a card asks:
-    // pair_window_hold_accept opens it). A new request also replaces PAIRED
-    // WITH (the last pairing is over), and raises the window even when it
-    // waits behind a host step, so it's never left hidden behind another window.
-    bool host_busy = window->open && host_in_progress(window);
+    // A device asks to pair: the window opens on GENERATE PAIRING CODE,
+    // unless PAIR A DEVICE is halfway through a step (it waits until that
+    // ends), or the player is in the game with the window closed (a card
+    // asks: pair_window_hold_accept opens it). A new request also replaces
+    // PAIRED WITH, and raises the window even when it waits behind a step.
+    bool device_busy = window->open && device_in_progress(window);
     bool as_card = in_game && !window->open;
     bool fresh = window->request.active && window->request.fresh;
     window->request.fresh = false;
-    if (window->request.active && !host_busy && !as_card &&
-        (!window->open || window->mode != PairMode::client || (fresh && window->client_done)))
+    if (window->request.active && !device_busy && !as_card &&
+        (!window->open || window->mode != PairMode::code || (fresh && window->code_done)))
     {
         open_on_request(window);
     }
@@ -111,7 +126,7 @@ void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool
     {
         return;
     }
-    if (window->phase == PairWindowPhase::list)
+    if (window->phase == PairDevicePhase::list)
     {
         if (window->selected >= static_cast<int32_t>(link->found.size()))
         {
@@ -122,73 +137,82 @@ void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool
             if (link->found[i].name == window->preselect)
             {
                 window->selected = static_cast<int32_t>(i);
-                window->internet_selected = false;
+                window->enter_selected = false;
                 window->preselect.clear();
             }
         }
+        return;
     }
-    else if (window->phase == PairWindowPhase::waiting)
+    if (window->phase == PairDevicePhase::done)
     {
-        if (!link->code.empty())
+        window->given = link->state == NetShareLinkState::ready ? link->caps : window->given;
+        return;
+    }
+    // Typing or checking: the outcome, from FILE TRANSFER's connection.
+    if (link->state == NetShareLinkState::connecting)
+    {
+        window->seen_connecting = true;
+        if (link->code_needed && window->phase == PairDevicePhase::checking)
         {
-            // A new one after a wrong try.
-            std::snprintf(window->code, sizeof(window->code), "%s", link->code.c_str());
+            // The code was wrong: the device shows a new one, typed again.
+            window->phase = PairDevicePhase::typing;
+            window->wrong = true;
+            std::memset(window->typed, 0, sizeof(window->typed));
+            window->focus = true;
         }
-        // The outcome, from FILE TRANSFER's connection.
-        if (link->state == NetShareLinkState::connecting)
+        if (link->code_needed && !link->host_name.empty())
         {
-            window->seen_connecting = true;
-        }
-        else if (link->state == NetShareLinkState::ready)
-        {
-            // Ours: connecting (net_share_link_connect / _pair_beacon) set the
-            // state under the link's lock before this step began, so a ready
-            // now is this connection's. Without newly_paired the host already
-            // knew us (paired before): paired all the same, but no access
-            // back (it's offered only on a new pairing's connection).
-            window->phase = PairWindowPhase::done;
-            window->newly_paired = link->newly_paired;
-            window->host_name = link->host_name;
-            window->given = link->access;
-            std::memcpy(window->host_key, link->host_key, NET_KEY_SIZE);
-        }
-        else if (window->seen_connecting && link->state != NetShareLinkState::ready)
-        {
-            // Refused, gone, or cancelled on the other side: back to the
-            // list with a new code (no line says so: testing round 1 took
-            // the explanations out).
-            window->phase = PairWindowPhase::list;
-            window->seen_connecting = false;
-            net_pair_code_generate(window->code);
+            window->host_name = link->host_name;   // across the internet: now we know who
         }
     }
-    else if (link->access != window->given)
+    else if (link->state == NetShareLinkState::ready)
     {
-        window->given = link->access;   // the host's welcome came after ready
+        // Ours: connecting set the state under the link's lock before this
+        // step began, so a ready now is this connection's. Without
+        // newly_paired the device already knew us (paired before).
+        window->phase = PairDevicePhase::done;
+        window->newly_paired = link->newly_paired;
+        window->host_name = link->host_name;
+        window->host_kind = link->host_kind;
+        window->host_signed = link->host_signed;
+        window->host_uses = link->host_uses;
+        window->given = link->caps;
+        window->device = link->device;
+        window->ticks = default_ticks(link->host_uses, link->host_signed);
+        if (!link->newly_paired && link->device >= 0 && static_cast<size_t>(link->device) < link->paired_devices.size())
+        {
+            window->ticks = link->paired_devices[static_cast<size_t>(link->device)].grants;   // as it is
+        }
+    }
+    else if (window->seen_connecting && link->state == NetShareLinkState::idle)
+    {
+        // Refused, gone, too many wrong codes, or cancelled on the other side.
+        reset_device(window);
+        set_notice(window, PairNotice::failed, now_ms);
     }
 }
 
 void pair_window_state(PairWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
-                       bool network, bool can_give_back)
+                       bool network)
 {
     state->strings = strings;
     state->link = link;
     state->network = network;
-    state->can_give_back = can_give_back;
 }
 
 // ---------------------------------------------------------------------------
 // Drawing
 
-// The buttons under the panel (they split the window's full width), and
-// whether WAITING FOR DEVICE shows above them.
+// The buttons under the panel (they split the window's full width), and the
+// blinking line above them (WAITING FOR ...), if any.
 constexpr uint32_t PAIR_BUTTONS_MAX = 2;
 struct PairButtons
 {
     RetroUiRowButton buttons[PAIR_BUTTONS_MAX];
     PairWindowPress  presses[PAIR_BUTTONS_MAX] = {};
     uint32_t         count = 0;
-    bool             waiting = false;
+    char             waiting[256] = {};   // "" = no waiting line
+    PairWindowPress  enter = PairWindowPress::none;   // Enter in the code boxes
 };
 
 static void add_button(PairButtons* row, const char* id, const char* label, PairWindowPress press, bool enabled,
@@ -219,44 +243,49 @@ static bool is_paired(const NetShareLinkStatus* link, const std::string* name)
     return false;
 }
 
-// ROLE's column: the values (or the role buttons) start there.
-static float role_column(const Localization* strings)
-{
-    return retro_ui_text_width(piccolo_text(strings, Str::pair_role)) + retro_ui_font_size() * 2.0f;
-}
-
-// ROLE and the role given, as text.
-static void draw_role_value(const Localization* strings, uint32_t level)
-{
-    float left = retro_ui_cursor_x();
-    retro_ui_label(piccolo_text(strings, Str::pair_role));
-    retro_ui_same_line_at(left + role_column(strings));
-    retro_ui_text(level_name(strings, level));
-}
-
-// ROLE and the four levels to pick from, splitting the rest of the width.
-static void draw_role_choice(const Localization* strings, const char* id, uint32_t* level)
-{
-    float left = retro_ui_cursor_x();
-    retro_ui_label(piccolo_text(strings, Str::pair_role));
-    retro_ui_same_line_at(left + role_column(strings));
-    const char* labels[NET_ACCESS_LEVEL_COUNT];
-    for (uint32_t i = 0; i < NET_ACCESS_LEVEL_COUNT; i++)
-    {
-        labels[i] = level_name(strings, i);
-    }
-    retro_ui_choice_buttons_equal(id, labels, NET_ACCESS_LEVEL_COUNT, level, 0.0f);
-}
-
-static void draw_paired_with(const Localization* strings, const char* name)
+// "<PREFIX> <NAME>", cut to the panel's width with "..." (all of it in the tooltip).
+static void draw_prefixed(const char* prefix, const char* name)
 {
     char line[512];
-    std::snprintf(line, sizeof(line), "%s %s", piccolo_text(strings, Str::pair_done), name);
-    retro_ui_text_fit(line, retro_ui_width_left());   // a long name ends in "..." at the panel's edge
+    std::snprintf(line, sizeof(line), "%s %s", prefix, name);
+    retro_ui_text_fit(line, retro_ui_width_left());
 }
 
-// PAIR WITH A HOST's panel, and its buttons.
-static void draw_host(PairWindow* window, const PairWindowState* state, PairButtons* buttons)
+// A label line (section-colored), as the mockups' PERMISSIONS headings.
+static void draw_heading(const char* text)
+{
+    retro_ui_push_section_text();
+    retro_ui_text_fit(text, retro_ui_width_left());
+    retro_ui_pop_section_text();
+}
+
+// The device's chips after its name line: its kind, UNSIGNED BUILD.
+static void draw_chips(const Localization* strings, NetAppKind kind, bool signed_build)
+{
+    retro_ui_dim_text(net_caps_ui_kind(strings, kind), nullptr);
+    if (!signed_build)
+    {
+        retro_ui_same_line();
+        retro_ui_text_colored(0xFFF0A8B4u, piccolo_text(strings, Str::unsigned_build));   // the red chip's text
+    }
+}
+
+// PERMISSIONS GRANTED ON <NAME>: a list (or WAITING FOR <NAME> until it says).
+static void draw_granted_there(const Localization* strings, const char* name, NetCaps caps, bool known)
+{
+    draw_prefixed(piccolo_text(strings, Str::pair_granted_on), name);
+    if (!known)
+    {
+        draw_prefixed(piccolo_text(strings, Str::pair_waiting_for), name);
+        return;
+    }
+    char list[256];
+    net_caps_ui_list(strings, caps, list, sizeof(list));
+    retro_ui_text_fit(list, retro_ui_width_left());
+}
+
+// PAIR A DEVICE's panel, and its buttons.
+static void draw_device(PairWindow* window, const PairWindowState* state, PairButtons* buttons)
 {
     const Localization* strings = state->strings;
     const NetShareLinkStatus* link = state->link;
@@ -267,157 +296,174 @@ static void draw_host(PairWindow* window, const PairWindowState* state, PairButt
         add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
         return;
     }
-    if (window->phase == PairWindowPhase::list)
+    if (window->phase == PairDevicePhase::list)
     {
-        retro_ui_push_section_text();
-        retro_ui_text(piccolo_text(strings, Str::pair_detected));
-        retro_ui_pop_section_text();
+        draw_heading(piccolo_text(strings, Str::pair_discover));
+        uint32_t row = 0;
         for (size_t i = 0; i < link->found.size(); i++)
         {
-            const std::string* name = &link->found[i].name;
-            const char* note = is_paired(link, name) ? piccolo_text(strings, Str::pair_paired) : nullptr;
-            bool selected = !window->internet_selected && window->selected == static_cast<int32_t>(i);
-            if (retro_ui_list_item(static_cast<uint32_t>(i), name->c_str(), selected, note))
+            const NetShareLinkFound* found = &link->found[i];
+            // Only devices with something we use (an old one, offers unknown, shows).
+            if (found->offers_known && (found->offers & state->uses) == 0)
+            {
+                continue;
+            }
+            const std::string* name = &found->name;
+            const char* note = is_paired(link, name) ? piccolo_text(strings, Str::pair_paired)
+                                                     : net_caps_ui_kind(strings, found->kind);
+            bool selected = !window->enter_selected && window->selected == static_cast<int32_t>(i);
+            if (retro_ui_list_item(row, name->c_str(), selected, note))
             {
                 window->selected = static_cast<int32_t>(i);
-                window->internet_selected = false;
+                window->enter_selected = false;
             }
+            row++;
         }
-        // Last: a piccolo on another network, through the beacon.
-        if (retro_ui_list_item(static_cast<uint32_t>(link->found.size()), piccolo_text(strings, Str::pair_internet),
-                               window->internet_selected, nullptr))
+        // Last: ENTER A CODE (a device elsewhere shows one: GENERATE PAIRING CODE).
+        if (retro_ui_list_item(row, piccolo_text(strings, Str::pair_enter_code), window->enter_selected, nullptr))
         {
-            window->internet_selected = true;
+            window->enter_selected = true;
             window->selected = -1;
         }
-        bool picked = window->internet_selected || window->selected >= 0;
-        add_button(buttons, "pair", piccolo_text(strings, Str::pair_button),
-                   window->internet_selected ? PairWindowPress::pair_internet : PairWindowPress::pair, picked,
+        bool picked = window->enter_selected || window->selected >= 0;
+        add_button(buttons, "pair", piccolo_text(strings, Str::pair_button), PairWindowPress::pair, picked,
                    picked ? nullptr : piccolo_text(strings, Str::pair_select_help));
         add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
         return;
     }
-    if (window->phase == PairWindowPhase::waiting)
+    if (window->phase == PairDevicePhase::typing || window->phase == PairDevicePhase::checking)
     {
-        if (window->internet)
+        const char* who = window->internet && window->host_name.empty() ? piccolo_text(strings, Str::pair_other_device)
+                                                                         : window->host_name.c_str();
+        draw_prefixed(piccolo_text(strings, Str::pair_type_shown_on), who);
+        if (window->wrong)
         {
-            retro_ui_text(piccolo_text(strings, Str::pair_give_code));
-        }
-        else
-        {
-            // A long device name ends in "..." at the panel's edge (all of it in the tooltip).
-            char line[512];
-            std::snprintf(line, sizeof(line), "%s %s", piccolo_text(strings, Str::pair_type_code),
-                          window->host_name.c_str());
-            retro_ui_text_fit(line, retro_ui_width_left());
+            retro_ui_dim_text(piccolo_text(strings, Str::pair_wrong_code), nullptr);
         }
         RetroUiCodeBoxes boxes = {};
-        retro_ui_code_boxes("host_code", window->code, sizeof(window->code), &boxes);
-        add_button(buttons, "cancel", piccolo_text(strings, Str::net_owner_cancel), PairWindowPress::cancel, true,
+        boxes.editable = window->phase == PairDevicePhase::typing;
+        boxes.focus = window->focus;
+        window->focus = false;
+        bool enter = retro_ui_code_boxes("typed", window->typed, sizeof(window->typed), &boxes);
+        // On this network the device must have popped its code up first.
+        bool ready = window->internet || link->code_needed;
+        bool complete = net_pair_code_valid(window->typed) && ready && window->phase == PairDevicePhase::typing;
+        if (enter && complete)
+        {
+            buttons->enter = PairWindowPress::submit;
+        }
+        add_button(buttons, "submit", piccolo_text(strings, Str::pair_button), PairWindowPress::submit, complete,
                    nullptr);
-        buttons->waiting = true;
+        add_button(buttons, "cancel", piccolo_text(strings, Str::pair_cancel), PairWindowPress::cancel, true, nullptr);
+        if (window->phase == PairDevicePhase::checking || !ready)
+        {
+            std::snprintf(buttons->waiting, sizeof(buttons->waiting), "%s %s", piccolo_text(strings, Str::pair_waiting_for),
+                          who);
+        }
         return;
     }
-    draw_paired_with(strings, window->host_name.c_str());
-    draw_role_value(strings, static_cast<uint32_t>(window->given));
-    if (!state->can_give_back || !window->newly_paired)
+    // Paired: the last screen's ticks (the side that typed ticks last).
+    draw_prefixed(piccolo_text(strings, Str::pair_done), window->host_name.c_str());
+    draw_chips(strings, window->host_kind, window->host_signed);
+    draw_heading(piccolo_text(strings, Str::pair_granted_here));
+    NetCaps choices = window->host_uses & state->offers;
+    if (choices == 0)
     {
-        // Our listener doesn't run, or the host already knew us: nothing to
-        // give back (net_share_link_grant_back is for a new pairing only).
-        add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
-        return;
+        retro_ui_text(piccolo_text(strings, Str::cap_none));
     }
-    retro_ui_spacing();
-    char question[512];
-    std::snprintf(question, sizeof(question), "%s %s %s", piccolo_text(strings, Str::pair_back_before),
-                  window->host_name.c_str(), piccolo_text(strings, Str::pair_back_after));
-    retro_ui_text_wrapped(question);
-    add_button(buttons, "yes", piccolo_text(strings, Str::pair_yes), PairWindowPress::give_back, true, nullptr);
-    add_button(buttons, "no", piccolo_text(strings, Str::pair_no), PairWindowPress::close, true, nullptr);
+    else
+    {
+        NetCaps asked = 0;
+        net_caps_ui_checkboxes("device_ticks", strings, choices, window->host_signed, &window->ticks, &asked);
+        if (asked != 0)
+        {
+            window->ask.cap = asked;
+            window->ask.name = window->host_name;
+            window->ask.target = ASK_DEVICE;
+        }
+    }
+    draw_granted_there(strings, window->host_name.c_str(), window->given, true);
+    add_button(buttons, "done", piccolo_text(strings, Str::pair_done_button), PairWindowPress::done, true, nullptr);
 }
 
-// PAIR WITH A CLIENT's panel, and its buttons.
-static void draw_client(PairWindow* window, const PairWindowState* state, PairButtons* buttons,
-                        PairWindowAction* action)
+// GENERATE PAIRING CODE's panel, and its buttons.
+static void draw_code(PairWindow* window, const PairWindowState* state, PairButtons* buttons,
+                      PairWindowAction* action)
 {
     const Localization* strings = state->strings;
     PairRequest* request = &window->request;
     if (!state->network)
     {
-        // A request left from before networking stopped: CLOSE still drops it
-        // (pair_window_network_stopped clears it too, this is the safe side).
         action->on_request = request->active;
         action->request_peer = request->peer;
         retro_ui_dim_text(piccolo_text(strings, Str::net_off), nullptr);
-        add_button(buttons, "allow", piccolo_text(strings, Str::pair_allow), PairWindowPress::allow, false, nullptr);
         add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
         return;
     }
-    // A request showing wins over PAIRED WITH (pair_window_update drops that
-    // when a new one comes).
-    if (window->client_done && !request->active)
-    {
-        draw_paired_with(strings, window->client_name.c_str());
-        draw_role_value(strings, static_cast<uint32_t>(window->client_level));
-        add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
-        return;
-    }
-    if (request->active && !request->waiting)
+    if (request->active)
     {
         action->on_request = true;
         action->request_peer = request->peer;
-        char line[512];
-        std::snprintf(line, sizeof(line), "%s %s", request->name, piccolo_text(strings, Str::pair_wants));
-        retro_ui_text_fit(line, retro_ui_width_left());   // a long name ends in "..." at the panel's edge
-        // A wrong code: the other device shows a new one (the line says so
-        // in place of the usual one).
-        retro_ui_dim_text(piccolo_text(strings, request->retry ? Str::pair_wrong_code : Str::pair_type_other), nullptr);
+        draw_prefixed(piccolo_text(strings, Str::pair_type_this_on), request->name);
+        draw_chips(strings, request->kind, request->signed_build);
         RetroUiCodeBoxes boxes = {};
-        boxes.editable = true;
-        boxes.focus = request->focus;
-        request->focus = false;
-        bool enter = retro_ui_code_boxes("request_code", request->code, sizeof(request->code), &boxes);
-        draw_role_choice(strings, "##request_role", &request->level);
-        bool complete = net_pair_code_valid(request->code);
-        if (enter && complete)
+        retro_ui_code_boxes("request_code", request->code, sizeof(request->code), &boxes);
+        draw_heading(piccolo_text(strings, Str::pair_permissions));
+        NetCaps choices = request->uses & state->offers;
+        if (choices == 0)
         {
-            action->press = PairWindowPress::allow;
+            retro_ui_text(piccolo_text(strings, Str::cap_none));
         }
-        add_button(buttons, "allow", piccolo_text(strings, Str::pair_allow), PairWindowPress::allow, complete, nullptr);
-        add_button(buttons, "deny", piccolo_text(strings, Str::pair_deny), PairWindowPress::deny, true, nullptr);
+        else
+        {
+            NetCaps asked = 0;
+            if (net_caps_ui_checkboxes("request_ticks", strings, choices, request->signed_build, &request->grants, &asked))
+            {
+                action->request_grants = true;
+            }
+            if (asked != 0)
+            {
+                window->ask.cap = asked;
+                window->ask.name = request->name;
+                window->ask.target = ASK_REQUEST;
+            }
+        }
+        add_button(buttons, "cancel", piccolo_text(strings, Str::pair_cancel), PairWindowPress::cancel, true, nullptr);
+        std::snprintf(buttons->waiting, sizeof(buttons->waiting), "%s %s", piccolo_text(strings, Str::pair_waiting_for),
+                      request->name);
         return;
     }
-    if (request->active || window->invite.waiting)
+    if (window->code_done)
     {
-        // ALLOW pressed: until it pairs (or comes back with a new code).
-        action->on_request = request->active;
-        action->request_peer = request->peer;
-        char* code = request->active ? request->code : window->invite.code;
-        uint32_t level = request->active ? request->level : window->invite.level;
-        retro_ui_text(piccolo_text(strings, Str::pair_code));
-        RetroUiCodeBoxes boxes = {};
-        retro_ui_code_boxes("waiting_code", code, NET_PAIR_CODE_DIGITS + 1, &boxes);
-        draw_role_value(strings, level);
-        add_button(buttons, "cancel", piccolo_text(strings, Str::net_owner_cancel), PairWindowPress::deny, true,
-                   nullptr);
-        buttons->waiting = true;
+        draw_prefixed(piccolo_text(strings, Str::pair_done), window->done_name.c_str());
+        draw_chips(strings, window->done_kind, true);
+        draw_heading(piccolo_text(strings, Str::pair_granted_here));
+        char list[256];
+        net_caps_ui_list(strings, window->done_here, list, sizeof(list));
+        retro_ui_text_fit(list, retro_ui_width_left());
+        draw_granted_there(strings, window->done_name.c_str(), window->done_there, window->done_there_known);
+        add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
         return;
     }
-    PairInvite* invite = &window->invite;
-    retro_ui_text(piccolo_text(strings, Str::pair_type_other));
+    if (!window->shown.active)
+    {
+        action->press = PairWindowPress::show;   // a code for this mode (pair_window_apply_code)
+    }
+    draw_prefixed(piccolo_text(strings, Str::pair_type_this_on), piccolo_text(strings, Str::pair_other_device));
     RetroUiCodeBoxes boxes = {};
-    boxes.editable = true;
-    boxes.focus = invite->focus;
-    invite->focus = false;
-    bool enter = retro_ui_code_boxes("invite_code", invite->code, sizeof(invite->code), &boxes);
-    draw_role_choice(strings, "##invite_role", &invite->level);
-    bool complete = net_pair_code_valid(invite->code);
-    if (enter && complete)
+    retro_ui_code_boxes("shown_code", window->shown.code, sizeof(window->shown.code), &boxes);
+    draw_heading(piccolo_text(strings, Str::pair_permissions));
+    NetCaps asked = 0;
+    // Nobody yet, so nothing to warn about: the ticks are kept to what the
+    // device uses, and an unsigned one doesn't get FILE TRANSFER or SETTINGS
+    // (net_access_show_code).
+    if (net_caps_ui_checkboxes("shown_ticks", strings, state->offers, true, &window->shown.grants, &asked))
     {
-        action->press = PairWindowPress::allow;
+        action->shown_grants = true;
     }
-    add_button(buttons, "allow", piccolo_text(strings, Str::pair_allow), PairWindowPress::allow, complete, nullptr);
-    add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
+    add_button(buttons, "cancel", piccolo_text(strings, Str::pair_cancel), PairWindowPress::cancel, true, nullptr);
+    std::snprintf(buttons->waiting, sizeof(buttons->waiting), "%s %s · %s", piccolo_text(strings, Str::pair_waiting_for),
+                  piccolo_text(strings, Str::pair_other_device), piccolo_text(strings, Str::pair_wait_minutes));
 }
 
 // The two modes, splitting the full width; the one not in use is greyed out
@@ -431,18 +477,18 @@ static void draw_modes(PairWindow* window, const Localization* strings)
     bool select = window->select_mode;
     window->select_mode = false;
     PairMode shown = window->mode;
-    retro_ui_begin_disabled(client_in_progress(window) && window->mode != PairMode::host);
-    if (retro_ui_begin_tab("host", piccolo_text(strings, Str::pair_mode_host), select && window->mode == PairMode::host))
+    retro_ui_begin_disabled(code_in_progress(window) && window->mode != PairMode::device);
+    if (retro_ui_begin_tab("device", piccolo_text(strings, Str::pair_mode_device),
+                           select && window->mode == PairMode::device))
     {
-        shown = PairMode::host;
+        shown = PairMode::device;
         retro_ui_end_tab();
     }
     retro_ui_end_disabled();
-    retro_ui_begin_disabled(host_in_progress(window) && window->mode != PairMode::client);
-    if (retro_ui_begin_tab("client", piccolo_text(strings, Str::pair_mode_client),
-                           select && window->mode == PairMode::client))
+    retro_ui_begin_disabled(device_in_progress(window) && window->mode != PairMode::code);
+    if (retro_ui_begin_tab("code", piccolo_text(strings, Str::pair_mode_code), select && window->mode == PairMode::code))
     {
-        shown = PairMode::client;
+        shown = PairMode::code;
         retro_ui_end_tab();
     }
     retro_ui_end_disabled();
@@ -453,10 +499,6 @@ static void draw_modes(PairWindow* window, const Localization* strings)
         // reports the old tab on this one. The panel follows `mode`, not that.
         return;
     }
-    if (shown == PairMode::client && window->mode != PairMode::client)
-    {
-        window->invite.focus = true;   // the user switched to it: typing goes to the code at once
-    }
     window->mode = shown;
 }
 
@@ -466,24 +508,25 @@ static float content_width(const Localization* strings)
 {
     float font = retro_ui_font_size();
     float width = font * 40.0f;
-    const Str lines[] = {Str::pair_type_other, Str::pair_give_code, Str::pair_wrong_code};
+    const Str lines[] = {Str::pair_wrong_code, Str::pair_granted_here};
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
     {
         float line = retro_ui_text_width(piccolo_text(strings, lines[i])) + font * 2.0f;
         width = line > width ? line : width;
     }
-    float host = retro_ui_text_width(piccolo_text(strings, Str::pair_mode_host));
-    float client = retro_ui_text_width(piccolo_text(strings, Str::pair_mode_client));
-    float tabs = ((host > client ? host : client) + font * 2.0f) * 2.0f;
+    float device = retro_ui_text_width(piccolo_text(strings, Str::pair_mode_device));
+    float code = retro_ui_text_width(piccolo_text(strings, Str::pair_mode_code));
+    float tabs = ((device > code ? device : code) + font * 2.0f) * 2.0f;
     return tabs > width ? tabs : width;
 }
 
 // The panel's height, the same at every step: the tallest one (a request:
-// two lines, the code, the role buttons) and its padding.
+// its line, the chips, the code, PERMISSIONS and two rows of ticks) and its
+// padding.
 static float panel_height()
 {
-    return retro_ui_text_line_step() * 2.0f + retro_ui_code_boxes_height() + retro_ui_line_step() +
-           retro_ui_line_step() + retro_ui_font_size();
+    return retro_ui_text_line_step() * 3.0f + retro_ui_code_boxes_height() + retro_ui_line_step() * 2.0f +
+           retro_ui_font_size();
 }
 
 void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiFont* pixel_font, int32_t scale,
@@ -507,9 +550,10 @@ void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiF
     frame.width = std::floor(width + chrome_width);
     frame.scrolls = false;
     bool closed = false;
-    // A device asking to pair: over every other window, as its dialog was.
+    // A device asking to pair: over every other window.
     bool raise = window->raise;
     window->raise = false;
+    PairButtons buttons;
     if (retro_ui_window_begin(&frame, scale, &closed))
     {
         if (raise)
@@ -518,25 +562,24 @@ void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiF
         }
         draw_modes(window, strings);
         action->mode = window->mode;
-        PairButtons buttons;
         if (retro_ui_begin_list("pair_panel", 0.0f, panel_height()))
         {
-            if (window->mode == PairMode::host)
+            if (window->mode == PairMode::device)
             {
-                draw_host(window, state, &buttons);
+                draw_device(window, state, &buttons);
             }
             else
             {
-                draw_client(window, state, &buttons, action);
+                draw_code(window, state, &buttons, action);
             }
         }
         retro_ui_end_list();
-        // The only status line: WAITING FOR DEVICE, blinking (on 0.6 s, off
+        // The only status line: WAITING FOR ..., blinking (on 0.6 s, off
         // 0.6 s); its line is kept when it's off or not shown.
         bool lit = std::fmod(retro_ui_seconds(), 1.2) < 0.6;
-        if (buttons.waiting && lit)
+        if (buttons.waiting[0] != '\0' && lit)
         {
-            retro_ui_text(piccolo_text(strings, Str::pair_waiting));
+            retro_ui_text_fit(buttons.waiting, retro_ui_width_left());
         }
         else
         {
@@ -547,12 +590,29 @@ void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiF
         {
             action->press = buttons.presses[pressed];
         }
+        else if (buttons.enter != PairWindowPress::none)
+        {
+            action->press = buttons.enter;
+        }
     }
     retro_ui_window_end();
+    // The red question, over the window (FILE TRANSFER / SETTINGS for an
+    // unsigned build): ticked only on GRANT ANYWAY.
+    uint32_t target = window->ask.target;
+    NetCaps granted = net_caps_ui_unsigned(&window->ask, strings);
+    if (granted != 0 && target == ASK_REQUEST && window->request.active)
+    {
+        window->request.grants |= granted;
+        action->request_grants = true;
+        action->on_request = true;
+        action->request_peer = window->request.peer;
+    }
+    else if (granted != 0 && target == ASK_DEVICE && window->phase == PairDevicePhase::done)
+    {
+        window->ticks |= granted;
+    }
     retro_ui_pop_theme();
-    // Closing wins over a button pressed in the same frame (YES still gives
-    // access back: it closes too).
-    if (closed && action->press != PairWindowPress::give_back)
+    if (closed)
     {
         action->press = PairWindowPress::close;
     }
@@ -568,116 +628,117 @@ void pair_window_open(PairWindow* window, const char* preselect)
         return;   // a step may be going on: it stays
     }
     PairRequest request = window->request;   // (none while closed: a request opens the window)
+    PairNotice notice = window->notice;
+    uint64_t notice_ms = window->notice_ms;
     *window = {};
     window->request = request;
+    window->notice = notice;
+    window->notice_ms = notice_ms;
     window->open = true;
-    window->mode = PairMode::host;
+    window->mode = PairMode::device;
     window->select_mode = true;
-    net_pair_code_generate(window->code);
     window->preselect = preselect != nullptr ? preselect : "";
 }
 
-static void close_window(PairWindow* window, NetShareLink* link, bool started, bool share_open)
+static void close_device(PairWindow* window, NetShareLink* link, bool started, bool share_open)
 {
-    if (started && window->phase == PairWindowPhase::waiting)
+    bool waiting = window->phase == PairDevicePhase::typing || window->phase == PairDevicePhase::checking;
+    if (started && (waiting || (window->phase == PairDevicePhase::done && !share_open)))
     {
-        net_share_link_disconnect(link);   // closing kills the code
+        net_share_link_disconnect(link);   // a code given up; or paired: FILE TRANSFER connects again when used
     }
-    else if (started && window->phase == PairWindowPhase::done && !share_open)
-    {
-        net_share_link_disconnect(link);   // paired: FILE TRANSFER connects again when it's used
-    }
-    reset_host(window);
-    window->open = false;
+    reset_device(window);
 }
 
-// PAIR WITH A HOST's wait given up: back to the list with a new code (the
-// old one dies with the connection).
-static void host_back_to_list(PairWindow* window, NetShareLink* link, bool started)
-{
-    window->phase = PairWindowPhase::list;
-    window->seen_connecting = false;
-    window->host_since_ms = 0;
-    net_pair_code_generate(window->code);
-    if (started)
-    {
-        net_share_link_disconnect(link);
-    }
-}
-
-void pair_window_apply_host(PairWindow* window, const PairWindowAction* action, NetShareLink* link,
-                            const NetShareLinkStatus* status, const char* beacon, NetService* service,
-                            bool share_open)
+void pair_window_apply_device(PairWindow* window, const PairWindowAction* action, NetShareLink* link,
+                              const NetShareLinkStatus* status, const char* beacon, bool share_open)
 {
     bool started = net_share_link_started(link);
     if (action->press == PairWindowPress::close)
     {
-        close_window(window, link, started, share_open);
+        close_device(window, link, started, share_open);
+        window->open = false;
         return;
     }
-    if (action->mode != PairMode::host)
+    if (action->mode != PairMode::device)
     {
         return;
     }
     switch (action->press)
     {
     case PairWindowPress::pair:
-        // The list may have changed since it was drawn: the device picked
-        // must still be there.
-        if (window->selected >= 0 && static_cast<size_t>(window->selected) < status->found.size())
+        if (window->enter_selected)
         {
+            // Across the internet: the code first, then the connection.
+            window->internet = true;
+            window->phase = PairDevicePhase::typing;
+            window->host_name.clear();
+            window->focus = true;
+        }
+        else if (window->selected >= 0 && static_cast<size_t>(window->selected) < status->found.size())
+        {
+            // On this network: the device pops its code up for us to type.
+            const NetShareLinkFound* found = &status->found[static_cast<size_t>(window->selected)];
             window->internet = false;
-            window->phase = PairWindowPhase::waiting;
-            window->host_name = status->found[static_cast<size_t>(window->selected)].name;
+            window->phase = PairDevicePhase::typing;
+            window->host_name = found->name;
+            window->host_kind = found->kind;
+            window->focus = true;
             if (started)
             {
-                net_share_link_connect(link, status->found[static_cast<size_t>(window->selected)].address,
-                                       window->code);
+                net_share_link_connect(link, found->address, true);
             }
         }
         break;
-    case PairWindowPress::pair_internet:
-        window->internet = true;
-        window->phase = PairWindowPhase::waiting;
-        if (started)
+    case PairWindowPress::submit:
+        if (!net_pair_code_valid(window->typed) || !started)
+        {
+            break;
+        }
+        if (window->internet && !window->seen_connecting)
         {
             net_share_link_set_beacon(link, beacon);   // as FILE TRANSFER does
-            net_share_link_pair_beacon(link, window->code);
+            if (net_share_link_pair_beacon(link, window->typed))
+            {
+                window->phase = PairDevicePhase::checking;
+                window->wrong = false;
+            }
+        }
+        else if (net_share_link_enter_code(link, window->typed))
+        {
+            window->phase = PairDevicePhase::checking;
+            window->wrong = false;
         }
         break;
     case PairWindowPress::cancel:
-        host_back_to_list(window, link, started);
+        close_device(window, link, started, share_open);
         break;
-    case PairWindowPress::give_back:
-        // Access back (Andrés, 2026-11-22): the host may come to us at the
-        // level it gave us. It's told on this connection, and it goes in our
-        // own devices list.
-        if (started && service != nullptr && net_share_link_grant_back(link, window->given))
+    case PairWindowPress::done:
+        // The last screen's ticks: what the device just paired may use here
+        // (told to it at once; Andrés, 2026-11-25: one pairing, both ways).
+        if (started && window->device >= 0)
         {
-            net_service_lock(service);
-            net_access_add_device(&service->access, window->host_key, window->host_name.c_str(), window->given);
-            net_service_unlock(service);
-            SDL_Log("Network: \"%s\" may come here too (%s)", window->host_name.c_str(),
-                    net_access_level_name(window->given));
+            net_share_link_set_grants(link, static_cast<uint32_t>(window->device), window->ticks);
+            SDL_Log("Pair: \"%s\" may use here: %s", window->host_name.c_str(), net_caps_name(window->ticks).c_str());
         }
-        close_window(window, link, started, share_open);
+        close_device(window, link, started, share_open);
+        window->open = false;
         break;
     default:
         break;
     }
 }
 
-// PAIR WITH A CLIENT back to typing a code (the role picked stays).
-static void end_invite(PairWindow* window, NetAccess* access)
+// GENERATE PAIRING CODE's own code goes (its mode left, the window closed).
+static void end_shown(PairWindow* window, NetAccess* access)
 {
-    if (access != nullptr && window->invite.waiting)
+    if (access != nullptr && window->shown.active)
     {
-        net_access_end_invite(access);
+        net_access_end_code(access);
     }
-    uint32_t level = window->invite.level;
-    window->invite = {};
-    window->invite.level = level;
-    window->invite.focus = true;
+    NetCaps grants = window->shown.grants;
+    window->shown = {};
+    window->shown.grants = grants;   // the ticks stay for the next code
 }
 
 // The request drawn is still the one showing (the network thread may have
@@ -687,34 +748,37 @@ static bool same_request(const PairWindow* window, const PairWindowAction* actio
     return action->on_request && window->request.active && window->request.peer == action->request_peer;
 }
 
-void pair_window_apply_client(PairWindow* window, const PairWindowAction* action, NetAccess* access)
+void pair_window_apply_code(PairWindow* window, const PairWindowAction* action, NetAccess* access)
 {
-    if (action->mode != PairMode::client)
+    // Leaving GENERATE PAIRING CODE (the other tab, or closed): its code goes.
+    if (window->shown.active && (action->mode != PairMode::code || action->press == PairWindowPress::close ||
+                                 !window->open))
+    {
+        end_shown(window, access);
+    }
+    if (access != nullptr && action->request_grants && same_request(window, action))
+    {
+        net_access_set_pairing_grants(access, window->request.peer, window->request.grants);
+    }
+    if (access != nullptr && action->shown_grants && window->shown.active)
+    {
+        net_access_set_shown_grants(access, window->shown.grants);
+    }
+    if (action->mode != PairMode::code && action->press != PairWindowPress::close)
     {
         return;
     }
     switch (action->press)
     {
-    case PairWindowPress::allow:
-        if (access == nullptr)
+    case PairWindowPress::show:
+        if (access != nullptr && !window->shown.active &&
+            net_access_show_code(access, window->shown.grants, window->shown.code))
         {
-            break;
-        }
-        if (same_request(window, action))
-        {
-            if (net_access_answer_pairing(access, window->request.peer, window->request.code,
-                                          static_cast<NetAccessLevel>(window->request.level)))
-            {
-                window->request.waiting = true;
-            }
-        }
-        else if (!action->on_request && !window->request.active && !window->invite.waiting &&
-                 net_access_invite(access, window->invite.code))
-        {
-            window->invite.waiting = true;
+            window->shown.active = true;
+            window->shown.since_ms = 0;
         }
         break;
-    case PairWindowPress::deny:
+    case PairWindowPress::cancel:
         if (same_request(window, action))
         {
             if (access != nullptr)
@@ -723,24 +787,23 @@ void pair_window_apply_client(PairWindow* window, const PairWindowAction* action
             }
             window->request = {};
         }
-        else if (!action->on_request && !window->request.active)
+        else
         {
-            end_invite(window, access);   // CANCEL while waiting for our own code
+            end_shown(window, access);
+            window->open = false;
         }
         break;
     case PairWindowPress::close:
         if (same_request(window, action) && access != nullptr)
         {
-            net_access_refuse_pairing(access, window->request.peer);   // closing a request denies it
+            net_access_refuse_pairing(access, window->request.peer);   // closing a request refuses it
         }
         if (same_request(window, action))
         {
             window->request = {};
         }
-        end_invite(window, access);
-        window->invite.level = static_cast<uint32_t>(NetAccessLevel::gamepad);
-        window->client_done = false;
-        window->client_name.clear();
+        end_shown(window, access);
+        window->code_done = false;
         window->open = false;
         break;
     default:
@@ -748,37 +811,27 @@ void pair_window_apply_client(PairWindow* window, const PairWindowAction* action
     }
 }
 
-bool pair_window_take_request(PairWindow* window, NetAccess* access, const NetAccessEvent* event)
+void pair_window_take_request(PairWindow* window, const NetAccessEvent* event)
 {
-    PairInvite* invite = &window->invite;
-    // Our own code's device (a wrong code's new request is typed as a
-    // request: its new code shows on its screen).
-    if (invite->waiting && !invite->answered && !event->retry &&
-        net_access_answer_pairing(access, event->peer, invite->code, static_cast<NetAccessLevel>(invite->level)))
-    {
-        invite->answered = true;
-        invite->peer = event->peer;
-        return true;
-    }
     PairRequest* request = &window->request;
     if (request->active && request->peer != event->peer)
     {
-        return false;   // one at a time
+        return;   // one at a time
     }
     bool same = request->active && request->peer == event->peer;
     request->active = true;
-    request->waiting = false;
     request->retry = event->retry;
     request->peer = event->peer;
-    std::snprintf(request->name, sizeof(request->name), "%s", event->name);
+    std::snprintf(request->name, sizeof(request->name), "%s", event->info.name);
+    request->kind = event->info.kind;
+    request->signed_build = event->signed_build;
+    request->uses = event->info.uses;
+    std::snprintf(request->code, sizeof(request->code), "%s", event->code);
     if (!same)
     {
-        request->level = static_cast<uint32_t>(event->access);   // what it asked for, until the user picks
+        request->grants = event->caps;   // the default ticks, until the user changes them
     }
-    std::memset(request->code, 0, sizeof(request->code));
-    request->focus = true;
     request->fresh = true;
-    return false;
 }
 
 static bool expired(uint64_t since_ms, uint64_t now_ms)
@@ -786,23 +839,18 @@ static bool expired(uint64_t since_ms, uint64_t now_ms)
     return since_ms != 0 && now_ms >= since_ms && now_ms - since_ms >= PAIR_WINDOW_WAIT_MS;
 }
 
-static void set_notice(PairWindow* window, PairNotice notice, uint64_t now_ms)
-{
-    window->notice = notice;
-    window->notice_ms = now_ms;
-}
-
 void pair_window_expire(PairWindow* window, NetShareLink* link, NetAccess* access, uint64_t now_ms)
 {
-    if (window->phase == PairWindowPhase::waiting && expired(window->host_since_ms, now_ms))
+    if ((window->phase == PairDevicePhase::typing || window->phase == PairDevicePhase::checking) &&
+        expired(window->device_since_ms, now_ms))
     {
-        SDL_Log("Pair: waiting for the host timed out");
-        host_back_to_list(window, link, net_share_link_started(link));
+        SDL_Log("Pair: waiting for the code timed out");
+        close_device(window, link, net_share_link_started(link), true);
         set_notice(window, PairNotice::timed_out, now_ms);
     }
     if (window->request.active && expired(window->request.since_ms, now_ms))
     {
-        // Refused, as DENY: the device stops asking (it may ask again).
+        // Refused: the device stops asking (it may ask again).
         SDL_Log("Pair: the request from \"%s\" timed out", window->request.name);
         if (access != nullptr)
         {
@@ -812,10 +860,11 @@ void pair_window_expire(PairWindow* window, NetShareLink* link, NetAccess* acces
         input_hold_reset(&window->accept_hold);
         set_notice(window, PairNotice::timed_out, now_ms);
     }
-    if (window->invite.waiting && expired(window->invite.since_ms, now_ms))
+    if (window->shown.active && expired(window->shown.since_ms, now_ms))
     {
-        SDL_Log("Pair: waiting with our own code timed out");
-        end_invite(window, access);
+        SDL_Log("Pair: the pairing code timed out");
+        end_shown(window, access);
+        window->open = false;
         set_notice(window, PairNotice::timed_out, now_ms);
     }
 }
@@ -890,56 +939,70 @@ void pair_window_add_hud(const PairWindow* window, const Localization* strings, 
     hud_view_add_card(stack, &card);
 }
 
-void pair_window_paired(PairWindow* window, NetAccess* access, const NetAccessEvent* event, const char* name)
+void pair_window_paired(PairWindow* window, const NetAccessEvent* event, const char* name)
 {
-    bool ours = false;
-    if (window->request.active && window->request.peer == event->peer)
-    {
-        ours = true;
-        window->request = {};
-    }
-    if (window->invite.answered && window->invite.peer == event->peer)
-    {
-        ours = true;
-        end_invite(window, access);
-    }
-    if (!ours)
+    bool from_request = window->request.active && window->request.peer == event->peer;
+    // Not the request's: the shown code's (it ends once a device paired with it).
+    bool from_shown = !from_request && window->shown.active;
+    if (!from_request && !from_shown)
     {
         return;
     }
-    window->client_done = true;
-    window->client_name = name;
-    window->client_level = event->access;
+    window->request = {};
+    window->shown.active = false;
+    window->code_done = true;
+    window->done_name = name;
+    window->done_kind = event->info.kind;
+    window->done_here = event->caps;
+    window->done_there = 0;
+    window->done_there_known = false;
+    window->done_peer = event->peer;
     if (!window->open)
     {
-        reset_host(window);
+        reset_device(window);
         window->open = true;
     }
-    window->mode = PairMode::client;
+    window->mode = PairMode::code;
     window->select_mode = true;
+}
+
+void pair_window_granted(PairWindow* window, const NetAccessEvent* event)
+{
+    if (window->code_done && event->peer == window->done_peer)
+    {
+        window->done_there = event->caps;
+        window->done_there_known = true;
+    }
+}
+
+void pair_window_code_expired(PairWindow* window, uint64_t now_ms)
+{
+    if (!window->shown.active)
+    {
+        return;
+    }
+    NetCaps grants = window->shown.grants;
+    window->shown = {};
+    window->shown.grants = grants;
+    if (window->mode == PairMode::code && !window->request.active && !window->code_done)
+    {
+        window->open = false;
+    }
+    set_notice(window, PairNotice::timed_out, now_ms);
 }
 
 void pair_window_network_stopped(PairWindow* window)
 {
     window->request = {};
-    uint32_t level = window->invite.level;
-    window->invite = {};
-    window->invite.level = level;
+    NetCaps grants = window->shown.grants;
+    window->shown = {};
+    window->shown.grants = grants;
 }
 
-void pair_window_request_gone(PairWindow* window, NetAccess* access, uint32_t peer, uint64_t now_ms)
+void pair_window_request_gone(PairWindow* window, uint32_t peer)
 {
     if (window->request.active && window->request.peer == peer)
     {
         window->request = {};
-    }
-    // The device we answered with our own code left or failed before
-    // pairing: nothing comes any more (WAITING FOR DEVICE would stay up), so
-    // back to typing a code.
-    if (window->invite.answered && window->invite.peer == peer)
-    {
-        SDL_Log("Pair: the device answered with our own code left without pairing");
-        end_invite(window, access);
-        set_notice(window, PairNotice::failed, now_ms);
     }
 }

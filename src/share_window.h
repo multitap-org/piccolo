@@ -126,7 +126,6 @@ struct ShareWindow
 
     // Connecting (the other side, while no piccolo is connected with OWNER).
     int32_t found_selected = -1;     // in the link's found list
-    char    code[NET_PAIR_CODE_DIGITS + 1] = {};   // ours for this CONNECT (the other piccolo types it if it doesn't know us)
     int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
     bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
 
