@@ -25,8 +25,9 @@ static void draw_hud(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
     hud_view_draw(view->hud, &view->hud_area, pixel_font, scale, view->hud_now_ms);
 }
 
-// INTERFACE > BACKDROP: the whole game covered by black at that opacity,
-// behind every window (the menu bar stays on top of it).
+// INTERFACE > BACKDROP: the whole screen covered by black at that opacity,
+// behind every window (the menu bar stays on top of it). The only one: drawn
+// once a frame, here; widgets and modals don't dim the screen themselves.
 static void draw_menu_backdrop(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
 {
     if (view->backdrop_alpha == 0)

@@ -1029,7 +1029,7 @@ input_touch_pad_edit_help = Move and resize the touch gamepad's buttons (drag a 
 touch_pad_menu = HOME
 touch_pad_quick = ...
 setting_menu_backdrop = BACKDROP
-setting_menu_backdrop_help = While a menu or a window is open over a game, the game is darkened this much so the text reads well over any picture (0: not darkened).
+setting_menu_backdrop_help = While the menu or a window is open, what's behind them (the game too) is darkened this much so the text reads well over any picture (0: not darkened).
 
 # Rewind / DVR
 input_action_hotkey_dvr = DVR

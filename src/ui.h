@@ -72,7 +72,7 @@ struct UiView
     const HudStack*  hud = nullptr;     // the App's, built this frame
     HudArea          hud_area = {};     // retro pixels
     uint64_t         hud_now_ms = 0;
-    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP over the game (0: none)
+    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP behind the windows (0: none)
 
     // The status line, alone over a paused game or with the menu bar.
     char               status[UI_STATUS_MAX] = {};

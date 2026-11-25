@@ -5243,14 +5243,20 @@ static void status_line_text(const App* app, char* out, size_t size)
     }
 }
 
-// INTERFACE > BACKDROP: while a menu or a window (DEVICES too) is up over a
-// game, the whole game is covered by black at that opacity, behind every
-// window (the menu bar stays on top of it): the UI reads well over any
-// picture. Widgets don't dim the game themselves. Its alpha, 0 for none.
+// INTERFACE > BACKDROP: while the menu or any window is up (DEVICES too),
+// the whole screen is covered by black at that opacity, behind every window
+// (the menu bar stays on top of it): the UI reads well over any picture.
+// One backdrop for everything (Andrés, testing round 1): with or without a
+// game, and also for the windows that open over the game itself (a pairing
+// request, PAIR, REMOTE PLAY). Widgets and modals don't dim the
+// screen themselves. Its alpha, 0 for none.
 static uint32_t menu_backdrop_alpha(const App* app)
 {
     int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
-    if (!game_running(app) || !ui_is_up(app) || percent <= 0)
+    // (Not DEBUG: it's watched while playing.)
+    bool window_over_game = app->pair_window.open || app->guest_window.open || app->net_window.request.active ||
+                            app->net_window.invite.open;
+    if ((!ui_is_up(app) && !window_over_game) || percent <= 0)
     {
         return 0;
     }

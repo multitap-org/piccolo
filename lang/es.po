@@ -3619,8 +3619,8 @@ msgid "BACKDROP"
 msgstr "FONDO"
 
 msgctxt "setting_menu_backdrop_help"
-msgid "While a menu or a window is open over a game, the game is darkened this much so the text reads well over any picture (0: not darkened)."
-msgstr "Mientras un menú o una ventana está abierto sobre un juego, el juego se oscurece así para que el texto se lea bien sobre cualquier imagen (0: sin oscurecer)."
+msgid "While the menu or a window is open, what's behind them (the game too) is darkened this much so the text reads well over any picture (0: not darkened)."
+msgstr "Mientras el menú o una ventana están abiertos, lo que hay detrás (también el juego) se oscurece así para que el texto se lea bien sobre cualquier imagen (0: sin oscurecer)."
 
 msgctxt "paused_why"
 msgid "PAUSED: %s"
