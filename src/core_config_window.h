@@ -100,8 +100,10 @@ struct CoreConfigWindow
 struct CoreConfigContext
 {
     const Localization*  strings = nullptr;
-    CoreOptionsUiState*  core_options_state = nullptr;
-    CoreOptionsUiContext core_options;   // label_width and strings filled by the window
+    // OPTIONS (core_options_ui.h): its own state, what it shows, what was done.
+    CoreOptionsUi*            core_options_ui = nullptr;
+    const CoreOptionsUiState* core_options = nullptr;
+    CoreOptionsUiAction*      core_options_action = nullptr;
     InputSystem*         input = nullptr;   // CONTROLS: who plays on which port
     LibretroHost*        host = nullptr;    // CONTROLS: the core's devices per port, and the one plugged in
     Settings*            settings = nullptr;   // CONTROLS: the device picked is kept per core

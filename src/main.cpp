@@ -325,7 +325,7 @@ struct App
 
     // The core options UI's state, shared by the quick menu (live options)
     // and the CORE OPTIONS MANAGER window (CONFIG menu).
-    CoreOptionsUiState core_options_state;
+    CoreOptionsUi      core_options_ui;
     bool               core_options_manager = false;   // the window is open
     bool               core_options_manager_was_open = false;
 
@@ -1237,20 +1237,14 @@ static bool save_state_with_thumbnail(App* app)
     return saved;
 }
 
-// What the core options UI (quick menu, manager) needs this frame.
-static CoreOptionsUiContext core_options_context(App* app)
+// What the core options UI (CORE CONFIGURATION's options, the manager) shows this frame.
+static void core_options_state(App* app, CoreOptionsUiState* state)
 {
-    CoreOptionsUiContext context = {};
-    context.strings = &app->strings;
-    context.session = &app->session;
-    context.store = &app->option_store;
-    context.cache = &app->option_cache;
-    context.running_core = game_running(app) ? app->core_name : "";
-    context.game = app->game_name;
     const std::string& folder_section = app->option_store.directory_section;
     size_t folder_at = folder_section.find("/dir:");
-    context.folder = folder_at != std::string::npos ? folder_section.c_str() + folder_at + 5 : "";
-    return context;
+    const char* folder = folder_at != std::string::npos ? folder_section.c_str() + folder_at + 5 : "";
+    core_options_ui_state(state, &app->strings, &app->session, &app->option_store, &app->option_cache,
+                          game_running(app) ? app->core_name : "", folder, app->game_name);
 }
 
 // The running core's file name ("snes9x_libretro.so"), "" when no game runs:
@@ -1605,7 +1599,7 @@ static void handle_menu_action(App* app, MenuAction action)
             settings_window_open(&app->settings_window, SettingsTab::sound);
             break;
         case MenuAction::options_manager:
-            core_options_manager_open(&app->core_options_manager, &app->core_options_state);
+            core_options_manager_open(&app->core_options_manager, &app->core_options_ui);
             break;
         case MenuAction::core_config:
             app_open_core_config(app, UINT32_MAX, 0);
@@ -2259,7 +2253,7 @@ static void app_open_core_config(App* app, uint32_t port, uint32_t controller)
     {
         core_config_window_open(&app->core_config);
     }
-    app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
+    app->core_options_ui.choose_layer = true;   // SAVE TO: the most specific layer in use
     ui_push_window(&app->ui, UiWindow::core_config);
     ui_follow_changes(app);
 }
@@ -5428,10 +5422,14 @@ static bool app_frame(App* app)
         {
             app->core_config.open = false;   // the core it configured is gone
         }
+        CoreOptionsUiState options_state = {};
+        core_options_state(app, &options_state);
+        CoreOptionsUiAction options_action = {};
         CoreConfigContext config = {};
         config.strings = &app->strings;
-        config.core_options_state = &app->core_options_state;
-        config.core_options = core_options_context(app);
+        config.core_options_ui = &app->core_options_ui;
+        config.core_options = &options_state;
+        config.core_options_action = &options_action;
         config.input = &app->input;
         config.host = app->session.host;
         config.settings = &app->settings;
@@ -5442,6 +5440,7 @@ static bool app_frame(App* app)
         config.game_name = app->game_name;
         config.shaders_available = app->shader_library.loaded;
         core_config_window_draw(&app->core_config, &config, app->pixel_font, app->ui_scale);
+        core_options_ui_apply(&app->core_options_ui, &options_action, &app->session);
         if (app->core_config.choose_shader_request)
         {
             app->core_config.choose_shader_request = false;
@@ -5484,9 +5483,13 @@ static bool app_frame(App* app)
         case QuickMenuPress::none:
             break;
         }
-        CoreOptionsUiContext manager = core_options_context(app);
-        core_options_manager_draw(&app->core_options_manager, &app->core_options_state, &manager, app->pixel_font,
-                                  app->ui_scale);
+        CoreOptionsUiState manager_state = {};
+        core_options_state(app, &manager_state);
+        CoreOptionsManagerAction manager_action = {};
+        core_options_manager_draw(&app->core_options_manager, &app->core_options_ui, &manager_state, app->pixel_font,
+                                  app->ui_scale, &manager_action);
+        core_options_manager_apply(&app->core_options_ui, &manager_action, &app->option_store, &app->session,
+                                   game_running(app) ? app->core_name : "");
         if (app->core_options_manager_was_open && !app->core_options_manager)
         {
             save_core_options(app);   // what was deleted

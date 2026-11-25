@@ -1970,12 +1970,11 @@ void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* 
             bool selecting = config->select_tab;
             if (begin_tab(config, CoreConfigTab::options, piccolo_text(strings, Str::quick_menu_tab_options), "options"))
             {
-                if (context->core_options_state != nullptr)
+                if (context->core_options_ui != nullptr)
                 {
-                    CoreOptionsUiContext core = context->core_options;
-                    core.strings = strings;
-                    core.label_width = 80.0f * block;   // SAVE TO / SECTION; the options size their own column
-                    core_options_ui_draw_running(context->core_options_state, &core);
+                    // SAVE TO / SECTION; the options size their own column.
+                    core_options_ui_draw_running(context->core_options_ui, context->core_options, 80.0f * block,
+                                                 context->core_options_action);
                 }
                 end_tab();
             }
