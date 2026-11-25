@@ -12,65 +12,6 @@
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
-void share_window_open(ShareWindow* window)
-{
-    window->open = true;
-    window->local.stale = true;
-    window->remote.stale = true;
-    window->remote.waiting = false;
-    window->cancel = false;
-    // A listing asked before the window closed may never be handed in: ask
-    // again (a late answer for another folder is ignored).
-    window->remote_asked = false;
-    window->companions.waiting = false;
-    window->same_stale = true;
-}
-
-void share_window_remote_reset(ShareWindow* window)
-{
-    window->remote = SharePane();
-    window->remote_roots.clear();
-    window->remote_asked = false;
-    window->same_stale = true;
-    if (window->companions.remote)
-    {
-        window->companions = ShareCompanions();
-    }
-    window->conflicts.clear();
-}
-
-void share_window_add_conflict(ShareWindow* window, const ShareCopy* copy)
-{
-    window->conflicts.push_back(*copy);
-}
-
-bool share_window_remote_wants_list(ShareWindow* window, std::string* path)
-{
-    if (!window->open || window->remote_asked)
-    {
-        return false;
-    }
-    SharePane* pane = &window->remote;
-    ShareCompanions* companions = &window->companions;
-    if (pane->stale)
-    {
-        pane->stale = false;
-        pane->waiting = true;
-        *path = pane->path;
-    }
-    else if (companions->remote && !companions->folders.empty() && !companions->waiting)
-    {
-        companions->waiting = true;
-        *path = companions->folders[0];
-    }
-    else
-    {
-        return false;
-    }
-    window->remote_asked = true;
-    return true;
-}
-
 // ---------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------
@@ -192,7 +133,7 @@ static void companions_take(ShareCompanions* companions, const std::string* fold
 // A file was selected on one side: when it's a game, look for its saves
 // and states there (this side at once; the other side's folders are listed
 // one at a time through share_window_remote_wants_list).
-static void companions_start(ShareWindow* window, bool remote, const ShareWindowContext* context)
+static void companions_start(ShareWindow* window, bool remote, const NetShareFolders* local_folders)
 {
     ShareCompanions* companions = &window->companions;
     *companions = ShareCompanions();
@@ -215,7 +156,7 @@ static void companions_start(ShareWindow* window, bool remote, const ShareWindow
             companions->folders.push_back((*roots)[i].name);
         }
     }
-    if (remote || context->local_folders == nullptr)
+    if (remote || local_folders == nullptr)
     {
         return;
     }
@@ -224,7 +165,7 @@ static void companions_start(ShareWindow* window, bool remote, const ShareWindow
     {
         std::string folder = companions->folders[0];
         companions->folders.erase(companions->folders.begin());
-        if (net_share_list(context->local_folders, folder.c_str(), &entries) == NetShareStatus::ok)
+        if (net_share_list(local_folders, folder.c_str(), &entries) == NetShareStatus::ok)
         {
             companions_take(companions, &folder, &entries, roots);
         }
@@ -277,6 +218,54 @@ static bool mark_same(SharePane* a, const SharePane* b)
     return any;
 }
 
+// ---------------------------------------------------------------------------
+// State
+
+void share_window_remote_reset(ShareWindow* window)
+{
+    window->remote = SharePane();
+    window->remote_roots.clear();
+    window->remote_asked = false;
+    window->same_stale = true;
+    if (window->companions.remote)
+    {
+        window->companions = ShareCompanions();
+    }
+    window->conflicts.clear();
+}
+
+void share_window_add_conflict(ShareWindow* window, const ShareCopy* copy)
+{
+    window->conflicts.push_back(*copy);
+}
+
+bool share_window_remote_wants_list(ShareWindow* window, std::string* path)
+{
+    if (!window->open || window->remote_asked)
+    {
+        return false;
+    }
+    SharePane* pane = &window->remote;
+    ShareCompanions* companions = &window->companions;
+    if (pane->stale)
+    {
+        pane->stale = false;
+        pane->waiting = true;
+        *path = pane->path;
+    }
+    else if (companions->remote && !companions->folders.empty() && !companions->waiting)
+    {
+        companions->waiting = true;
+        *path = companions->folders[0];
+    }
+    else
+    {
+        return false;
+    }
+    window->remote_asked = true;
+    return true;
+}
+
 void share_window_set_remote_list(ShareWindow* window, const char* path, NetShareStatus status,
                                   const std::vector<NetShareEntry>* entries)
 {
@@ -312,6 +301,59 @@ void share_window_set_remote_list(ShareWindow* window, const char* path, NetShar
         window->remote_roots = *entries;   // its shared folders, for the combo while it's browsed further in
     }
 }
+
+void share_window_update(ShareWindow* window, const NetShareFolders* local_folders, const NetShareLinkStatus* link)
+{
+    if (!window->open)
+    {
+        return;
+    }
+    bool connected = link != nullptr && link->state == NetShareLinkState::ready &&
+                     net_access_allows(link->access, NetAccessLevel::share);
+    if (window->local.stale && local_folders != nullptr)
+    {
+        window->local.stale = false;
+        net_share_list(local_folders, "", &window->local_roots);
+        window->local.status = net_share_list(local_folders, window->local.path.c_str(), &window->local.entries);
+        window->local.selected = -1;
+        window->same_stale = true;
+        if (window->local.status != NetShareStatus::ok && !window->local.path.empty())
+        {
+            std::string top;
+            go_to(&window->local, &top);   // gone meanwhile: back to the shared folders
+        }
+    }
+
+    if (window->same_stale)
+    {
+        window->same_stale = false;
+        bool any = false;
+        if (connected && !window->remote.waiting)
+        {
+            any = mark_same(&window->local, &window->remote);
+            mark_same(&window->remote, &window->local);
+        }
+        else
+        {
+            window->local.same.clear();
+            window->remote.same.clear();
+        }
+        window->any_same = any;
+    }
+}
+
+void share_window_state(ShareWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
+                        const ShareTransferLine* line)
+{
+    state->strings = strings;
+    state->link = link;
+    state->line = line;
+    state->connected = link != nullptr && link->state == NetShareLinkState::ready &&
+                       net_access_allows(link->access, NetAccessLevel::share);
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
 
 // ---------------------------------------------------------------------------
 // Text
@@ -522,7 +564,7 @@ static bool found_is_paired(const NetShareLinkStatus* link, int32_t index)
 }
 
 static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, const PaneLayout* layout,
-                         const Localization* strings)
+                         const Localization* strings, ShareWindowAction* action)
 {
     retro_ui_begin_group();
     retro_ui_push_id("connect");
@@ -545,7 +587,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_needs_owner), 0.0f);
         if (retro_ui_button(piccolo_text(strings, Str::share_disconnect)))
         {
-            window->disconnect = true;
+            action->press = ShareWindowPress::disconnect;
         }
     }
     else
@@ -627,15 +669,15 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
         {
             if (window->invite_selected)
             {
-                window->pair_internet = true;
+                action->press = ShareWindowPress::pair_internet;
             }
             else if (unpaired)
             {
-                window->pair = true;
+                action->press = ShareWindowPress::pair;
             }
             else
             {
-                window->connect = true;
+                action->press = ShareWindowPress::connect;
             }
         }
         retro_ui_end_disabled();
@@ -655,7 +697,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
 
 // The game's saves and states go into the other side's SAVES and STATES,
 // under the same core folder (made there when missing).
-static void queue_companions(ShareWindow* window, bool to_remote)
+static void queue_companions(const ShareWindow* window, bool to_remote, std::vector<ShareCopy>* copies)
 {
     const std::vector<NetShareEntry>* from_roots = to_remote ? &window->local_roots : &window->remote_roots;
     const std::vector<NetShareEntry>* to_roots = to_remote ? &window->remote_roots : &window->local_roots;
@@ -683,7 +725,7 @@ static void queue_companions(ShareWindow* window, bool to_remote)
         copy.to = *to_root + file->path.substr(slash);
         copy.size = file->size;
         copy.mtime = file->mtime;
-        window->copies.push_back(copy);
+        copies->push_back(copy);
     }
 }
 
@@ -698,8 +740,8 @@ static const NetShareEntry* selected_file(const SharePane* pane)
 }
 
 // An arrow copies the selected file from `from` into the folder open in `to`.
-static void draw_arrow(ShareWindow* window, bool to_remote, bool connected, float width, float height,
-                       const Localization* strings)
+static void draw_arrow(const ShareWindow* window, bool to_remote, bool connected, float width, float height,
+                       const Localization* strings, ShareWindowAction* action)
 {
     const SharePane* from = to_remote ? &window->local : &window->remote;
     const SharePane* to = to_remote ? &window->remote : &window->local;
@@ -721,17 +763,17 @@ static void draw_arrow(ShareWindow* window, bool to_remote, bool connected, floa
         copy.to = child(&to->path, &file->name);
         copy.size = file->size;
         copy.mtime = file->mtime;
-        window->copies.push_back(copy);
+        action->copies.push_back(copy);
         if (along)
         {
-            queue_companions(window, to_remote);
+            queue_companions(window, to_remote, &action->copies);
         }
     }
 }
 
 // The bottom line: the copy running, or what the arrows do.
-static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool connected, const Localization* strings,
-                      float block)
+static void draw_line(const ShareWindow* window, const ShareTransferLine* line, bool connected,
+                      const Localization* strings, float block, ShareWindowAction* action)
 {
     if (line == nullptr || !line->active)
     {
@@ -744,7 +786,7 @@ static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool c
             disconnect.label = piccolo_text(strings, Str::share_disconnect);
             if (retro_ui_end_buttons(&disconnect, 1, true) == 0)
             {
-                window->disconnect = true;
+                action->press = ShareWindowPress::disconnect;
             }
         }
         return;
@@ -787,7 +829,7 @@ static void draw_line(ShareWindow* window, const ShareTransferLine* line, bool c
     cancel.label = piccolo_text(strings, Str::share_cancel);
     if (retro_ui_end_buttons(&cancel, 1, true) == 0)
     {
-        window->cancel = true;
+        action->press = ShareWindowPress::cancel;
     }
 }
 
@@ -845,7 +887,7 @@ static void draw_same_legend(const Localization* strings)
 
 // A copy found another file with its name there: replace it? One at a
 // time, or all of them (a game with its states may bring several).
-static void draw_conflict(ShareWindow* window, const Localization* strings)
+static void draw_conflict(ShareWindow* window, const Localization* strings, ShareWindowAction* action)
 {
     float screen_width = 0.0f;
     float screen_height = 0.0f;
@@ -874,7 +916,7 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
     {
         ShareCopy copy = *first;
         copy.replace = true;
-        window->copies.push_back(copy);
+        action->copies.push_back(copy);
         window->conflicts.erase(window->conflicts.begin());
     }
     retro_ui_same_line();
@@ -893,7 +935,7 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
             {
                 ShareCopy copy = window->conflicts[i];
                 copy.replace = true;
-                window->copies.push_back(copy);
+                action->copies.push_back(copy);
             }
             window->conflicts.clear();
         }
@@ -918,46 +960,16 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
 // The window
 // ---------------------------------------------------------------------------
 
-void share_window_draw(ShareWindow* window, const ShareWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
+void share_window_draw(ShareWindow* window, const ShareWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       ShareWindowAction* action)
 {
     if (!window->open)
     {
         return;
     }
-    const Localization* strings = context->strings;
-    const NetShareLinkStatus* link = context->link;
-    bool connected = link != nullptr && link->state == NetShareLinkState::ready &&
-                     net_access_allows(link->access, NetAccessLevel::share);
-    if (window->local.stale && context->local_folders != nullptr)
-    {
-        window->local.stale = false;
-        net_share_list(context->local_folders, "", &window->local_roots);
-        window->local.status = net_share_list(context->local_folders, window->local.path.c_str(), &window->local.entries);
-        window->local.selected = -1;
-        window->same_stale = true;
-        if (window->local.status != NetShareStatus::ok && !window->local.path.empty())
-        {
-            std::string top;
-            go_to(&window->local, &top);   // gone meanwhile: back to the shared folders
-        }
-    }
-
-    if (window->same_stale)
-    {
-        window->same_stale = false;
-        bool any = false;
-        if (connected && !window->remote.waiting)
-        {
-            any = mark_same(&window->local, &window->remote);
-            mark_same(&window->remote, &window->local);
-        }
-        else
-        {
-            window->local.same.clear();
-            window->remote.same.clear();
-        }
-        window->any_same = any;
-    }
+    const Localization* strings = state->strings;
+    const NetShareLinkStatus* link = state->link;
+    bool connected = state->connected;
 
     float block = static_cast<float>(scale);
     float screen_width = 0.0f;
@@ -1008,9 +1020,9 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, R
         float arrow_width = 22.0f * block;
         float arrow_height = 18.0f * block;
         retro_ui_set_cursor_x(retro_ui_cursor_x() + (middle - arrow_width) * 0.5f);
-        draw_arrow(window, true, connected, arrow_width, arrow_height, strings);
+        draw_arrow(window, true, connected, arrow_width, arrow_height, strings, action);
         retro_ui_set_cursor_x(retro_ui_cursor_x() + (middle - arrow_width) * 0.5f);
-        draw_arrow(window, false, connected, arrow_width, arrow_height, strings);
+        draw_arrow(window, false, connected, arrow_width, arrow_height, strings, action);
         retro_ui_end_group();
         retro_ui_same_line();
 
@@ -1022,16 +1034,11 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, R
         }
         else
         {
-            draw_connect(window, link, &layout, strings);
+            draw_connect(window, link, &layout, strings, action);
         }
-        if (local_picked)
-        {
-            companions_start(window, false, context);
-        }
-        else if (remote_picked)
-        {
-            companions_start(window, true, context);
-        }
+        // Its saves and states are looked up in share_window_apply.
+        action->picked_local = local_picked;
+        action->picked_remote = remote_picked;
 
         // Under the sides: a game's saves and states, and what grey means.
         // The legend takes the side without a checkbox (the right one first).
@@ -1063,8 +1070,8 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, R
             }
         }
 
-        draw_line(window, context->line, connected, strings, block);
-        draw_conflict(window, strings);
+        draw_line(window, state->line, connected, strings, block, action);
+        draw_conflict(window, strings, action);
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
@@ -1072,4 +1079,93 @@ void share_window_draw(ShareWindow* window, const ShareWindowContext* context, R
     {
         window->open = false;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void share_window_open(ShareWindow* window)
+{
+    window->open = true;
+    window->local.stale = true;
+    window->remote.stale = true;
+    window->remote.waiting = false;
+    // A listing asked before the window closed may never be handed in: ask
+    // again (a late answer for another folder is ignored).
+    window->remote_asked = false;
+    window->companions.waiting = false;
+    window->same_stale = true;
+}
+
+ShareWindowRequest share_window_apply(ShareWindow* window, const ShareWindowAction* action,
+                                      const NetShareFolders* local_folders, NetShareLink* link,
+                                      const NetShareLinkStatus* status, const char* beacon)
+{
+    if (action->picked_local)
+    {
+        companions_start(window, false, local_folders);
+    }
+    else if (action->picked_remote)
+    {
+        companions_start(window, true, local_folders);
+    }
+    if (!net_share_link_started(link))
+    {
+        return ShareWindowRequest::none;   // nothing to connect, copy or cancel on
+    }
+    ShareWindowRequest request = ShareWindowRequest::none;
+    switch (action->press)
+    {
+    case ShareWindowPress::none:
+        break;
+    case ShareWindowPress::pair:
+        request = ShareWindowRequest::pair;
+        break;
+    case ShareWindowPress::pair_internet:
+        request = ShareWindowRequest::pair_internet;
+        break;
+    case ShareWindowPress::connect:
+        // Across the internet through BEACON SERVER (whatever INTERNET says:
+        // that switch is about being reachable here, not reaching others).
+        net_share_link_set_beacon(link, beacon);
+        if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < status->found.size())
+        {
+            // Always with a fresh code: a piccolo that knows us welcomes us
+            // and it's never used; one that doesn't asks its user to type it.
+            net_pair_code_generate(window->code);
+            net_share_link_connect(link, status->found[static_cast<size_t>(window->found_selected)].address,
+                                   window->code);
+        }
+        else if (window->paired_selected >= 0)
+        {
+            net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
+        }
+        else if (window->invite_selected)
+        {
+            // Across the internet to a piccolo that doesn't know us: our code,
+            // which its user types in TOOLS > INVITE.
+            net_pair_code_generate(window->code);
+            net_share_link_pair_beacon(link, window->code);
+        }
+        break;
+    case ShareWindowPress::disconnect:
+        net_share_link_disconnect(link);
+        break;
+    case ShareWindowPress::cancel:
+        break;   // after the copies, below
+    }
+    for (size_t i = 0; i < action->copies.size(); i++)
+    {
+        const ShareCopy* copy = &action->copies[i];
+        const char* local = copy->to_remote ? copy->from.c_str() : copy->to.c_str();
+        const char* remote = copy->to_remote ? copy->to.c_str() : copy->from.c_str();
+        net_share_link_copy(link, copy->to_remote, local, remote, copy->size, copy->mtime,
+                            copy->replace ? NET_SHARE_PUT_REPLACE : 0);
+        window->message.clear();
+    }
+    if (action->press == ShareWindowPress::cancel)
+    {
+        net_share_link_cancel(link);
+    }
+    return request;
 }

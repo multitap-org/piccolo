@@ -1366,66 +1366,20 @@ static Str share_done_text(NetShareStatus status)
     }
 }
 
-// SHARE, once per loop while the window is open or the connection runs:
-// the window's clicks go to the connection, its answers to the window.
+// SHARE, once per loop while the window is open or the connection runs,
+// before drawing: the connection's answers go to the window (its clicks go
+// to the connection in share_window_apply, after drawing).
 static void share_update(App* app, ShareTransferLine* line)
 {
     ShareWindow* window = &app->share_window;
     NetShareLink* link = &app->share_link;
     if (!net_share_link_started(link))
     {
-        window->connect = false;
-        window->disconnect = false;
-        window->copies.clear();
-        window->cancel = false;
         return;
     }
     if (window->open)
     {
         net_share_link_status(link, &app->share_status);
-    }
-    if (window->pair || window->pair_internet)
-    {
-        // Pairing lives in TOOLS > PAIR only: it opens on that piccolo and
-        // starts at once. Once paired and closed, SHARE stays connected.
-        pair_window_open(&app->pair_window, nullptr);
-        app->pair_window.selected = window->found_selected;
-        PairWindowAction pair_action = {};
-        pair_action.press = window->pair_internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
-        pair_apply(app, &pair_action);
-        window->pair = false;
-        window->pair_internet = false;
-    }
-    if (window->connect)
-    {
-        window->connect = false;
-        // Across the internet through BEACON SERVER (whatever INTERNET says:
-        // that switch is about being reachable here, not reaching others).
-        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < app->share_status.found.size())
-        {
-            // Always with a fresh code: a piccolo that knows us welcomes us
-            // and it's never used; one that doesn't asks its user to type it.
-            net_pair_code_generate(window->code);
-            net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->found_selected)].address,
-                                   window->code);
-        }
-        else if (window->paired_selected >= 0)
-        {
-            net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
-        }
-        else if (window->invite_selected)
-        {
-            // Across the internet to a piccolo that doesn't know us: our code,
-            // which its user types in TOOLS > INVITE.
-            net_pair_code_generate(window->code);
-            net_share_link_pair_beacon(link, window->code);
-        }
-    }
-    if (window->disconnect)
-    {
-        window->disconnect = false;
-        net_share_link_disconnect(link);
     }
     bool connected = app->share_status.state == NetShareLinkState::ready &&
                      net_access_allows(app->share_status.access, NetAccessLevel::share);
@@ -1445,21 +1399,6 @@ static void share_update(App* app, ShareTransferLine* line)
     if (connected && net_share_link_listing(link, &path, &status, &entries))
     {
         share_window_set_remote_list(window, path.c_str(), status, &entries);
-    }
-    for (size_t i = 0; i < window->copies.size(); i++)
-    {
-        const ShareCopy* copy = &window->copies[i];
-        const char* local = copy->to_remote ? copy->from.c_str() : copy->to.c_str();
-        const char* remote = copy->to_remote ? copy->to.c_str() : copy->from.c_str();
-        net_share_link_copy(link, copy->to_remote, local, remote, copy->size, copy->mtime,
-                            copy->replace ? NET_SHARE_PUT_REPLACE : 0);
-        window->message.clear();
-    }
-    window->copies.clear();
-    if (window->cancel)
-    {
-        window->cancel = false;
-        net_share_link_cancel(link);
     }
     net_share_link_take_done(link, &app->share_done);
     for (size_t i = 0; i < app->share_done.size(); i++)
@@ -1518,6 +1457,17 @@ static void share_update(App* app, ShareTransferLine* line)
         line->rate_kbps = app->share_rate_kbps;
         line->queued = queued;
     }
+}
+
+// SHARE's PAIR: pairing lives in TOOLS > PAIR only: it opens on that piccolo
+// and starts at once. Once paired and closed, SHARE stays connected.
+static void share_pair(App* app, bool internet)
+{
+    pair_window_open(&app->pair_window, nullptr);
+    app->pair_window.selected = app->share_window.found_selected;
+    PairWindowAction pair_action = {};
+    pair_action.press = internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
+    pair_apply(app, &pair_action);
 }
 
 // (UI modes, further down.)
@@ -5533,12 +5483,23 @@ static bool app_frame(App* app)
         {
             ShareTransferLine share_line;
             share_update(app, &share_line);
-            ShareWindowContext share_context;
-            share_context.strings = &app->strings;
-            share_context.local_folders = &app->share_folders;
-            share_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
-            share_context.line = &share_line;
-            share_window_draw(&app->share_window, &share_context, app->pixel_font, app->ui_scale);
+            const NetShareLinkStatus* share_link = nullptr;   // nullptr: no connection
+            if (net_share_link_started(&app->share_link))
+            {
+                share_link = &app->share_status;
+            }
+            share_window_update(&app->share_window, &app->share_folders, share_link);
+            ShareWindowState share_state = {};
+            share_window_state(&share_state, &app->strings, share_link, &share_line);
+            ShareWindowAction share_action = {};
+            share_window_draw(&app->share_window, &share_state, app->pixel_font, app->ui_scale, &share_action);
+            ShareWindowRequest share_request =
+                share_window_apply(&app->share_window, &share_action, &app->share_folders, &app->share_link,
+                                   &app->share_status, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+            if (share_request != ShareWindowRequest::none)
+            {
+                share_pair(app, share_request == ShareWindowRequest::pair_internet);
+            }
         }
         // TOOLS > PAIR (on SHARE's connection).
         pair_update(app);
