@@ -2,7 +2,45 @@
 
 #include "ui_toolkit.h"
 
+#include <string>
+
 #include "imgui.h"
+
+#include "debug_ui.h"
+#include "pixel_font_imgui.h"
+#include "retro_ui.h"
+
+static int32_t g_scale = 1;
+static std::string g_layout_file;   // ImGui keeps a pointer to it
+
+// The theme's text shadows, added to what ImGui is about to draw.
+static void add_text_shadows(ImDrawData* draw_data, void* user)
+{
+    static_cast<void>(user);
+    retro_ui_text_shadows(draw_data, g_scale);
+}
+
+ImFont* ui_toolkit_start()
+{
+    debug_ui_set_draw_data_hook(add_text_shadows, nullptr);
+    return pixel_font_imgui_add();
+}
+
+void ui_toolkit_set_layout_file(const char* path)
+{
+    if (path == nullptr)
+    {
+        ImGui::GetIO().IniFilename = nullptr;
+        return;
+    }
+    g_layout_file = path;
+    ImGui::GetIO().IniFilename = g_layout_file.c_str();
+}
+
+void ui_toolkit_set_scale(int32_t scale)
+{
+    g_scale = scale;
+}
 
 static ImGuiKey imgui_key(UiNavKey key)
 {

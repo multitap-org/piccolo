@@ -1,9 +1,25 @@
 #pragma once
 
+#include <cstdint>
+
 // What the frame loop asks and tells the GUI toolkit, without knowing which
 // one it is. The loop (main.cpp) routes input with these answers; only
 // ui_toolkit_imgui.cpp knows they come from ImGui. A second toolkit would
 // write its own ui_toolkit_*.cpp with the same functions.
+
+struct ImFont;
+
+// Starts the toolkit's side of piccolo once the window and GPU are up (after
+// app_shell_create): the pixel font, the theme's text shadows. Returns the
+// pixel font as the toolkit holds it (for retroui), or nullptr if it failed.
+ImFont* ui_toolkit_start();
+
+// Where the toolkit keeps its window layout between runs (imgui.ini);
+// nullptr: nowhere.
+void ui_toolkit_set_layout_file(const char* path);
+
+// The retro UI's scale this frame (the text shadows follow it).
+void ui_toolkit_set_scale(int32_t scale);
 
 // The interface keys a gamepad drives the menus and dialogs with, as the
 // keyboard does: move, activate, and back (closes an open list or popup).

@@ -1,5 +1,5 @@
 // piccolo: a libretro frontend for playing games, with a retro-style UI
-// (retro_ui.h: themed Dear ImGui widgets with piccolo's own pixel font).
+// (retro_ui.h: the retro-style widgets with piccolo's own pixel font).
 //
 // The game fills the window. The menu bar (GAME / CONFIG / MISC) is shown
 // when nothing runs; while a game runs, Esc shows and hides it, and the game
@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include "imgui.h"
 
 #include "app_icon.h"
 #include "app_links.h"
@@ -66,7 +65,6 @@
 #include "screen_effects.h"
 #include "screenshot_writer.h"
 #include "state_widget.h"
-#include "debug_ui.h"
 #include "debug_window.h"
 #include "input_bindings.h"
 #include "input_config.h"
@@ -90,7 +88,8 @@
 #include "headless.h"
 #include "pixel_font.h"
 #include "menus.h"
-#include "pixel_font_imgui.h"
+#include "game_view.h"
+#include "pixel_font_imgui.h"   // PIXEL_FONT_UTF8_* (no ImGui in it)
 #include "retro_ui.h"
 
 // Files extracted from zip / 7z archives (content_cache.h) are kept up to
@@ -121,9 +120,10 @@ struct App
     bool     show_debug_window = false;
     bool     show_imgui_demo = false;
 
-    ImFont* pixel_font = nullptr;   // piccolo's pixel font as an ImGui font
+    ImFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
-    ImVec2  ui_display_size = ImVec2(0.0f, 0.0f);   // ImGui's display size last frame (a turn changes it)
+    float   ui_display_width  = 0.0f;   // the screen's size last frame (a turn changes it)
+    float   ui_display_height = 0.0f;
     char    status[256] = "";   // set at startup, in the chosen language
 
     CoreSession session = {};
@@ -365,7 +365,6 @@ struct App
 
     bool window_focused     = true;
     bool screensaver_allowed = false;   // what we last told SDL
-    std::string imgui_ini;   // <settings>/imgui.ini; ImGui keeps a pointer to it
     char last_core[LIBRETRO_PATH_MAX]      = {};
     char last_folder[LIBRETRO_PATH_MAX]    = {};
 };
@@ -477,13 +476,6 @@ static void apply_folders(App* app)
         core_catalog_init(&app->catalog, cores.c_str(), cache_path.c_str());
         core_catalog_scan(&app->catalog, nullptr);
     }
-}
-
-// The theme's text shadows, added to what ImGui is about to draw.
-static void add_text_shadows(ImDrawData* draw_data, void* user)
-{
-    const App* app = static_cast<const App*>(user);
-    retro_ui_text_shadows(draw_data, app->ui_scale);
 }
 
 static void save_settings(App* app)
@@ -2991,7 +2983,7 @@ static void app_handle_events(App* app)
         {
             continue;
         }
-        // While INPUT waits for a key (SET), keys are the binding's, not ImGui's.
+        // While INPUT waits for a key (SET), keys are the binding's, not the menus'.
         bool key_event = event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_TEXT_INPUT;
         if (!(key_event && (app->input_window.capturing || app->core_config.capturing)))
         {
@@ -3190,13 +3182,15 @@ static void draw_game(App* app)
     {
         return;
     }
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     ViewportInput input = {};
     input.frame_width = session->texture.content_width;
     input.frame_height = session->texture.content_height;
     input.core_aspect = static_cast<double>(session->host->av_info.geometry.aspect_ratio);
-    input.window_width = static_cast<uint32_t>(io.DisplaySize.x);
-    input.window_height = static_cast<uint32_t>(io.DisplaySize.y);
+    input.window_width = static_cast<uint32_t>(screen_width);
+    input.window_height = static_cast<uint32_t>(screen_height);
     if (app->onscreen_pad.below)
     {
         // Upright with the touch gamepad under it: the picture keeps the top.
@@ -3241,8 +3235,12 @@ static void draw_game(App* app)
         {
             app->shown_aspect = static_cast<double>(viewport.width) / static_cast<double>(viewport.height);
         }
-        // The background draw list is behind every window, menu bar included.
-        video_output_draw(&app->video, ImGui::GetBackgroundDrawList(), &session->texture, 0.0f, 0.0f);
+        // The game view widget: behind every window, menu bar included.
+        ShownImage image = {};
+        if (video_output_shown_image(&app->video, &session->texture, 0.0f, 0.0f, &image))
+        {
+            game_view_draw(&image);
+        }
     }
 }
 
@@ -5126,9 +5124,11 @@ static void draw_menu_backdrop(App* app)
     }
     percent = percent > 100 ? 100 : percent;
     uint32_t alpha = static_cast<uint32_t>(percent) * 255u / 100u;
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_begin_layer("##menu_backdrop", app->pixel_font, app->ui_scale, false);
-    retro_ui_layer_rect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y, alpha << 24);
+    retro_ui_layer_rect(0.0f, 0.0f, screen_width, screen_height, alpha << 24);
     retro_ui_end_layer();
 }
 
@@ -5154,16 +5154,18 @@ static void draw_hud(App* app)
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
 
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
-    area.right = io.DisplaySize.x / block;
+    area.right = screen_width / block;
     area.top = 0.0f;
-    area.bottom = io.DisplaySize.y / block - HUD_STATUS_ROW;
+    area.bottom = screen_height / block - HUD_STATUS_ROW;
     float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
-    if (strip > 0.0f && io.DisplaySize.y / block - strip - HUD_VIEW_GAP < area.bottom)
+    if (strip > 0.0f && screen_height / block - strip - HUD_VIEW_GAP < area.bottom)
     {
-        area.bottom = io.DisplaySize.y / block - strip - HUD_VIEW_GAP;
+        area.bottom = screen_height / block - strip - HUD_VIEW_GAP;
     }
     hud_view_draw(&app->hud, &area, app->pixel_font, app->ui_scale, now_ms);
 }
@@ -5216,8 +5218,9 @@ static bool app_frame(App* app)
     retro_ui_set_palette(&palette);
     // BACKGROUND behind the menu; while a game runs, black around its picture.
     uint32_t back = game_running(app) ? 0xFF000000u : palette.background;
-    ImVec4 back_color = retro_ui_color_vec4(back);
-    ClearColor background = {back_color.x, back_color.y, back_color.z, 1.0f};
+    ClearColor background = {static_cast<float>((back >> 16) & 0xFFu) / 255.0f,
+                             static_cast<float>((back >> 8) & 0xFFu) / 255.0f, static_cast<float>(back & 0xFFu) / 255.0f,
+                             1.0f};
     app_shell_set_frames_in_flight(&app->shell, piccolo_settings_frames_in_flight(&app->settings));
     // RUN-AHEAD: the setting, or a streaming device's tuning (in memory
     // only) when it isn't "host's".
@@ -5306,19 +5309,21 @@ static bool app_frame(App* app)
 
     if (!app->headless.on && app_shell_begin_frame(&app->shell))
     {
-        app->ui_scale = retro_ui_scale_for_window(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
+        float screen_width = 0.0f;
+        float screen_height = 0.0f;
+        ui_toolkit_screen_size(&screen_width, &screen_height);
+        app->ui_scale = retro_ui_scale_for_window(screen_width, screen_height);
+        ui_toolkit_set_scale(app->ui_scale);
         // A phone turned (or the window resized): the open windows back to
         // the middle, or they'd keep the old one, half off the screen. Not on
         // the first frame (nothing is up yet).
+        bool resized = screen_width != app->ui_display_width || screen_height != app->ui_display_height;
+        if (resized && app->ui_display_width > 0.0f)
         {
-            const ImGuiIO& io = ImGui::GetIO();
-            bool resized = io.DisplaySize.x != app->ui_display_size.x || io.DisplaySize.y != app->ui_display_size.y;
-            if (resized && app->ui_display_size.x > 0.0f)
-            {
-                retro_ui_center_windows();
-            }
-            app->ui_display_size = io.DisplaySize;
+            retro_ui_center_windows();
         }
+        app->ui_display_width = screen_width;
+        app->ui_display_height = screen_height;
 
         // Where the touch gamepad goes (under the picture upright, if it fits),
         // before the picture is placed.
@@ -5327,8 +5332,7 @@ static bool app_frame(App* app)
             float aspect = geometry->aspect_ratio > 0.0f ? geometry->aspect_ratio
                          : geometry->base_height > 0 ? static_cast<float>(geometry->base_width) / static_cast<float>(geometry->base_height)
                                                      : 4.0f / 3.0f;
-            const ImGuiIO& io = ImGui::GetIO();
-            onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, io.DisplaySize.x, io.DisplaySize.y);
+            onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, screen_width, screen_height);
         }
         draw_game(app);   // background, behind everything
         // The browser's page: its strip hides while a game is played, and an
@@ -5744,7 +5748,7 @@ static bool app_frame(App* app)
         if (app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS))
         {
             double target = game_running(app) ? app->session.host->av_info.timing.fps : 0.0;
-            fps_meter_draw(&app->fps_meter, target, app->pixel_font, app->ui_scale, ImGui::GetIO().DisplaySize.x);
+            fps_meter_draw(&app->fps_meter, target, app->pixel_font, app->ui_scale, screen_width);
         }
 
         bool ui_up = ui_is_up(app);
@@ -5918,8 +5922,7 @@ int main(int argc, char** argv)
         SDL_SetWindowTitle(app->shell.window, "piccolo " PICCOLO_VERSION);
     }
     app_loop_prepare_window(app->shell.window);
-    debug_ui_set_draw_data_hook(add_text_shadows, app);
-    app->pixel_font = pixel_font_imgui_add();
+    app->pixel_font = ui_toolkit_start();
     if (app->pixel_font == nullptr)
     {
         core_session_destroy(&app->session, &app->shell);
@@ -5940,12 +5943,10 @@ int main(int argc, char** argv)
 
     // Everything in piccolo's folder, migrated once from ~/.host-libretro.
     // Without it nothing is saved, but games still run.
-    ImGuiIO& io = ImGui::GetIO();
     if (app_paths_init(&app->paths, bundled_files_folder_name(), "piccolo.cfg"))
     {
         bundled_files_install_cores(app->paths.cores.c_str());   // before the catalog first looks
-        app->imgui_ini = app->paths.settings + "/imgui.ini";
-        io.IniFilename = app->imgui_ini.c_str();
+        ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
         settings_load(&app->settings, app->settings_path.c_str());
         piccolo_settings_complete_ui_theme(&app->settings);
@@ -5969,7 +5970,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        io.IniFilename = nullptr;
+        ui_toolkit_set_layout_file(nullptr);   // nowhere to keep it
     }
 
     // The files that come with piccolo (layouts, themes, shaders): next to the
