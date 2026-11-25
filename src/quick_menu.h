@@ -12,8 +12,8 @@
 //   | +--------------------------------------------------------+ |
 //   | |            the selected slot's picture, big            | |   as wide as five slots
 //   | +--------------------------------------------------------+ |
-//   | [ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]                               |   thumbnails, date or time
-//   | [ 6 ] [ 7 ] [ 8 ] [ 9 ]                                     |
+//   | [ 0 ] [ 1 ] [ 2 ] [ 3 ] [ 4 ]                               |   thumbnails, date or time
+//   | [ 5 ] [ 6 ] [ 7 ] [ 8 ] [ 9 ]                               |
 //   | [SAVE          ][LOAD          ][GAME DVR      ]            |
 //   +-----------------------------------------------------------+
 //
@@ -24,7 +24,7 @@
 // with nearest here, then bilinear to its size.
 //
 // QUICK SAVE / QUICK LOAD use the quick slot (QUICK_SLOT), as the GAME menu
-// does. The slots: arrows or 1-9 pick one (also the slot F2 / F4 use), S
+// does. The slots: arrows or 0-9 pick one (also the slot F2 / F4 use), S
 // saves, L loads; Enter does nothing by itself, so a state is never loaded
 // or overwritten by accident. PAUSE IN MENU pauses the game while it's
 // open. F1 or Esc closes it.
@@ -45,12 +45,12 @@
 struct AppShell;
 #include "retro_ui_font.h"
 
-// The quick slot: QUICK SAVE / QUICK LOAD (the GAME menu's and QUICK MENU's)
-// save and load it whatever slot is selected.
-// TODO(round1): slot 0, as planned. host-libretro takes slots 1..9 only
-// (LIBRETRO_STATE_SLOT_FIRST / _LAST, checked when saving and loading), so
-// until it takes a slot 0 the quick slot is slot 1.
-constexpr uint32_t QUICK_SLOT = LIBRETRO_STATE_SLOT_FIRST;
+// piccolo's savestate slots, 0..9 (host-libretro takes any number: the
+// range is piccolo's). The quick slot, 0: QUICK SAVE / QUICK LOAD (the GAME
+// menu's and QUICK MENU's) save and load it whatever slot is selected.
+constexpr uint32_t QUICK_MENU_SLOT_FIRST = 0;
+constexpr uint32_t QUICK_MENU_SLOT_LAST = 9;
+constexpr uint32_t QUICK_SLOT = 0;
 
 enum class QuickMenuPress
 {
@@ -68,7 +68,7 @@ enum class QuickMenuPress
     dvr,          // GAME DVR: the rewind DVR (a window widget: it replaces QUICK MENU)
 };
 
-constexpr uint32_t QUICK_MENU_SLOTS = LIBRETRO_STATE_SLOT_LAST + 1;   // [FIRST..LAST] used
+constexpr uint32_t QUICK_MENU_SLOTS = QUICK_MENU_SLOT_LAST + 1;   // [FIRST..LAST] used
 constexpr size_t   QUICK_MENU_LABEL_MAX = 24;
 
 // A picture loaded from a slot's PNG (B8G8R8A8, opaque) and its texture.
@@ -87,10 +87,10 @@ struct QuickMenuPicture
 struct QuickMenu
 {
     bool          open = false;
-    uint32_t      slot = LIBRETRO_STATE_SLOT_FIRST;   // the selected slot
+    uint32_t      slot = QUICK_MENU_SLOT_FIRST;   // the selected slot
     StateSlotInfo slots[QUICK_MENU_SLOTS] = {};
     bool          refresh = true;   // read the slots again on the next update
-    bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 1-9)
+    bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 0-9)
     uint32_t      focus_wait = 0;       // draws left where only `slot`'s tile counts as focused (the focus moves late)
 
     // Each slot's thumbnail as saved (the picture at x1, at the aspect in
@@ -119,7 +119,7 @@ struct QuickMenuAction
 {
     QuickMenuPress press = QuickMenuPress::none;
     bool           closed = false;        // its X
-    bool           slot_picked = false;   // `slot` changed this frame (a slot, 1-9)
+    bool           slot_picked = false;   // `slot` changed this frame (a slot, 0-9)
 };
 
 // Opens on `slot` (the session's current slot).

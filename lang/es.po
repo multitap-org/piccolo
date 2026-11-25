@@ -1307,8 +1307,8 @@ msgid "CLOSE GAME"
 msgstr "CERRAR JUEGO"
 
 msgctxt "quick_menu_keys"
-msgid "ARROWS OR 1-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
-msgstr "FLECHAS O 1-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
+msgid "ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
+msgstr "FLECHAS O 0-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
 
 msgctxt "status_game_closed"
 msgid "GAME CLOSED"

@@ -21,7 +21,7 @@ constexpr uint32_t PREVIEW_CAPACITY = 4096;
 constexpr uint32_t SLOT_COLUMNS = 5;
 constexpr uint32_t ACTION_COLUMNS = 4;
 constexpr uint32_t STATE_COLUMNS = 3;
-constexpr uint32_t SLOT_COUNT = LIBRETRO_STATE_SLOT_LAST - LIBRETRO_STATE_SLOT_FIRST + 1;
+constexpr uint32_t SLOT_COUNT = QUICK_MENU_SLOT_LAST - QUICK_MENU_SLOT_FIRST + 1;
 // A slot at least this many retro pixels wide (the actions' labels usually
 // make the grid wider).
 constexpr float SLOT_MIN_WIDTH = 52.0f;
@@ -41,7 +41,7 @@ void quick_menu_update(QuickMenu* menu, const CoreSession* session)
         return;
     }
     menu->refresh = false;
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         core_session_slot_info(session, slot, &menu->slots[slot]);
     }
@@ -60,7 +60,7 @@ void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Locali
     SDL_GetCurrentTime(&now);
     SDL_DateTime today = {};
     SDL_TimeToDateTime(now, &today, true);
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         char* label = state->labels[slot];
         const StateSlotInfo* info = &menu->slots[slot];
@@ -94,7 +94,7 @@ static float picture_aspect(const QuickMenu* menu)
     {
         return static_cast<float>(selected->width) / static_cast<float>(selected->height);
     }
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         const QuickMenuPicture* thumb = &menu->thumbs[slot];
         if (thumb->modified != 0 && thumb->width > 0 && thumb->height > 0)
@@ -181,7 +181,7 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
     float pad = 2.0f * block;
     float area_width = slot_width - 2.0f * pad;
     float area_height = slot_picture_height(block, slot_width);
-    // A slot picked otherwise (opening, 1-9) takes the focus, which moves
+    // A slot picked otherwise (opening, 0-9) takes the focus, which moves
     // only a frame later: meanwhile the tile focused before still says it's
     // chosen, and must not take the selection back.
     bool focus_now = menu->focus_slot;
@@ -197,9 +197,9 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
     }
     float aspect = picture_aspect(menu);
     const char* empty = piccolo_text(state->strings, Str::quick_menu_empty);
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
-        if ((slot - LIBRETRO_STATE_SLOT_FIRST) % SLOT_COLUMNS != 0)
+        if ((slot - QUICK_MENU_SLOT_FIRST) % SLOT_COLUMNS != 0)
         {
             retro_ui_same_line();
         }
@@ -289,7 +289,7 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     retro_ui_dim_text_wrapped_at(keys, 0.0f);
 }
 
-// The keys that act without the section open: 1-9 pick a slot, S saves, L
+// The keys that act without the section open: 0-9 pick a slot, S saves, L
 // loads (as before the section folded away).
 static void handle_keys(QuickMenu* menu, QuickMenuAction* action)
 {
@@ -297,9 +297,9 @@ static void handle_keys(QuickMenu* menu, QuickMenuAction* action)
     {
         return;
     }
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
-        RetroUiKey key = static_cast<RetroUiKey>(static_cast<int32_t>(RetroUiKey::digit_1) + static_cast<int32_t>(slot - 1));
+        RetroUiKey key = static_cast<RetroUiKey>(static_cast<int32_t>(RetroUiKey::digit_0) + static_cast<int32_t>(slot));
         if (retro_ui_key_pressed(key, false))
         {
             menu->slot = slot;
@@ -439,7 +439,7 @@ static void picture_changed(QuickMenuPicture* picture);
 void quick_menu_open(QuickMenu* menu, uint32_t slot)
 {
     menu->open = true;
-    menu->slot = slot >= LIBRETRO_STATE_SLOT_FIRST && slot <= LIBRETRO_STATE_SLOT_LAST ? slot : LIBRETRO_STATE_SLOT_FIRST;
+    menu->slot = slot >= QUICK_MENU_SLOT_FIRST && slot <= QUICK_MENU_SLOT_LAST ? slot : QUICK_MENU_SLOT_FIRST;
     menu->refresh = true;
 }
 
@@ -544,7 +544,7 @@ void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSessio
     if (menu->open)
     {
         // The pictures this frame asks for, uploaded later in the frame.
-        for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+        for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
         {
             load_thumbnail(menu, slot);
         }
@@ -608,7 +608,7 @@ static void upload_picture(QuickMenuPicture* picture, AppShell* shell)
 void quick_menu_upload(QuickMenu* menu, AppShell* shell)
 {
     bool pending = menu->preview.upload_pending;
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         pending = pending || menu->thumbs[slot].upload_pending;
     }
@@ -616,7 +616,7 @@ void quick_menu_upload(QuickMenu* menu, AppShell* shell)
     {
         return;
     }
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         prepare_picture(&menu->thumbs[slot], shell);
     }
@@ -625,7 +625,7 @@ void quick_menu_upload(QuickMenu* menu, AppShell* shell)
     {
         return;   // try on the next frame
     }
-    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
+    for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         upload_picture(&menu->thumbs[slot], shell);
     }

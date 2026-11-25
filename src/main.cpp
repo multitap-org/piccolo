@@ -4427,11 +4427,11 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
         uint32_t slot = app->session.state_slot;
         if (*key == "slot_next")
         {
-            slot = slot >= LIBRETRO_STATE_SLOT_LAST ? LIBRETRO_STATE_SLOT_FIRST : slot + 1;
+            slot = slot >= QUICK_MENU_SLOT_LAST ? QUICK_MENU_SLOT_FIRST : slot + 1;
         }
         else
         {
-            slot = slot <= LIBRETRO_STATE_SLOT_FIRST ? LIBRETRO_STATE_SLOT_LAST : slot - 1;
+            slot = slot <= QUICK_MENU_SLOT_FIRST ? QUICK_MENU_SLOT_LAST : slot - 1;
         }
         app->session.state_slot = slot;
         app->quick_menu.slot = slot;
