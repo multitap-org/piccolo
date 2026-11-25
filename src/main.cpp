@@ -5464,7 +5464,13 @@ static bool app_frame(App* app)
         PortsWidgetAction board_action = {};
         ports_widget_draw_board(&app->ports_widget, &board_state, app->pixel_font, app->ui_scale, &board_action);
         ports_widget_apply(&app->ports_widget, &board_action, &app->input);
-        dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
+        uint64_t dvr_now = SDL_GetTicks();
+        dvr_widget_prepare(&app->dvr, &app->strings, app->onscreen_pad.touch_screen, dvr_now);
+        DvrWidgetState dvr_state = {};
+        dvr_widget_state(&dvr_state, &app->dvr, &app->strings);
+        DvrWidgetAction dvr_action = {};
+        dvr_widget_draw(&app->dvr, &dvr_state, app->pixel_font, app->ui_scale, &dvr_action);
+        dvr_widget_apply(&app->dvr, &dvr_action, dvr_now);
         switch (quick_action.press)
         {
         case QuickMenuPress::save:

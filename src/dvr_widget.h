@@ -36,6 +36,12 @@
 //   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
 //     HERE (state_widget), or a notification card saying why it didn't open.
 //
+// Split like every window: dvr_widget_prepare builds the strip's view from
+// the history and dvr_widget_state fills its words (no GUI), dvr_widget_draw
+// draws it and records what was clicked / tapped (and Space), and
+// dvr_widget_apply acts on it (no GUI): the history's seek, play, watch,
+// lane, BACK TO NOW.
+//
 // Kept behind these calls on purpose: main.cpp's UI state is being reworked
 // (ui-state) and rewires them without touching this file.
 
@@ -126,9 +132,34 @@ void dvr_widget_upload(DvrWidget* widget, CoreSession* session, AppShell* shell)
 // drawn above it.
 float dvr_widget_strip_height(const DvrWidget* widget, int32_t scale);
 
-// The strip (above every window) and what a click / tap on it did.
-void dvr_widget_draw(DvrWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
-                     uint64_t now_ms);
+// Every frame before dvr_widget_state: the GUI follows the history (closed
+// when the game stopped) and, while open, the strip's view is built from the
+// cursor. `touch`: the hints are buttons, with arrows for the steps.
+void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool touch, uint64_t now_ms);
+
+// What the strip shows besides its view (the widget's own, from prepare).
+struct DvrWidgetState
+{
+    DvrViewText text;   // title, mode, kept, readout, BACK TO NOW, the lane
+};
+
+// What a click / tap on the strip (or Space) did this frame.
+struct DvrWidgetAction
+{
+    DvrViewAction press = DvrViewAction::none;
+    int32_t       clicked = -1;      // a thumbnail clicked (-1 none): the cursor goes there
+    bool          keyboard = false;  // Space was WATCH: the hints name the keyboard's keys
+};
+
+void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings);
+
+// The strip, above every window.
+void dvr_widget_draw(DvrWidget* widget, const DvrWidgetState* state, RetroUiFont* pixel_font, int32_t scale,
+                     DvrWidgetAction* action);
+
+// A click / tap: as the buttons do.
+void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t now_ms);
+
 // Why it didn't open, as a notification card for a few seconds (hud_view).
 void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms);
 
