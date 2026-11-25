@@ -13,86 +13,44 @@
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
 
-void guest_window_open(GuestWindow* window)
-{
-    window->open = true;
-    window->action = GuestWindowAction::none;
-}
+// ---------------------------------------------------------------------------
+// State
 
-void guest_window_end(GuestWindow* window, NetAccess* access)
+void guest_window_state(GuestWindowState* state, GuestWindow* window, const NetAccess* access,
+                        const InputNet* input_net, const InputSystem* input, bool game, bool internet,
+                        const Localization* strings)
 {
-    if (access != nullptr && window->live)
-    {
-        net_access_guest_close(access);
-    }
-    window->live = false;
-    window->preparing = false;
-    window->prepare_sent = false;
-    window->open = false;
-    window->link_text[0] = '\0';
-    net_guest_link_wipe(&window->link);
-    for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
-    {
-        window->told[i] = false;
-    }
-}
-
-void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const InputNet* input_net,
-                             const InputSystem* input)
-{
-    if (access == nullptr || !window->live)
+    state->strings = strings;
+    state->network = access != nullptr;
+    state->game = game;
+    state->internet = internet;
+    state->card = guest_card_state(&window->card);
+    state->card_error = window->card.error;
+    if (access == nullptr)
     {
         return;
     }
     for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
     {
-        if (net_access_guest(access, peer) == nullptr)
-        {
-            window->told[peer] = false;
-            continue;
-        }
-        int32_t port = input_net_peer_port(input_net, input, peer);
-        uint8_t value = port == INPUT_NO_PORT ? NET_GUEST_NO_PORT : static_cast<uint8_t>(port);
-        if (window->told[peer] && window->told_port[peer] == value)
+        GuestWindowGuest* row = &state->guests[peer];
+        const NetAccessPeer* guest = net_access_guest(access, peer);
+        if (guest == nullptr)
         {
             continue;
         }
-        uint8_t message[2];
-        size_t size = net_guest_write_port(message, sizeof(message), value);
-        if (net_access_send(access, peer, NetChannel::control, message, size))
-        {
-            window->told[peer] = true;
-            window->told_port[peer] = value;
-        }
+        row->present = true;
+        std::snprintf(row->name, sizeof(row->name), "%s", guest->guest_name);
+        row->port = input_net_peer_port(input_net, input, peer);
+        NetLinkStats stats;
+        row->ping_known = net_access_peer_stats(access, peer, &stats);
+        row->round_trip_ms = row->ping_known ? stats.round_trip_ms : 0;
     }
+    state->taken = net_access_guest_count(access);
+    state->failures = access->guest_failures;
 }
 
-void guest_window_upload(GuestWindow* window, AppShell* shell)
-{
-    if (!window->preview_pending)
-    {
-        return;
-    }
-    if (!video_texture_created(&window->preview) &&
-        !video_texture_create(&window->preview, shell, NET_GUEST_CARD_MAX_WIDTH, NET_GUEST_CARD_MAX_HEIGHT,
-                              FramePixelFormat::xrgb8888, true))
-    {
-        window->preview_pending = false;
-        return;
-    }
-    if (!app_shell_acquire(shell))
-    {
-        return;   // the next frame
-    }
-    window->has_preview = video_texture_upload(&window->preview, shell, window->preview_pixels.data(),
-                                               window->preview_width, window->preview_height);
-    window->preview_pending = false;
-}
-
-void guest_window_destroy(GuestWindow* window, AppShell* shell)
-{
-    video_texture_destroy(&window->preview, shell);   // waits for the GPU
-}
+// ---------------------------------------------------------------------------
+// Drawing
 
 // The card's picture, as wide as `width` (its own shape), sharp; NO
 // SCREENSHOT AVAILABLE when there's none (the card shows white noise then).
@@ -148,8 +106,9 @@ static void wrapped(const char* text, bool dim)
 }
 
 // SEATS and ACCESS: before the link they're kept for MAKE LINK; with it they
-// apply at once (fewer seats never drop anyone).
-static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const Localization* strings, bool one_row)
+// apply at once (guest_window_apply).
+static void draw_seats_and_access(GuestWindow* window, const Localization* strings, bool one_row,
+                                  GuestWindowAction* action)
 {
     float column = retro_ui_font_size() * 12.0f;
     retro_ui_label(piccolo_text(strings, Str::guests_seats));
@@ -162,7 +121,7 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
         retro_ui_same_line_at(column);
     }
     retro_ui_next_width(retro_ui_font_size() * 7.0f);
-    bool seats_changed = retro_ui_number_field_steps("guest_seats", &window->seats, 1, 1);
+    action->seats_changed = retro_ui_number_field_steps("guest_seats", &window->seats, 1, 1);
     if (window->seats < 1)
     {
         window->seats = 1;
@@ -170,10 +129,6 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
     if (window->seats > static_cast<int32_t>(NET_GUEST_MAX_SEATS))
     {
         window->seats = static_cast<int32_t>(NET_GUEST_MAX_SEATS);
-    }
-    if (seats_changed && window->live && access != nullptr)
-    {
-        net_access_guest_set_seats(access, static_cast<uint32_t>(window->seats));
     }
     if (one_row)
     {
@@ -191,14 +146,17 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
     const char* labels[2] = {piccolo_text(strings, Str::guests_watch), piccolo_text(strings, Str::guests_play)};
     uint32_t level = window->level;
     retro_ui_choice_buttons("##guest_access", labels, 2, &window->level);
-    if (window->level != level && window->live && access != nullptr)
+    if (window->level != level)
     {
-        net_access_guest_set_level(access, static_cast<NetGuestLevel>(window->level));
+        action->level_changed = true;
     }
 }
 
-static void draw_setup(GuestWindow* window, bool game, bool internet, const Localization* strings)
+static void draw_setup(GuestWindow* window, const GuestWindowState* state, GuestWindowAction* action)
 {
+    const Localization* strings = state->strings;
+    bool game = state->game;
+    bool internet = state->internet;
     draw_preview(window, retro_ui_font_size() * 12.0f, strings);
     retro_ui_same_line();
     retro_ui_begin_group();
@@ -207,7 +165,7 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
     retro_ui_next_width(retro_ui_font_size() * 22.0f);
     RetroUiEditField title_field = {};
     retro_ui_edit_field("guest_title", window->title, sizeof(window->title), &title_field);
-    draw_seats_and_access(window, nullptr, strings, false);
+    draw_seats_and_access(window, strings, false, action);
     if (window->level == static_cast<uint32_t>(NetGuestLevel::play))
     {
         wrapped(piccolo_text(strings, Str::guests_play_hint), true);
@@ -232,7 +190,7 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
     retro_ui_begin_disabled(!ready);
     if (retro_ui_button(piccolo_text(strings, Str::guests_make)))
     {
-        window->action = GuestWindowAction::make_link;
+        action->press = GuestWindowPress::make_link;
     }
     retro_ui_end_disabled();
     retro_ui_same_line();
@@ -242,9 +200,9 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
     }
 }
 
-static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                        const Localization* strings)
+static void draw_guests(const GuestWindow* window, const GuestWindowState* state, GuestWindowAction* action)
 {
+    const Localization* strings = state->strings;
     uint32_t rows = window->seats > 3 ? static_cast<uint32_t>(window->seats) : 3u;
     if (!retro_ui_begin_list("##guests", retro_ui_font_size() * 34.0f, retro_ui_list_height(rows)))
     {
@@ -254,16 +212,16 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
     uint32_t shown = 0;
     for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
     {
-        const NetAccessPeer* guest = net_access_guest(access, peer);
-        if (guest == nullptr)
+        const GuestWindowGuest* guest = &state->guests[peer];
+        if (!guest->present)
         {
             continue;
         }
         shown++;
         retro_ui_push_index(peer);
-        retro_ui_label(guest->guest_name[0] != '\0' ? guest->guest_name : "?");
+        retro_ui_label(guest->name[0] != '\0' ? guest->name : "?");
         retro_ui_same_line_at(retro_ui_font_size() * 10.0f);
-        int32_t port = input_net_peer_port(input_net, input, peer);
+        int32_t port = guest->port;
         char what[64];
         if (window->level == static_cast<uint32_t>(NetGuestLevel::watch))
         {
@@ -291,13 +249,12 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
         float kick_width = retro_ui_button_width(piccolo_text(strings, Str::guests_kick));
         float right = retro_ui_right_edge();
         retro_ui_same_line_at(right - kick_width - port_indicators_ping_width(block) - retro_ui_font_size());
-        NetLinkStats stats;
-        bool known = net_access_peer_stats(access, peer, &stats);
-        retro_ui_ping_bars(known, known ? stats.round_trip_ms : 0, block);
+        retro_ui_ping_bars(guest->ping_known, guest->round_trip_ms, block);
         retro_ui_same_line_at(right - kick_width);
         if (retro_ui_button(piccolo_text(strings, Str::guests_kick)))
         {
-            net_access_guest_kick(access, peer);
+            action->kick = true;
+            action->kick_peer = peer;
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::guests_kick_tip));
         retro_ui_pop_id();
@@ -309,9 +266,9 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
     retro_ui_end_list();
 }
 
-static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                      const Localization* strings)
+static void draw_live(GuestWindow* window, const GuestWindowState* state, GuestWindowAction* action)
 {
+    const Localization* strings = state->strings;
     if (window->preparing)
     {
         // Not shown until it works and has its card (main.cpp guest_update_locked).
@@ -319,7 +276,7 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
         retro_ui_spacing();
         if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
         {
-            window->action = GuestWindowAction::end;
+            action->press = GuestWindowPress::end;
         }
         return;
     }
@@ -333,37 +290,37 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
     bool copied = window->copied_at >= 0.0 && retro_ui_seconds() - window->copied_at < 2.0;
     if (retro_ui_button(piccolo_text(strings, copied ? Str::guests_copied : Str::guests_copy)))
     {
-        clipboard_set_text(window->link_text);
+        action->copy = true;
         window->copied_at = retro_ui_seconds();
     }
     retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::guests_new)))
     {
-        window->action = GuestWindowAction::new_link;
+        action->press = GuestWindowPress::new_link;
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::guests_new_tip));
 
-    draw_seats_and_access(window, access, strings, true);
-    draw_guests(window, access, input_net, input, strings);
+    draw_seats_and_access(window, strings, true, action);
+    draw_guests(window, state, action);
 
     draw_preview(window, retro_ui_font_size() * 8.0f, strings);
     retro_ui_same_line();
     retro_ui_begin_group();
-    uint32_t taken = net_access_guest_count(access);
+    uint32_t taken = state->taken;
     char line[128];
     std::snprintf(line, sizeof(line), "%s %u / %d%s%s", piccolo_text(strings, Str::guests_taken),
                   static_cast<unsigned>(taken), window->seats,
                   taken >= static_cast<uint32_t>(window->seats) ? "  " : "",
                   taken >= static_cast<uint32_t>(window->seats) ? piccolo_text(strings, Str::guests_full) : "");
     retro_ui_text(line);
-    if (access->guest_failures > 0)
+    if (state->failures > 0)
     {
         std::snprintf(line, sizeof(line), "%s %u", piccolo_text(strings, Str::guests_failures),
-                      static_cast<unsigned>(access->guest_failures));
+                      static_cast<unsigned>(state->failures));
         retro_ui_dim_text(line, piccolo_text(strings, Str::guests_failures_tip));
     }
     Str card = Str::guests_card_none;
-    switch (guest_card_state(&window->card))
+    switch (state->card)
     {
         case GuestCardState::sending:
             card = Str::guests_card_sending;
@@ -378,16 +335,16 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
             break;
     }
     retro_ui_dim_text(piccolo_text(strings, card), nullptr);
-    if (card == Str::guests_card_failed && window->card.error[0] != '\0')
+    if (card == Str::guests_card_failed && state->card_error[0] != '\0')
     {
         // Why, as net_http said it (there's no console on Windows to read it from).
-        retro_ui_dim_text_wrapped_at(window->card.error, retro_ui_cursor_x() + retro_ui_font_size() * 22.0f);
+        retro_ui_dim_text_wrapped_at(state->card_error, retro_ui_cursor_x() + retro_ui_font_size() * 22.0f);
     }
     retro_ui_end_group();
     retro_ui_spacing();
     if (retro_ui_button(piccolo_text(strings, Str::guests_end)))
     {
-        window->action = GuestWindowAction::end;
+        action->press = GuestWindowPress::end;
     }
     retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::guests_close)))
@@ -396,9 +353,10 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
     }
 }
 
-void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                       bool game, bool internet, const Localization* strings, RetroUiFont* pixel_font, int32_t scale)
+void guest_window_draw(GuestWindow* window, const GuestWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       GuestWindowAction* action)
 {
+    const Localization* strings = state->strings;
     if (!window->open)
     {
         return;
@@ -412,17 +370,17 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
     retro_ui_push_theme(pixel_font, scale);
     if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        if (access == nullptr)
+        if (!state->network)
         {
             retro_ui_dim_text(piccolo_text(strings, Str::net_off), nullptr);
         }
         else if (window->live)
         {
-            draw_live(window, access, input_net, input, strings);
+            draw_live(window, state, action);
         }
         else
         {
-            draw_setup(window, game, internet, strings);
+            draw_setup(window, state, action);
         }
     }
     retro_ui_window_end();
@@ -431,4 +389,115 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
     {
         window->open = false;   // closing keeps a link (END ends it)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void guest_window_open(GuestWindow* window)
+{
+    window->open = true;
+}
+
+GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access)
+{
+    // SEATS and ACCESS: before the link they're kept for MAKE LINK; with it
+    // they apply at once (fewer seats never drop anyone).
+    if (action->seats_changed && window->live && access != nullptr)
+    {
+        net_access_guest_set_seats(access, static_cast<uint32_t>(window->seats));
+    }
+    if (action->level_changed && window->live && access != nullptr)
+    {
+        net_access_guest_set_level(access, static_cast<NetGuestLevel>(window->level));
+    }
+    if (action->kick && access != nullptr)
+    {
+        net_access_guest_kick(access, action->kick_peer);
+    }
+    if (action->copy)
+    {
+        clipboard_set_text(window->link_text);
+    }
+    if (access == nullptr)
+    {
+        return GuestWindowPress::none;   // MAKE LINK, NEW and END need the network
+    }
+    return action->press;
+}
+
+void guest_window_end(GuestWindow* window, NetAccess* access)
+{
+    if (access != nullptr && window->live)
+    {
+        net_access_guest_close(access);
+    }
+    window->live = false;
+    window->preparing = false;
+    window->prepare_sent = false;
+    window->open = false;
+    window->link_text[0] = '\0';
+    net_guest_link_wipe(&window->link);
+    for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
+    {
+        window->told[i] = false;
+    }
+}
+
+void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const InputNet* input_net,
+                             const InputSystem* input)
+{
+    if (access == nullptr || !window->live)
+    {
+        return;
+    }
+    for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
+    {
+        if (net_access_guest(access, peer) == nullptr)
+        {
+            window->told[peer] = false;
+            continue;
+        }
+        int32_t port = input_net_peer_port(input_net, input, peer);
+        uint8_t value = port == INPUT_NO_PORT ? NET_GUEST_NO_PORT : static_cast<uint8_t>(port);
+        if (window->told[peer] && window->told_port[peer] == value)
+        {
+            continue;
+        }
+        uint8_t message[2];
+        size_t size = net_guest_write_port(message, sizeof(message), value);
+        if (net_access_send(access, peer, NetChannel::control, message, size))
+        {
+            window->told[peer] = true;
+            window->told_port[peer] = value;
+        }
+    }
+}
+
+// The preview's texture (the renderer's, outside the toolkit).
+void guest_window_upload(GuestWindow* window, AppShell* shell)
+{
+    if (!window->preview_pending)
+    {
+        return;
+    }
+    if (!video_texture_created(&window->preview) &&
+        !video_texture_create(&window->preview, shell, NET_GUEST_CARD_MAX_WIDTH, NET_GUEST_CARD_MAX_HEIGHT,
+                              FramePixelFormat::xrgb8888, true))
+    {
+        window->preview_pending = false;
+        return;
+    }
+    if (!app_shell_acquire(shell))
+    {
+        return;   // the next frame
+    }
+    window->has_preview = video_texture_upload(&window->preview, shell, window->preview_pixels.data(),
+                                               window->preview_width, window->preview_height);
+    window->preview_pending = false;
+}
+
+void guest_window_destroy(GuestWindow* window, AppShell* shell)
+{
+    video_texture_destroy(&window->preview, shell);   // waits for the GPU
 }

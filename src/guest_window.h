@@ -25,9 +25,13 @@
 // Closing the window keeps the link; END, closing the game, loading another
 // one, or quitting ends the session (main.cpp).
 //
-// The window acts on the running NetAccess (drawn under the network lock):
+// guest_window_apply acts on the running NetAccess (under the network lock):
 // seats, level and KICK at once. MAKE LINK, NEW and END need the frame and
-// the card upload: they're left in `action` for main.cpp.
+// the card upload: apply hands them back to main.cpp.
+//
+// Split like every window: guest_window_state fills what the window shows
+// from the NetAccess and the card (no GUI), guest_window_draw draws it and
+// records what was pressed, and guest_window_apply acts on it (no GUI).
 
 #include <cstdint>
 #include <vector>
@@ -40,7 +44,8 @@
 
 #include "retro_ui_font.h"
 
-enum class GuestWindowAction
+// What main.cpp does itself (it needs the frame and the card upload).
+enum class GuestWindowPress
 {
     none,
     make_link,
@@ -78,27 +83,66 @@ struct GuestWindow
     // The port each guest was last told (NET_GUEST_PORT_MESSAGE), per peer.
     uint8_t  told_port[NET_MAX_PEERS] = {};
     bool     told[NET_MAX_PEERS] = {};
-    GuestWindowAction action = GuestWindowAction::none;
+};
+
+// One guest in the list.
+struct GuestWindowGuest
+{
+    bool     present = false;                    // a guest is on this peer
+    char     name[NET_GUEST_MAX_NAME + 1] = {};  // "" : it gave none
+    int32_t  port = INPUT_NO_PORT;               // where it plays (the router)
+    bool     ping_known = false;
+    uint32_t round_trip_ms = 0;
+};
+
+struct GuestWindowState
+{
+    const Localization* strings = nullptr;
+    bool             network = false;            // the network runs (else: NETWORK IS OFF)
+    bool             game = false;               // a game runs (a link needs one)
+    bool             internet = false;           // the beacon is on (a link needs it)
+    GuestWindowGuest guests[NET_MAX_PEERS];
+    uint32_t         taken = 0;                  // seats taken
+    uint32_t         failures = 0;               // COULDN'T CONNECT
+    GuestCardState   card = GuestCardState::none;
+    const char*      card_error = "";            // why the card failed (the window's own upload)
+};
+
+struct GuestWindowAction
+{
+    GuestWindowPress press = GuestWindowPress::none;
+    bool     seats_changed = false;              // window->seats changed: a live link takes it
+    bool     level_changed = false;              // window->level changed: a live link takes it
+    bool     kick = false;                       // KICK on `kick_peer`
+    uint32_t kick_peer = 0;
+    bool     copy = false;                       // COPY: the link to the clipboard
 };
 
 // Opens the window (the caller has filled `title` and `png` for the running game).
 void guest_window_open(GuestWindow* window);
 
-// Draws it (under the network lock: `access` may be nullptr when the network
-// is off). `internet`: the beacon is on (a link needs it). `ports`: the
-// router, for who plays where.
-void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                       bool game, bool internet, const Localization* strings, RetroUiFont* pixel_font, int32_t scale);
+// Under the network lock (`access` nullptr: the network is off). `game`: a
+// game runs, `internet`: the beacon is on. `input_net` / `input`: the router,
+// for who plays where. `window` isn't const only because the card's
+// state is an SDL atomic (guest_card_state): it's only read.
+void guest_window_state(GuestWindowState* state, GuestWindow* window, const NetAccess* access,
+                        const InputNet* input_net, const InputSystem* input, bool game, bool internet,
+                        const Localization* strings);
+void guest_window_draw(GuestWindow* window, const GuestWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       GuestWindowAction* action);
+// Under the network lock (`access` nullptr: the network is off): seats,
+// level, KICK and COPY. Returns what main.cpp does itself.
+GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access);
 
 // The session is over (END, the game, quitting): guests told, link closed.
 void guest_window_end(GuestWindow* window, NetAccess* access);
+
+// Tells each guest its port when it changed (once a frame, under the lock).
+void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const InputNet* input_net,
+                             const InputSystem* input);
 
 // Uploads a new preview. Call after app_shell_acquire, outside rendering
 // (where QUICK MENU uploads its thumbnail).
 void guest_window_upload(GuestWindow* window, AppShell* shell);
 // Frees the preview's texture (waits for the GPU).
 void guest_window_destroy(GuestWindow* window, AppShell* shell);
-
-// Tells each guest its port when it changed (once a frame, under the lock).
-void guest_window_tell_ports(GuestWindow* window, NetAccess* access, const InputNet* input_net,
-                             const InputSystem* input);

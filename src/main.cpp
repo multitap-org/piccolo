@@ -5564,15 +5564,17 @@ static bool app_frame(App* app)
             {
                 net_service_lock(&app->net_service);
             }
-            guest_window_draw(&app->guest_window, access, &app->input_net, &app->input, game_running(app),
-                              !app->net_beacon_applied.empty(), &app->strings, app->pixel_font, app->ui_scale);
-            GuestWindowAction action = app->guest_window.action;
-            app->guest_window.action = GuestWindowAction::none;
-            if (access != nullptr && (action == GuestWindowAction::make_link || action == GuestWindowAction::new_link))
+            GuestWindowState guest_state = {};
+            guest_window_state(&guest_state, &app->guest_window, access, &app->input_net, &app->input,
+                               game_running(app), !app->net_beacon_applied.empty(), &app->strings);
+            GuestWindowAction guest_action = {};
+            guest_window_draw(&app->guest_window, &guest_state, app->pixel_font, app->ui_scale, &guest_action);
+            GuestWindowPress press = guest_window_apply(&app->guest_window, &guest_action, access);
+            if (press == GuestWindowPress::make_link || press == GuestWindowPress::new_link)
             {
                 guest_make_link(app);
             }
-            else if (access != nullptr && action == GuestWindowAction::end)
+            else if (press == GuestWindowPress::end)
             {
                 guest_end(app, access);
             }
