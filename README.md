@@ -10,6 +10,7 @@ with every other dependency, in `deps/`:
 
 - `deps/common/hosts-common`: code shared by core hosts, and the CMake helpers;
 - `deps/libretro/host-libretro`: the libretro host;
+- `deps/common/multitap-net`: the network core (connections, pairing, SHARE);
 - `deps/common/frontends-common`: window, Vulkan, audio, settings, input;
 - `deps/libretro/frontend-libretro`: the core session, core options, cores.
 

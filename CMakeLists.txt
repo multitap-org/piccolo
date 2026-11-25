@@ -89,7 +89,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Submodule check
 # ---------------------------------------------------------------------------
 foreach(_dep imgui/imgui.cpp libretro-common/include/libretro.h libsamplerate/src/samplerate.c
-             common/hosts-common/CMakeLists.txt common/frontends-common/CMakeLists.txt common/retroui/CMakeLists.txt
+             common/hosts-common/CMakeLists.txt common/multitap-net/CMakeLists.txt common/frontends-common/CMakeLists.txt
+             common/retroui/CMakeLists.txt
              libretro/host-libretro/CMakeLists.txt libretro/frontend-libretro/CMakeLists.txt)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/${_dep}")
         message(FATAL_ERROR "deps/${_dep} is missing. Run: git submodule update --init --recursive")
@@ -180,6 +181,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/test-libretro/CMakeLists.txt")
     endif()
 endif()
 add_subdirectory(deps/libretro/host-libretro)
+# The network core (no GUI), before frontends-common: its frontend_net builds on it.
+add_subdirectory(deps/common/multitap-net)
 add_subdirectory(deps/common/frontends-common)
 # The pixel font, the themes, the themed widgets, the pad picture (shared with piccoletto).
 add_subdirectory(deps/common/retroui)

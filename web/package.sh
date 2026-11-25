@@ -109,6 +109,7 @@ done
 # Licenses: piccolo, our libraries, the third-party ones linked in, the core.
 cp "$root/LICENSE" "$dist/LICENSES/piccolo.txt"
 cp "$root/deps/common/hosts-common/LICENSE" "$dist/LICENSES/hosts-common.txt"
+cp "$root/deps/common/multitap-net/LICENSE" "$dist/LICENSES/multitap-net.txt"
 cp "$root/deps/common/frontends-common/LICENSE" "$dist/LICENSES/frontends-common.txt"
 cp "$root/deps/common/retroui/LICENSE" "$dist/LICENSES/retroui.txt"
 cp "$root/deps/libretro/host-libretro/LICENSE" "$dist/LICENSES/host-libretro.txt"

@@ -97,7 +97,7 @@ git submodule sync -q
 submodules="deps/SDL deps/imgui deps/libretro-common deps/libsamplerate
     deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon
     deps/piccolo-shaders deps/piccolo-shaders-legacy
-    deps/common/hosts-common deps/common/frontends-common
+    deps/common/hosts-common deps/common/multitap-net deps/common/frontends-common
     deps/common/retroui deps/libretro/host-libretro deps/libretro/frontend-libretro
     deps/libdatachannel"
 missing=""

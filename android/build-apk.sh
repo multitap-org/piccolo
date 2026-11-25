@@ -118,7 +118,7 @@ echo "== native library"
 # piccolo's own CMakeLists: with ANDROID set (the toolchain) it builds
 # libmain.so instead of the program. WebRTC (libdatachannel) with Mbed TLS
 # (deps/mbedtls) for its TLS and DTLS, since Android has no OpenSSL:
-# frontends-common turns MULTITAP_NET_RTC_MBEDTLS on for Android by itself.
+# multitap-net turns MULTITAP_NET_RTC_MBEDTLS on for Android by itself.
 # shellcheck disable=SC2086 # $gpu_flags is a list of words without spaces
 cmake -S "$root" -B "$native" -G Ninja -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DCMAKE_TOOLCHAIN_FILE="$root/deps/common/hosts-common/cmake/android-toolchain.cmake" \

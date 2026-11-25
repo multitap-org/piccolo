@@ -77,3 +77,6 @@
 [submodule "deps/mbedtls"]
 	path = deps/mbedtls
 	url = https://github.com/Mbed-TLS/mbedtls.git
+[submodule "deps/common/multitap-net"]
+	path = deps/common/multitap-net
+	url = https://github.com/multitap-org/multitap-net.git
