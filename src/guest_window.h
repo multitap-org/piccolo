@@ -27,7 +27,9 @@
 // host is never one of them).
 //
 // Closing the window keeps the link; STOP REMOTE PLAY, closing the game,
-// loading another one, or quitting ends the session (main.cpp).
+// loading another one, or quitting ends the session (main.cpp): a guest
+// can't control what's shown, so the host can't swap games under it. HARD
+// RESET (the same game and core again) keeps it (Andrés, 2026-11-25).
 //
 // guest_window_apply acts on the running NetAccess (under the network lock):
 // guests, role and KICK at once. CREATE LINK, REFRESH LINK and STOP REMOTE
@@ -38,6 +40,7 @@
 // was pressed, and guest_window_apply acts on it (no GUI).
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "guest_card.h"
@@ -67,7 +70,8 @@ struct GuestWindow
     uint32_t level = 1;                          // ROLE (NetGuestLevel): PLAYER by default
     char     link_text[NET_GUEST_MAX_LINK] = {};
     NetGuestLink link;
-    uint32_t game_starts = 0;                    // the game the session belongs to (App::game_starts)
+    std::string core_path;                       // the game the session belongs to (a hard reset
+    std::string content_path;                    // starts the same ones again: the session stays)
     std::vector<uint8_t> png;                    // the card's picture, taken when the window opened
     GuestCardUpload card;
     uint64_t next_refresh_ms = 0;                // a live link takes the picture again then (GUEST_CARD_REFRESH_MS)

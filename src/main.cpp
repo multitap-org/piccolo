@@ -864,7 +864,8 @@ static void guest_make_link(App* app)
     net_guest_link_wipe(&link);
     if (!window->live)
     {
-        window->game_starts = app->game_starts;
+        window->core_path = app->marker_core_path;   // the game started with these (start_game)
+        window->content_path = app->marker_content_path;
     }
     window->live = true;
     SDL_Log("Guest link: open for \"%s\", %d seats, %s", window->title, window->seats,
@@ -890,11 +891,14 @@ static void guest_end(App* app, NetAccess* access)
 }
 
 // Once a frame under the network lock: the session follows its game, and
-// each guest learns its port.
+// each guest learns its port. Another game (or core) ends it, a guest can't
+// control what's shown; a hard reset starts the same files again and keeps
+// it (Andrés, 2026-11-25).
 static void guest_update_locked(App* app)
 {
     GuestWindow* window = &app->guest_window;
-    if (window->live && (!game_running(app) || app->game_starts != window->game_starts))
+    bool same_game = app->marker_core_path == window->core_path && app->marker_content_path == window->content_path;
+    if (window->live && (!game_running(app) || !same_game))
     {
         guest_end(app, &app->net_service.access);
     }
