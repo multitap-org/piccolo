@@ -143,11 +143,21 @@ function piccolo_files_open_in_piccolo(path) {
 }
 
 async function piccolo_files_upload(files) {
+  const folder = piccolo_files.folder;
   for (const file of files) {
-    const data = new Uint8Array(await file.arrayBuffer());
     const name = file.name.replace(/[\/\\]/g, '_');
+    const path = piccolo_files_join(folder, name);
     try {
-      Module.FS.writeFile(piccolo_files_join(piccolo_files.folder, name), data);
+      const data = new Uint8Array(await file.arrayBuffer());
+      if (Module.FS.readdir(folder).includes(name)) {
+        if (multitap_storage_is_folder(Module.FS.stat(path).mode)) {
+          throw new Error('Cannot overwrite a folder with a file');
+        }
+        if (!window.confirm('The files uploaded already exist.\n\n' + path + '\n\nOverwrite?')) {
+          continue;
+        }
+      }
+      Module.FS.writeFile(path, data);
     } catch (error) {
       window.alert('CAN\'T WRITE ' + name + ': ' + error.message);
     }
