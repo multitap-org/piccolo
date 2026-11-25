@@ -29,12 +29,16 @@ macOS builds but isn't tested.
   Games inside **zip / 7z** archives: the whole archive, the one loadable file,
   or a folder in it. Game folders of your own (SETTINGS > GENERAL) show up in
   the picker.
-- **RECENT** (the first menu entry): the last 10 games started.
-- Save RAM and **savestates** (slots 1-9, each with a thumbnail) kept
-  automatically. **Fast forward**. **Run-ahead** (one setting, for cores
-  with their own run-ahead).
-- **TOOLS > CORES**: a core downloader from a signed index (non-free cores
-  hidden unless you turn them on).
+- **RECENT** (the first menu): the last 10 games started; CLEAR ALL empties
+  it. The **GAME** menu shows what the running game allows: PAUSE, QUICK SAVE /
+  QUICK LOAD, TAKE SCREENSHOT, SOFT / HARD RESET, CORE CONFIGURATION, CLOSE
+  GAME.
+- Save RAM and **savestates** (slots 0-9, each with a thumbnail; slot 0 is
+  the quick slot) kept automatically. **Fast forward**. **Run-ahead** (one
+  setting, for cores with their own run-ahead). **GAME DVR** (TOOLS): rewind
+  with scrub and snapshots.
+- **TOOLS > CORE MANAGER**: a core downloader from a signed index (non-free
+  cores hidden unless you turn them on).
 - **Core options** per core, per folder or per game, with a safe start after a
   crash (see [Core options](#core-options)).
 - A core's text request gets piccolo's text box (a libretro extension of
@@ -62,19 +66,26 @@ macOS builds but isn't tested.
 - Mouse, pointer and lightgun from one cursor per port (several mice).
 
 **Network** (SETTINGS > NETWORK)
-- Pair a phone or another piccolo with a 6-digit code; everything is
-  encrypted. Access levels per device: **GAMEPAD** (play with its
-  controllers), **STREAM** (also get the picture and sound), **FULL** (also
-  settings, loading games, taking the game), **OWNER** (also copy games, saves
-  and states to and from the shared folders).
+- **TOOLS > PAIR...**: pair a phone or another piccolo with a 6-digit code;
+  everything is encrypted. PAIR WITH A HOST lists the devices found on this
+  network (or gives a code for one across the internet); PAIR WITH A CLIENT
+  takes the code another device shows. A request that comes in during a game
+  shows a card instead: hold START (keyboard: Enter) to answer it. A pairing
+  nobody answers gives up after 5 minutes. Access per device: **GAMEPAD**
+  (play with its controllers), **STREAM** (also get the picture and sound),
+  **SHARE** (also copy games, saves and states to and from the shared
+  folders), **FULL** (also settings, loading games, taking the game).
 - **piccoletto**, the companion app (Android): a phone as a gamepad,
   **remote play** (piccolo streams the game, lossless, with its sound),
   DEVICES (who plays on which port), and **GO HEADLESS** (the phone takes the
   game, piccolo hides behind a tray icon).
 - Across the internet through a beacon (IPv6 and IPv4, hole punching);
   WebRTC data channels where libdatachannel is built in.
-- **TOOLS > SHARE**: browse another piccolo's game folders (OWNER access) and
-  copy games, saves and states both ways, side by side.
+- **TOOLS > REMOTE PLAY...**: a link for the game that runs; guests open it
+  in piccoletto and join as players (each on a free port) or
+  spectators. HARD RESET keeps them; changing the game or core ends it.
+- **TOOLS > FILE TRANSFER...**: browse another piccolo's game folders (SHARE
+  access) and copy games, saves and states both ways, side by side.
 
 **The rest**
 - The retro UI: themes (BLUE, PURPLE, ZSNES, BLACK, your own), the 5x5 pixel
@@ -84,14 +95,12 @@ macOS builds but isn't tested.
 
 ### Not there yet
 
-- **Rewind** (being designed: realtime with scrub, snapshots, replay, export
-  to video).
+- Rewind: export to video.
 - **Netplay** (playing one game together from two piccolos), achievements,
   cheats, video recording.
 - Touch controls on screen (drag mode, DS pointer), crosshair, Joy-Cons,
   overlays, a radial menu, redesigned on-screen messages.
-- A console / TV interface and a phone interface (planned), the imgui docking
-  branch.
+- A console / TV interface and a phone interface (planned).
 - Android: picking folders on SD cards and USB drives (SAF).
 - Windows' and KDE's on-screen keyboards.
 - Remote play in the browser (the browser build has no network yet), the
@@ -142,26 +151,35 @@ RECENT list), `settings/imgui.ini` (window layout) and `core_info_cache.cfg`.
 
 ## Quick menu
 
-F1 while a game runs opens the quick menu (F1 or Esc closes it; the game
-pauses while it's open). Tabs:
+F1 while a game runs opens the quick menu (F1 or Esc closes it; with
+GENERAL > PAUSE WHILE THE MENU IS OPEN, the game pauses). Its buttons:
+PAUSE / RESUME, QUICK SAVE, QUICK LOAD, SCREENSHOT, SOFT RESET, HARD RESET,
+CORE CONFIG and CLOSE GAME.
 
-- **SAVESTATES**: slots 1 to 9. Arrows, the keys 1-9 or the mouse pick one
-  (it's also the slot F2 / F4 use); used slots are lit. The selected slot
-  shows its thumbnail and date. SAVE (S) and LOAD (L) act on it; Enter only
-  picks a slot, so nothing is loaded or overwritten by accident. Also RESET
-  and CLOSE GAME.
-- **CORE OPTIONS**: the running core's options (see [Core options](#core-options)).
+- **QUICK SAVE / QUICK LOAD** use slot 0, the quick slot (as the GAME menu's
+  do), whatever slot is picked below.
+- **SAVE STATES** (a section, closed at first): slots 0 to 9 with their
+  thumbnails, and a big preview of the picked one. Arrows, the keys 0-9 or the
+  mouse pick a slot (it's also the slot F2 / F4 use). SAVE (S) and LOAD (L)
+  act on it; Enter only picks a slot, so nothing is loaded or overwritten by
+  accident. LOAD and QUICK LOAD are greyed for an empty slot.
+
+**CORE CONFIG** (also GAME > CORE CONFIGURATION...) opens the running core's
+window, with tabs:
+
+- **OPTIONS**: the core's options (see [Core options](#core-options)).
 - **CONTROLS**: who is on which port, the core's device per port, REMAP
   (mapping, turbo, combos, macros, mouse / lightgun).
 - **SHADER**: the preset for the core or the game (CHOOSE), and FILTER.
 
 Each state is `states/<core>/<game>.state<N>`, with a thumbnail next to it,
 `<game>.state<N>.png` (also written by F2): the picture as it is shown (the
-Picture settings' aspect ratio and crop), at x1.
+Picture settings' aspect ratio and crop), at x1. Quick saves made before
+slot 0 existed are in slot 1.
 
 ## Core options
 
-The quick menu's CORE OPTIONS tab edits the running core's options live.
+CORE CONFIGURATION's OPTIONS tab edits the running core's options live.
 SAVE TO picks where a change is kept, like the SCOPE of SETTINGS but with a
 folder layer:
 
@@ -180,7 +198,7 @@ options, before it reads them, so options that only apply at start work too.
 
 **When an option breaks a core.** Every core's option list (names, values,
 defaults) is also kept in `settings/core_options_cache.cfg`, written as soon as
-the core declares them. So TOOLS > OPTIONS MANAGER lists and
+the core declares them. So TOOLS > CORE OPTIONS MANAGER lists and
 deletes what is stored for **any** core that has run before, even one that now
 crashes on start: pick it in CORE, then DELETE a value, DELETE SECTION, or
 DELETE ALL FOR THIS CORE. Keys the core no longer declares are marked.
@@ -191,7 +209,7 @@ is noted in it at once). If it's still there at the next launch, that session
 crashed or hung. Starting the same core again, when it has stored options,
 asks first: STORED OPTIONS, CORE DEFAULTS THIS TIME (nothing deleted; fix the
 culprit in CORE OPTIONS), DELETE STORED OPTIONS, or CANCEL. An option changed
-in the middle of a game is only written when the quick menu closes (or the
+in the middle of a game is only written when the window closes (or the
 game ends, another one starts, piccolo quits): a change that crashes the core at once is not kept.
 
 ## Interface themes
@@ -252,7 +270,7 @@ and next to `piccolo.exe` on Windows.
 |------|------|
 | `cores/` | the cores piccolo offers (drop `*_libretro.so` files here) |
 | `saves/<core>/<game>.srm` | save RAM |
-| `states/<core>/<game>.state<N>` | savestates (slots 1-9), each with a `.png` thumbnail |
+| `states/<core>/<game>.state<N>` | savestates (slots 0-9, 0 the quick slot), each with a `.png` thumbnail |
 | `system/` | BIOS and other files cores ask for |
 | `cache/` | games extracted from zip / 7z (trimmed to 4 GiB) |
 | `shaders/` | your own shader presets (piccolo's curated ones come with it) |
@@ -308,9 +326,19 @@ push it there first), then piccolo's pointer to it is committed.
 
 ## Layout
 
-`src/` is the program (menus, windows, the retro UI, the pixel font);
-`android/`, `web/` and `flatpak/` are the platform builds; `deps/` the
-libraries.
+`src/` is the program (menus, windows, settings rows); `android/`, `web/`
+and `flatpak/` are the platform builds; `deps/` the libraries (the retro UI
+and the pixel font are retroui's).
+
+Every window is split the same way (`foo_window.h` / `.cpp`): its own state
+(`FooWindow`), a read-only snapshot of what it shows (`FooWindowState`),
+`foo_window_update` (polling), `foo_window_draw` (retroui only; it records
+what was pressed in a `FooWindowAction`) and `foo_window_apply` (acts on it,
+no GUI). The frame in `main.cpp` runs update, view, the windows, `ui_draw`,
+then apply. Only `src/ui_toolkit_imgui.cpp` calls ImGui (`ui_toolkit.h` is
+what the loop asks the toolkit); a build that includes `imgui.h` anywhere
+else in piccolo's logic fails. MISC > DEBUG can show every dialog and HUD
+card with made-up data.
 
 ## License
 
