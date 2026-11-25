@@ -65,6 +65,7 @@ enum class UiWindow
     debug,             // the debug window
     pad_editor,        // the on-screen pad's EDIT LAYOUT (drawn by the overlay)
     core_config,       // CORE CONFIGURATION: core options, controls, shader (also QUICK MENU's CONFIG)
+    about,             // MISC > ABOUT
     count,
 };
 

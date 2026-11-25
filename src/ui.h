@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <string>
 
+#include "about_window.h"
 #include "core_config_window.h"
 #include "core_options_ui.h"
 #include "cores_window.h"
@@ -120,6 +121,7 @@ struct UiView
     TextInputWindowState    text_input = {};
     bool                    debug_shown = false;
     DebugWindowState        debug = {};
+    AboutWindowState        about = {};
     bool                    fps_shown = false;
     const FpsMeter*         fps_meter = nullptr;
     double                  fps_target = 0.0;
@@ -147,6 +149,7 @@ struct UiWindows
     InputWindow*       input = nullptr;
     MapWindow*         map = nullptr;
     TextInputWindow*   text_input = nullptr;
+    AboutWindow*       about = nullptr;
 };
 
 // What the user did this frame, every window's action. Zeroed before
@@ -175,6 +178,7 @@ struct UiActions
     ShaderCheckChoice        shader_check = ShaderCheckChoice::none;
     TextInputWindowAction    text_input = {};
     DebugWindowAction        debug = {};
+    AboutWindowAction        about = {};
 };
 
 // All the frame's drawing, back to front: the game, the touch gamepad, the

@@ -30,9 +30,17 @@ msgctxt "menu_load_game"
 msgid "LOAD GAME..."
 msgstr "CARGAR JUEGO..."
 
+msgctxt "menu_close_game"
+msgid "CLOSE GAME"
+msgstr "CERRAR JUEGO"
+
 msgctxt "menu_reset"
-msgid "RESET"
-msgstr "REINICIAR"
+msgid "SOFT RESET"
+msgstr "REINICIO SUAVE"
+
+msgctxt "menu_hard_reset"
+msgid "HARD RESET"
+msgstr "REINICIO COMPLETO"
 
 msgctxt "menu_save_state"
 msgid "SAVE STATE"
@@ -41,6 +49,14 @@ msgstr "GUARDAR ESTADO"
 msgctxt "menu_load_state"
 msgid "LOAD STATE"
 msgstr "CARGAR ESTADO"
+
+msgctxt "menu_quick_save"
+msgid "QUICK SAVE"
+msgstr "GUARDADO RÁPIDO"
+
+msgctxt "menu_quick_load"
+msgid "QUICK LOAD"
+msgstr "CARGA RÁPIDA"
 
 msgctxt "menu_quit"
 msgid "QUIT"
@@ -63,16 +79,32 @@ msgid "SOUND..."
 msgstr "SONIDO..."
 
 msgctxt "menu_debug_window"
-msgid "DEBUG WINDOW"
-msgstr "VENTANA DE DEPURACIÓN"
+msgid "DEBUG"
+msgstr "DEPURACIÓN"
 
 msgctxt "menu_about"
-msgid "ABOUT PICCOLO"
-msgstr "ACERCA DE PICCOLO"
+msgid "ABOUT..."
+msgstr "ACERCA DE..."
+
+msgctxt "about_title"
+msgid "ABOUT"
+msgstr "ACERCA DE"
+
+msgctxt "about_version"
+msgid "VERSION"
+msgstr "VERSIÓN"
+
+msgctxt "about_line"
+msgid "A SMALL LIBRETRO FRONTEND FOR PLAYING GAMES, PART OF THE MULTITAP PROJECT."
+msgstr "UN PEQUEÑO FRONTEND DE LIBRETRO PARA JUGAR, PARTE DEL PROYECTO MULTITAP."
 
 msgctxt "menu_recent_empty"
 msgid "NO RECENT GAMES"
 msgstr "NO HAY JUEGOS RECIENTES"
+
+msgctxt "menu_clear_recents"
+msgid "CLEAR ALL"
+msgstr "BORRAR TODO"
 
 msgctxt "recent_no_game"
 msgid "NO GAME"
@@ -1299,8 +1331,8 @@ msgid "TOOLS"
 msgstr "HERRAMIENTAS"
 
 msgctxt "menu_options_manager"
-msgid "OPTIONS MANAGER..."
-msgstr "ADMINISTRAR OPCIONES..."
+msgid "CORE OPTIONS MANAGER..."
+msgstr "ADMINISTRAR OPCIONES DE CORES..."
 
 msgctxt "setting_ui_menu_boxes"
 msgid "MENU TITLE BOXES"
@@ -2740,12 +2772,12 @@ msgid "Or press any button on the controller."
 msgstr "O presiona cualquier botón del control."
 
 msgctxt "menu_cores"
-msgid "CORES..."
-msgstr "CORES..."
+msgid "CORE MANAGER..."
+msgstr "ADMINISTRAR CORES..."
 
 msgctxt "menu_share"
-msgid "SHARE..."
-msgstr "COMPARTIR..."
+msgid "FILE TRANSFER..."
+msgstr "TRANSFERIR ARCHIVOS..."
 
 msgctxt "cores_title"
 msgid "CORES"
@@ -3848,8 +3880,8 @@ msgid "ALSO %s: both fire together. Bind one of them elsewhere."
 msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
 
 msgctxt "menu_screenshot"
-msgid "SCREENSHOT"
-msgstr "CAPTURA"
+msgid "TAKE SCREENSHOT"
+msgstr "TOMAR CAPTURA"
 
 msgctxt "setting_screenshot_mode"
 msgid "SCREENSHOTS"
@@ -3972,8 +4004,12 @@ msgid "WAITING FOR IT THROUGH THE INTERNET..."
 msgstr "ESPERÁNDOLO POR INTERNET..."
 
 msgctxt "menu_guests"
-msgid "REMOTE PLAY TOGETHER..."
-msgstr "JUGAR A DISTANCIA JUNTOS..."
+msgid "REMOTE PLAY..."
+msgstr "JUGAR A DISTANCIA..."
+
+msgctxt "menu_game_dvr"
+msgid "GAME DVR..."
+msgstr "DVR DEL JUEGO..."
 
 msgctxt "guests_title"
 msgid "REMOTE PLAY TOGETHER"

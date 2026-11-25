@@ -38,6 +38,13 @@
 struct AppShell;
 #include "retro_ui_font.h"
 
+// The quick slot: QUICK SAVE / QUICK LOAD (the GAME menu's and QUICK MENU's)
+// save and load it whatever slot is selected.
+// TODO(round1): slot 0, as planned. host-libretro takes slots 1..9 only
+// (LIBRETRO_STATE_SLOT_FIRST / _LAST, checked when saving and loading), so
+// until it takes a slot 0 the quick slot is slot 1.
+constexpr uint32_t QUICK_SLOT = LIBRETRO_STATE_SLOT_FIRST;
+
 enum class QuickMenuPress
 {
     none,

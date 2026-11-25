@@ -174,6 +174,7 @@ struct App
     bool       played_with_gamepad = false;   // the last game input came from a local gamepad (CONTROLLERS cause)
     bool       android_background = false;    // the app is in the background (BACKGROUND cause)
     bool       menus_built_paused = false;    // GAME > PAUSE read RESUME when the menus were built
+    bool       menus_built_running = false;   // a game ran when the menus were built (GAME's items, GAME DVR)
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -320,6 +321,7 @@ struct App
     bool             crashed_after_options = false;
     // A core's TEXT request (text_input_window.h): open while it's pending.
     TextInputWindow  text_input_window = {};
+    AboutWindow      about_window = {};       // MISC > ABOUT
 
     bool             safe_start_open = false;
     bool             safe_start_confirmed = false;    // the next start skips the check (answered)
@@ -515,20 +517,35 @@ static void update_settings_context(App* app)
 constexpr int32_t MENU_ID_RECENT = 1000;
 
 // piccolo's menus (menus.h) as retroui's menu bar takes them: RECENT first
-// (the hamburger glyph), then the menus in the current language. Built when
-// the labels change, never per frame.
+// (the hamburger glyph: the games, then CLEAR ALL), then the menus in the
+// current language, with the items that show while a game runs (or not).
+// Built when the labels change, the pause and whether a game runs, never
+// per frame.
+static bool game_running(const App* app);   // (Game control, further down)
+
+static bool menu_item_listed(int32_t menu, int32_t item, bool running)
+{
+    return running || menus_item_shown(menu, item) != MenuShown::with_game;
+}
+
 static void build_menus(App* app)
 {
     app->menu_texts.clear();
     app->menu_items.clear();
     app->menus.clear();
     app->menus_built_paused = app->ui.user_paused;
+    bool running = game_running(app);
+    app->menus_built_running = running;
     // The labels first: the items point into them (push_back may move them).
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
         app->menu_texts.push_back(piccolo_text(&app->strings, menus_label(menu)));
         for (int32_t item = 0; item < menus_item_count(menu); item++)
         {
+            if (!menu_item_listed(menu, item, running))
+            {
+                continue;
+            }
             Str label = menus_item_label(menu, item);
             if (menus_item_action(menu, item) == MenuAction::pause && app->ui.user_paused)
             {
@@ -542,26 +559,41 @@ static void build_menus(App* app)
     {
         app->menu_items.push_back(RetroUiMenuItem{app->recent_label_pointers[i], MENU_ID_RECENT + static_cast<int32_t>(i)});
     }
+    if (!app->recent_label_pointers.empty())
+    {
+        app->menu_items.push_back(RetroUiMenuItem{"", RETRO_UI_MENU_SEPARATOR});
+        app->menu_items.push_back(RetroUiMenuItem{piccolo_text(&app->strings, Str::menu_clear_recents),
+                                                  static_cast<int32_t>(MenuAction::clear_recents)});
+    }
+    int32_t recent_count = static_cast<int32_t>(app->menu_items.size());
+    std::vector<int32_t> counts;
     size_t text = 0;
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
         text++;   // (the menu's own label)
+        int32_t count = 0;
         for (int32_t item = 0; item < menus_item_count(menu); item++)
         {
+            if (!menu_item_listed(menu, item, running))
+            {
+                continue;
+            }
             MenuAction action = menus_item_action(menu, item);
             int32_t id = action == MenuAction::separator ? RETRO_UI_MENU_SEPARATOR : static_cast<int32_t>(action);
-            app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id});
+            bool enabled = running || menus_item_shown(menu, item) != MenuShown::greyed_no_game;
+            app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id, enabled});
             text++;
+            count++;
         }
+        counts.push_back(count);
     }
-    int32_t recent_count = static_cast<int32_t>(app->recent_label_pointers.size());
     app->menus.push_back(RetroUiMenu{PIXEL_FONT_UTF8_MENU, app->menu_items.data(), recent_count,
                                      piccolo_text(&app->strings, Str::menu_recent_empty)});
     size_t first_item = static_cast<size_t>(recent_count);
     text = 0;
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
-        int32_t count = menus_item_count(menu);
+        int32_t count = counts[static_cast<size_t>(menu)];
         app->menus.push_back(RetroUiMenu{app->menu_texts[text].c_str(), app->menu_items.data() + first_item, count, nullptr});
         first_item += static_cast<size_t>(count);
         text += static_cast<size_t>(count) + 1;
@@ -1479,6 +1511,79 @@ static void app_leave_main_menu(App* app);
 static void net_answer_load(App* app, NetContentStatus status);
 
 static void app_open_core_config(App* app, uint32_t port, uint32_t controller);   // (the UI modes, further down)
+static void app_open_widget(App* app, UiWidget widget);
+
+// The actions on the running game that the GAME menu and QUICK MENU share,
+// each in one place. Where the UI goes afterwards is the caller's: the
+// menu goes back to the game, QUICK MENU may stay.
+
+// QUICK SAVE / QUICK LOAD: the quick slot, whatever slot is selected.
+static bool quick_save(App* app)
+{
+    uint32_t selected = app->session.state_slot;
+    app->session.state_slot = QUICK_SLOT;
+    bool saved = save_state_with_thumbnail(app);
+    app->session.state_slot = selected;
+    set_status(app, app->session.message);
+    return saved;
+}
+
+static bool quick_load(App* app)
+{
+    uint32_t selected = app->session.state_slot;
+    app->session.state_slot = QUICK_SLOT;
+    bool loaded = core_session_load_state(&app->session);
+    app->session.state_slot = selected;
+    set_status(app, app->session.message);
+    return loaded;
+}
+
+// SOFT RESET: the core's own reset (the console's reset button).
+static bool soft_reset(App* app)
+{
+    if (!game_running(app))
+    {
+        return false;
+    }
+    libretro_host_reset(app->session.host);
+    set_status(app, piccolo_text(&app->strings, Str::status_reset));
+    return true;
+}
+
+// HARD RESET: the core and the game loaded again, as LOAD GAME would load
+// them (the same files the game was started from), at the top of the next
+// loop (see pending_start). The start stops the running game first.
+static bool hard_reset(App* app)
+{
+    if (!game_running(app) || app->has_pending_start)
+    {
+        return false;
+    }
+    app->pending_start = FilePickerChoice{};
+    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
+                  app->marker_core_path.c_str());
+    std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
+                  app->marker_content_path.c_str());
+    app->has_pending_start = true;
+    return true;
+}
+
+// CLOSE GAME: at the top of the next loop (the game's texture may be in this
+// frame already).
+static void close_game(App* app)
+{
+    if (game_running(app))
+    {
+        app->pending_close_game = true;
+    }
+}
+
+// TOOLS > GAME DVR, QUICK MENU's GAME DVR: the rewind DVR, a window widget
+// (it refuses, its HUD saying why, with nothing to go back to).
+static void open_game_dvr(App* app)
+{
+    app_open_widget(app, UiWidget::dvr);
+}
 
 static void handle_menu_action(App* app, MenuAction action)
 {
@@ -1501,13 +1606,43 @@ static void handle_menu_action(App* app, MenuAction action)
             toggle_user_pause(app);
             resume_game(app);
             break;
+        case MenuAction::close_game:
+            close_game(app);
+            break;
         case MenuAction::reset:
-            if (game_running(app))
+            if (soft_reset(app))
             {
-                libretro_host_reset(app->session.host);
-                set_status(app, piccolo_text(&app->strings, Str::status_reset));
                 app_leave_main_menu(app);
             }
+            break;
+        case MenuAction::hard_reset:
+            hard_reset(app);   // the game starts again straight into play
+            break;
+        case MenuAction::quick_save:
+            if (quick_save(app))
+            {
+                app_leave_main_menu(app);
+            }
+            break;
+        case MenuAction::quick_load:
+            if (quick_load(app))
+            {
+                app_leave_main_menu(app);
+            }
+            break;
+        case MenuAction::game_dvr:
+            open_game_dvr(app);
+            break;
+        case MenuAction::clear_recents:
+            app->recent.games.clear();
+            if (!app->recent_path.empty())
+            {
+                recent_games_save(&app->recent, app->recent_path.c_str());
+            }
+            refresh_recent_labels(app);
+            break;
+        case MenuAction::about:
+            about_window_open(&app->about_window);
             break;
         case MenuAction::save_state:
             if (save_state_with_thumbnail(app))
@@ -1940,6 +2075,8 @@ static bool window_flag(const App* app, UiWindow window)
             return app->safe_start_open;
         case UiWindow::debug:
             return app->show_debug_window;
+        case UiWindow::about:
+            return app->about_window.open;
         case UiWindow::pad_editor:
             return app->onscreen_pad.editor.active;
         case UiWindow::none:
@@ -1992,6 +2129,9 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::debug:
             app->show_debug_window = false;
+            break;
+        case UiWindow::about:
+            app->about_window.open = false;
             break;
         case UiWindow::pad_editor:
             onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
@@ -2154,8 +2294,6 @@ static bool quick_menu_up(const App* app)
 {
     return app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::quick_menu;
 }
-
-static void app_open_widget(App* app, UiWidget widget);
 
 static void app_open_quick_menu(App* app)
 {
@@ -5352,6 +5490,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         text_input_window_state(&view->text_input, &app->session.host->text_input, &app->strings);
         text_input_window_update(&app->text_input_window, &view->text_input);
     }
+    about_window_state(&view->about, &app->strings, PICCOLO_VERSION);
     view->debug_shown = app->show_debug_window;
     if (view->debug_shown)
     {
@@ -5387,6 +5526,7 @@ static void app_ui_windows(App* app, UiWindows* windows)
     windows->input = &app->input_window;
     windows->map = &app->map_window;
     windows->text_input = &app->text_input_window;
+    windows->about = &app->about_window;
 }
 
 // What the user did this frame, applied in the order the windows are drawn
@@ -5631,6 +5771,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     {
         debug_window_apply(app, &actions->debug);
     }
+    about_window_apply(&app->about_window, &actions->about);
     save_after_options_windows(app);
     onscreen_pad_end_frame(&app->onscreen_pad);   // (the fingers seen by this frame are done)
 }
@@ -5668,9 +5809,9 @@ static bool app_frame(App* app)
         }
     }
     update_pause(app);
-    if (app->menus_built_paused != app->ui.user_paused)
+    if (app->menus_built_paused != app->ui.user_paused || app->menus_built_running != game_running(app))
     {
-        build_menus(app);   // GAME > PAUSE / RESUME
+        build_menus(app);   // GAME > PAUSE / RESUME, what shows with a game
     }
     app->session.timing.mode = piccolo_settings_timing(&app->settings);
     if (app->headless.on)
