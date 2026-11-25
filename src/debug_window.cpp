@@ -61,6 +61,15 @@ static void draw_hud_widgets(DebugWindowAction* action)
     retro_ui_same_line();
     press(action, retro_ui_button("DVR card: NOTHING YET"), DebugWindowPress::dvr_card_nothing);
     press(action, retro_ui_button("Ports' tabs rise"), DebugWindowPress::ports_rise);
+    // The cards REMOTE PLAY and PAIR leave (debug_preview.h: fake ones, the
+    // real windows don't know).
+    press(action, retro_ui_button("LINK COPIED card"), DebugWindowPress::card_link_copied);
+    retro_ui_same_line();
+    press(action, retro_ui_button("PAIRING TIMED OUT card"), DebugWindowPress::card_pair_timed_out);
+    retro_ui_same_line();
+    press(action, retro_ui_button("PAIRING FAILED card"), DebugWindowPress::card_pair_failed);
+    retro_ui_check("pair_request_card", "Pairing request card (a fake device)", &action->pair_request_card);
+    retro_ui_dim_text("In the game, START held fills its key and the card goes; nothing opens.", nullptr);
 }
 
 static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction* action)
@@ -86,6 +95,7 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     {
         action->icons_forced[i] = state->icons_forced[i];
     }
+    action->pair_request_card = state->pair_request_card;
 
     retro_ui_push_theme(pixel_font, scale);
     RetroUiWindow window = {};

@@ -67,6 +67,7 @@
 #include "screenshot_writer.h"
 #include "state_widget.h"
 #include "debug_window.h"
+#include "debug_preview.h"
 #include "input_bindings.h"
 #include "input_config.h"
 #include "input_sdl.h"
@@ -324,6 +325,7 @@ struct App
     // A core's TEXT request (text_input_window.h): open while it's pending.
     TextInputWindow  text_input_window = {};
     AboutWindow      about_window = {};       // MISC > ABOUT
+    DebugPreviews    debug_previews;          // the debug window's fake cards (debug_preview.h)
 
     bool             safe_start_open = false;
     bool             safe_start_confirmed = false;    // the next start skips the check (answered)
@@ -3047,6 +3049,8 @@ static void app_update_input(App* app)
     {
         SDL_Log("Network: pairing request accepted from the game: its window opens");
     }
+    // The debug window's fake request card: the same hold, nothing accepted.
+    debug_preview_hold_request(&app->debug_previews, game_has_keyboard(app), pair_accept_held(app), SDL_GetTicks());
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
     // opens it doesn't act in it the same frame).
@@ -3911,6 +3915,7 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->devices_available = app->ports_widget.port_count > 0;
     state->text_box_allowed = state->game_running && !text_input_pending(app);
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
+    state->pair_request_card = app->debug_previews.request_card;
 }
 
 // What was pressed in the debug window.
@@ -3926,6 +3931,7 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
     }
 
     uint64_t now_ms = SDL_GetTicks();
+    debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
     static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
     uint32_t dvr_card = 3;
     switch (action->press)
@@ -3988,6 +3994,15 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         app->shader_check.state = ShaderCheckState::asking;
         app->shader_check.measured_ns = 1e9 / 41.0;
         app->shader_check_asked_ms = now_ms;
+        break;
+    case DebugWindowPress::card_link_copied:
+        debug_preview_show_card(&app->debug_previews, DebugCard::link_copied, now_ms);
+        break;
+    case DebugWindowPress::card_pair_timed_out:
+        debug_preview_show_card(&app->debug_previews, DebugCard::pair_timed_out, now_ms);
+        break;
+    case DebugWindowPress::card_pair_failed:
+        debug_preview_show_card(&app->debug_previews, DebugCard::pair_failed, now_ms);
         break;
     }
     if (dvr_card < 3)
@@ -5399,6 +5414,7 @@ static void hud_fill(App* app, UiView* view)
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
     guest_window_add_hud(&app->guest_window, &app->strings, &app->hud, now_ms);
     pair_window_add_hud(&app->pair_window, &app->strings, pair_request_in_game(app), &app->hud, now_ms);
+    debug_preview_add_hud(&app->debug_previews, &app->strings, &app->hud, now_ms);
 
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};

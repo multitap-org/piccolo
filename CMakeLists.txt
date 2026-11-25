@@ -214,6 +214,7 @@ set(PICCOLO_SOURCES
     src/ui.cpp
     src/ui_toolkit_imgui.cpp
     src/debug_window.cpp
+    src/debug_preview.cpp
     src/about_window.cpp
     src/core_options_ui.cpp
     src/cores_window.cpp
