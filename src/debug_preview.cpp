@@ -3,6 +3,8 @@
 
 #include "debug_preview.h"
 
+#include "net_caps_ui.h"
+
 #include <cstdio>
 
 #include <SDL3/SDL_time.h>
@@ -18,7 +20,7 @@ static const char PREVIEW_LINK[] = "https://beacon.get-piccolo.app/join/k3x9q2#p
 
 static bool is_pair(DebugPreview preview)
 {
-    return preview >= DebugPreview::pair_host_list && preview <= DebugPreview::pair_client_paired;
+    return preview >= DebugPreview::pair_device_list && preview <= DebugPreview::pair_code_done;
 }
 
 static bool is_guest(DebugPreview preview)
@@ -89,6 +91,9 @@ static void show_pair(DebugPreviews* previews, DebugPreview which)
     link->state = NetShareLinkState::idle;
     NetShareLinkFound found;
     found.name = PREVIEW_DEVICE;
+    found.kind = NetAppKind::piccolo;
+    found.offers = NET_CAPS_ALL;
+    found.offers_known = true;
     link->found.push_back(found);
     found.name = PREVIEW_DEVICE_PAIRED;
     link->found.push_back(found);
@@ -99,44 +104,63 @@ static void show_pair(DebugPreviews* previews, DebugPreview which)
     window->open = true;
     window->select_mode = true;   // the tabs follow `mode`
     window->raise = true;         // over the debug window
-    std::snprintf(window->code, sizeof(window->code), "%s", PREVIEW_CODE);
-    window->mode = which >= DebugPreview::pair_client_type ? PairMode::client : PairMode::host;
+    window->mode = which >= DebugPreview::pair_code_shown ? PairMode::code : PairMode::device;
+    PairRequest* request = &window->request;
     switch (which)
     {
-    case DebugPreview::pair_host_list:
+    case DebugPreview::pair_device_list:
         window->selected = 0;
         break;
-    case DebugPreview::pair_host_code_lan:
-        window->phase = PairWindowPhase::waiting;
+    case DebugPreview::pair_device_type:
+        window->phase = PairDevicePhase::typing;
         window->host_name = PREVIEW_DEVICE;
+        link->state = NetShareLinkState::connecting;
+        link->code_needed = true;   // its code is up: PAIR works once nine digits are in
+        std::snprintf(window->typed, sizeof(window->typed), "%s", "482");
         break;
-    case DebugPreview::pair_host_code_internet:
-        window->phase = PairWindowPhase::waiting;
+    case DebugPreview::pair_device_internet:
+        window->phase = PairDevicePhase::typing;
         window->internet = true;
+        window->enter_selected = true;
         break;
-    case DebugPreview::pair_host_paired:
-        window->phase = PairWindowPhase::done;
+    case DebugPreview::pair_device_done:
+        window->phase = PairDevicePhase::done;
         window->host_name = PREVIEW_DEVICE;
-        window->given = NetAccessLevel::stream;
-        window->newly_paired = true;   // the YES / NO question
+        window->host_kind = NetAppKind::piccolo;
+        window->host_signed = false;   // its UNSIGNED BUILD chip; FILE TRANSFER and SETTINGS not ticked
+        window->host_uses = NET_CAP_SHARE | NET_CAP_SETTINGS;
+        window->ticks = 0;
+        window->given = NET_CAP_SHARE;
+        window->newly_paired = true;
         break;
-    case DebugPreview::pair_client_type:
-        window->invite.focus = true;
+    case DebugPreview::pair_code_shown:
+        window->shown.active = true;
+        window->shown.grants = PAIR_WINDOW_SHOWN_DEFAULT;
+        std::snprintf(window->shown.code, sizeof(window->shown.code), "%s", PREVIEW_CODE);
         break;
-    case DebugPreview::pair_client_waiting:
-        window->invite.waiting = true;
-        std::snprintf(window->invite.code, sizeof(window->invite.code), "%s", PREVIEW_CODE);
-        window->invite.level = static_cast<uint32_t>(NetAccessLevel::stream);
+    case DebugPreview::pair_code_request:
+    case DebugPreview::pair_code_unsigned:
+        request->active = true;
+        std::snprintf(request->name, sizeof(request->name), "%s", PREVIEW_DEVICE_PAIRED);
+        request->kind = NetAppKind::piccoletto;
+        request->signed_build = false;
+        request->uses = net_caps_ui_kind_uses(NetAppKind::piccoletto) | NET_CAP_SHARE;
+        request->grants = NET_CAP_GAMEPAD | NET_CAP_STREAM;   // the default ticks for an unsigned build
+        std::snprintf(request->code, sizeof(request->code), "%s", PREVIEW_CODE);
+        if (which == DebugPreview::pair_code_unsigned)
+        {
+            window->ask.cap = NET_CAP_SHARE;   // as if FILE TRANSFER was just ticked
+            window->ask.name = request->name;
+            window->ask.target = 1;            // (pair_window.cpp's ASK_REQUEST)
+        }
         break;
-    case DebugPreview::pair_client_request:
-        window->request.active = true;
-        window->request.focus = true;
-        std::snprintf(window->request.name, sizeof(window->request.name), "%s", PREVIEW_DEVICE);
-        break;
-    case DebugPreview::pair_client_paired:
-        window->client_done = true;
-        window->client_name = PREVIEW_DEVICE;
-        window->client_level = NetAccessLevel::stream;
+    case DebugPreview::pair_code_done:
+        window->code_done = true;
+        window->done_name = PREVIEW_DEVICE;
+        window->done_kind = NetAppKind::piccolo;
+        window->done_here = NET_CAP_SHARE | NET_CAP_SETTINGS;
+        window->done_there = NET_CAP_SHARE;
+        window->done_there_known = true;
         break;
     default:
         break;
@@ -260,8 +284,8 @@ void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, 
     view->shown = previews->shown;
     if (is_pair(previews->shown))
     {
-        // The network runs, and our listener too (YES / NO is asked).
-        pair_window_state(&view->pair, strings, &previews->pair_link, true, true);
+        // The network runs (GENERATE PAIRING CODE works).
+        pair_window_state(&view->pair, strings, &previews->pair_link, true);
     }
     else if (is_guest(previews->shown))
     {
@@ -314,9 +338,10 @@ void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, R
 
 void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* actions)
 {
-    // PAIR closes on its X, CLOSE, NO, and YES (which gives access back first).
+    // PAIR closes on its X, CLOSE, CANCEL and DONE.
     PairWindowPress pair = actions->pair.press;
-    bool closed = is_pair(previews->shown) && (pair == PairWindowPress::close || pair == PairWindowPress::give_back);
+    bool closed = is_pair(previews->shown) && (pair == PairWindowPress::close || pair == PairWindowPress::cancel ||
+                                               pair == PairWindowPress::done);
     // REMOTE PLAY closes itself (its X, CLOSE); STOP REMOTE PLAY is ignored.
     closed = closed || (is_guest(previews->shown) && !previews->guest.open);
     closed = closed || (previews->shown == DebugPreview::about && actions->about.closed);

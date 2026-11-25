@@ -1768,7 +1768,6 @@ msgctxt "input_defaults_help"
 msgid "Every binding of this controller back to the defaults."
 msgstr "Todas las asignaciones de este control vuelven a las de por defecto."
 
-
 msgctxt "input_section_interface"
 msgid "INTERFACE"
 msgstr "INTERFAZ"
@@ -2099,7 +2098,6 @@ msgstr "JUGADOR"
 
 
 
-
 msgctxt "input_column_action"
 msgid "ACTION"
 msgstr "ACCIÓN"
@@ -2160,7 +2158,6 @@ msgctxt "input_tab_general"
 msgid "GENERAL"
 msgstr "GENERAL"
 
-
 msgctxt "input_bind_all"
 msgid "BIND ALL"
 msgstr "ASIGNAR TODO"
@@ -2204,7 +2201,6 @@ msgstr "RESET"
 msgctxt "input_mapping"
 msgid "MAPPING"
 msgstr "CONTROL"
-
 
 msgctxt "input_joined"
 msgid "%s: PORT %d"
@@ -2417,7 +2413,6 @@ msgstr "PRESIONA UNA TECLA (%d)"
 msgctxt "map_title"
 msgid "MAP CONTROLLER"
 msgstr "MAPEAR CONTROL"
-
 
 msgctxt "map_offer_text"
 msgid "Follow this wizard to map its buttons, so piccolo recognizes them, and then the user interface. If you don't map it now, you can map its user interface controls in the INPUT settings and its RetroPad buttons in the quick menu."
@@ -3008,8 +3003,8 @@ msgid "INTERNET"
 msgstr "INTERNET"
 
 msgctxt "net_section_network_devices"
-msgid "PAIRED DEVICES"
-msgstr "DISPOSITIVOS EMPAREJADOS"
+msgid "DEVICES"
+msgstr "DISPOSITIVOS"
 
 msgctxt "headless_show"
 msgid "SHOW PICCOLO"
@@ -3048,12 +3043,12 @@ msgid "THE PORT COULD NOT BE OPENED (IN USE?)"
 msgstr "NO SE PUDO ABRIR EL PUERTO (¿EN USO?)"
 
 msgctxt "net_section_devices"
-msgid "PAIRED CLIENTS"
-msgstr "CLIENTES VINCULADOS"
+msgid "PAIRED DEVICES"
+msgstr "DISPOSITIVOS VINCULADOS"
 
 msgctxt "net_no_devices"
-msgid "NO DEVICES PAIRED YET"
-msgstr "TODAVÍA NO HAY DISPOSITIVOS VINCULADOS"
+msgid "NO DEVICES PAIRED YET (TOOLS > PAIR...)"
+msgstr "TODAVÍA NO HAY DISPOSITIVOS VINCULADOS (HERRAMIENTAS > VINCULAR...)"
 
 
 
@@ -3064,10 +3059,6 @@ msgstr "OLVIDAR"
 msgctxt "net_device_forget_help"
 msgid "Unpairs this device: if it's connected now it forgets this piccolo too; either way it has to pair again to connect."
 msgstr "Desempareja este dispositivo: si está conectado ahora también olvida este piccolo; en todo caso tiene que emparejarse de nuevo para conectarse."
-
-msgctxt "net_device_role"
-msgid "ROLE"
-msgstr "ROL"
 
 msgctxt "net_device_disconnect"
 msgid "DISCONNECT"
@@ -3084,43 +3075,6 @@ msgstr "VINCULADO CON"
 msgctxt "status_net_pairing_failed"
 msgid "PAIRING FAILED: TOO MANY WRONG CODES"
 msgstr "VINCULACIÓN FALLIDA: DEMASIADOS CÓDIGOS ERRÓNEOS"
-
-
-msgctxt "net_device_access_help"
-msgid "What this device may do here. GAMEPAD: play with its controllers. STREAM: also receive the game's picture and sound. FULL: also change settings, load games and take the game. OWNER: also copy games, saves and states to and from the shared folders."
-msgstr "Lo que este dispositivo puede hacer aquí. GAMEPAD: jugar con sus controles. STREAM: además recibir la imagen y el sonido del juego. COMPLETO: además cambiar ajustes, cargar juegos y llevarse el juego. DUEÑO: además copiar juegos, partidas y estados desde y hacia las carpetas compartidas."
-
-msgctxt "net_access_gamepad"
-msgid "GAMEPAD"
-msgstr "GAMEPAD"
-
-msgctxt "net_access_stream"
-msgid "STREAM"
-msgstr "STREAM"
-
-msgctxt "net_access_full"
-msgid "FULL"
-msgstr "COMPLETO"
-
-msgctxt "net_access_share"
-msgid "SHARE"
-msgstr "COMPARTIR"
-
-msgctxt "net_owner_confirm_title"
-msgid "FILE ACCESS"
-msgstr "ACCESO A ARCHIVOS"
-
-msgctxt "net_owner_confirm_text"
-msgid "THIS DEVICE WILL BE ABLE TO COPY GAMES, SAVES AND STATES FROM THIS PICCOLO'S SHARED FOLDERS, AND TO WRITE FILES INTO THEM. GIVE IT THAT ACCESS?"
-msgstr "ESTE DISPOSITIVO PODRÁ COPIAR JUEGOS, PARTIDAS GUARDADAS Y ESTADOS DE LAS CARPETAS COMPARTIDAS DE ESTE PICCOLO, Y ESCRIBIR ARCHIVOS EN ELLAS. ¿LE DAS ESE ACCESO?"
-
-msgctxt "net_owner_confirm_yes"
-msgid "GIVE ACCESS"
-msgstr "DAR ACCESO"
-
-msgctxt "net_owner_cancel"
-msgid "CANCEL"
-msgstr "CANCELAR"
 
 msgctxt "action_slot_next"
 msgid "NEXT SLOT"
@@ -3155,8 +3109,8 @@ msgid "UNPAIRED:"
 msgstr "DESEMPAREJADO:"
 
 msgctxt "net_section_connected"
-msgid "CONNECTED CLIENTS"
-msgstr "CLIENTES CONECTADOS"
+msgid "CONNECTED NOW"
+msgstr "CONECTADOS AHORA"
 
 msgctxt "net_no_connected"
 msgid "NO DEVICES CONNECTED"
@@ -3886,7 +3840,6 @@ msgctxt "dvr_lane_kept"
 msgid "KEPT LANE"
 msgstr "LÍNEA GUARDADA"
 
-
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
 msgstr "REBOBINAR: NADA GRABADO TODAVÍA"
@@ -4111,17 +4064,17 @@ msgctxt "pair_title"
 msgid "PAIR"
 msgstr "VINCULAR"
 
-msgctxt "pair_mode_host"
-msgid "PAIR WITH A HOST"
-msgstr "VINCULAR CON UN HOST"
+msgctxt "pair_mode_device"
+msgid "PAIR A DEVICE"
+msgstr "VINCULAR UN DISPOSITIVO"
 
-msgctxt "pair_mode_client"
-msgid "PAIR WITH A CLIENT"
-msgstr "VINCULAR CON UN CLIENTE"
+msgctxt "pair_mode_code"
+msgid "GENERATE PAIRING CODE"
+msgstr "GENERAR CÓDIGO"
 
-msgctxt "pair_detected"
-msgid "DETECTED DEVICES"
-msgstr "DISPOSITIVOS DETECTADOS"
+msgctxt "pair_discover"
+msgid "DISCOVER DEVICES"
+msgstr "DISPOSITIVOS ENCONTRADOS"
 
 msgctxt "pair_select_help"
 msgid "SELECT A DEVICE TO PAIR WITH"
@@ -4135,25 +4088,29 @@ msgctxt "pair_button"
 msgid "PAIR"
 msgstr "VINCULAR"
 
-msgctxt "pair_internet"
-msgid "PAIR OVER THE INTERNET..."
-msgstr "VINCULAR POR INTERNET..."
+msgctxt "pair_enter_code"
+msgid "ENTER A CODE"
+msgstr "ESCRIBIR UN CÓDIGO"
 
-msgctxt "pair_type_code"
+msgctxt "pair_type_shown_on"
+msgid "TYPE THE CODE SHOWN ON"
+msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA"
+
+msgctxt "pair_type_this_on"
 msgid "TYPE THIS CODE ON"
 msgstr "ESCRIBE ESTE CÓDIGO EN"
 
-msgctxt "pair_give_code"
-msgid "GIVE THIS CODE TO THE OTHER USER"
-msgstr "PASA ESTE CÓDIGO AL OTRO USUARIO"
+msgctxt "pair_other_device"
+msgid "THE OTHER DEVICE"
+msgstr "EL OTRO DISPOSITIVO"
 
-msgctxt "pair_waiting"
-msgid "WAITING FOR DEVICE"
-msgstr "ESPERANDO AL DISPOSITIVO"
+msgctxt "pair_waiting_for"
+msgid "WAITING FOR"
+msgstr "ESPERANDO A"
 
-msgctxt "pair_type_other"
-msgid "TYPE THE CODE DISPLAYED ON THE OTHER DEVICE"
-msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA EL OTRO DISPOSITIVO"
+msgctxt "pair_wait_minutes"
+msgid "5 MIN"
+msgstr "5 MIN"
 
 msgctxt "pair_wants"
 msgid "WANTS TO PAIR"
@@ -4163,25 +4120,29 @@ msgctxt "pair_wrong_code"
 msgid "WRONG CODE. TYPE THE NEW ONE ON ITS SCREEN."
 msgstr "CÓDIGO ERRÓNEO. ESCRIBE EL NUEVO DE SU PANTALLA."
 
-msgctxt "pair_code"
-msgid "CODE"
-msgstr "CÓDIGO"
+msgctxt "pair_permissions"
+msgid "PERMISSIONS"
+msgstr "PERMISOS"
 
-msgctxt "pair_role"
-msgid "ROLE"
-msgstr "ROL"
+msgctxt "pair_granted_here"
+msgid "PERMISSIONS GRANTED HERE"
+msgstr "PERMISOS DADOS AQUÍ"
 
-msgctxt "pair_allow"
-msgid "ALLOW"
-msgstr "PERMITIR"
-
-msgctxt "pair_deny"
-msgid "DENY"
-msgstr "DENEGAR"
+msgctxt "pair_granted_on"
+msgid "PERMISSIONS GRANTED ON"
+msgstr "PERMISOS DADOS EN"
 
 msgctxt "pair_done"
 msgid "PAIRED WITH"
 msgstr "VINCULADO CON"
+
+msgctxt "pair_done_button"
+msgid "DONE"
+msgstr "LISTO"
+
+msgctxt "pair_cancel"
+msgid "CANCEL"
+msgstr "CANCELAR"
 
 msgctxt "pair_card_accept"
 msgid "TO ACCEPT"
@@ -4195,45 +4156,85 @@ msgctxt "pair_failed"
 msgid "PAIRING FAILED"
 msgstr "NO SE PUDO VINCULAR"
 
-msgctxt "pair_back_before"
-msgid "LET"
-msgstr "¿DEJAR QUE"
-
-msgctxt "pair_back_after"
-msgid "CONNECT TO THIS DEVICE, WITH THE SAME ROLE?"
-msgstr "SE CONECTE A ESTE DISPOSITIVO, CON EL MISMO ROL?"
-
-msgctxt "pair_yes"
-msgid "YES"
-msgstr "SÍ"
-
-msgctxt "pair_no"
-msgid "NO"
-msgstr "NO"
-
 msgctxt "pair_close"
 msgid "CLOSE"
 msgstr "CERRAR"
-
-msgctxt "net_section_hosts"
-msgid "PAIRED HOSTS"
-msgstr "HOSTS VINCULADOS"
-
-msgctxt "net_no_hosts"
-msgid "NONE YET (TOOLS > PAIR...)"
-msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR...)"
-
-msgctxt "net_host_forget_help"
-msgid "Forgets this piccolo here (and there too, if connected now)."
-msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."
 
 msgctxt "net_host_connect"
 msgid "CONNECT"
 msgstr "CONECTAR"
 
 msgctxt "net_host_connect_help"
-msgid "Connects to this piccolo and opens FILE TRANSFER with it."
-msgstr "Se conecta a este piccolo y abre TRANSFERIR ARCHIVOS con él."
+msgid "Connects to this device and opens FILE TRANSFER with it."
+msgstr "Se conecta a este dispositivo y abre TRANSFERIR ARCHIVOS con él."
+
+msgctxt "net_device_grants_help"
+msgid "What this device may use here. Only what it can use is listed."
+msgstr "Lo que este dispositivo puede usar aquí. Solo aparece lo que puede usar."
+
+msgctxt "net_device_granted_help"
+msgid "What this device lets you use there. It decides; this is what it said last."
+msgstr "Lo que este dispositivo te deja usar allí. Lo decide él; esto es lo último que dijo."
+
+msgctxt "cap_gamepad"
+msgid "GAMEPAD"
+msgstr "GAMEPAD"
+
+msgctxt "cap_stream"
+msgid "REMOTE PLAY"
+msgstr "JUGAR A DISTANCIA"
+
+msgctxt "cap_settings"
+msgid "SETTINGS"
+msgstr "AJUSTES"
+
+msgctxt "cap_share"
+msgid "FILE TRANSFER"
+msgstr "TRANSFERIR ARCHIVOS"
+
+msgctxt "cap_none"
+msgid "-"
+msgstr "-"
+
+msgctxt "kind_piccolo"
+msgid "PICCOLO"
+msgstr "PICCOLO"
+
+msgctxt "kind_piccoletto"
+msgid "PICCOLETTO"
+msgstr "PICCOLETTO"
+
+msgctxt "kind_piccolino"
+msgid "PICCOLINO"
+msgstr "PICCOLINO"
+
+msgctxt "unsigned_build"
+msgid "UNSIGNED BUILD"
+msgstr "VERSIÓN SIN FIRMAR"
+
+msgctxt "unsigned_runs"
+msgid "RUNS AN UNSIGNED BUILD."
+msgstr "USA UNA VERSIÓN SIN FIRMAR."
+
+msgctxt "unsigned_settings"
+msgid "SETTINGS PERMISSION ALLOWS OTHER DEVICES TO CHANGE SETTINGS ON THIS DEVICE, POTENTIALLY CHANGING WHICH DIRECTORIES ARE EXPOSED. OFFICIAL BUILDS NEVER ALLOW THIS."
+msgstr "EL PERMISO DE AJUSTES DEJA QUE OTROS DISPOSITIVOS CAMBIEN LOS AJUSTES DE ESTE, LO QUE PUEDE CAMBIAR QUÉ CARPETAS QUEDAN EXPUESTAS. LAS VERSIONES OFICIALES NUNCA LO PERMITEN."
+
+msgctxt "unsigned_share"
+msgid "FILE TRANSFER PERMISSION ALLOWS OTHER DEVICES TO COPY FILES TO AND FROM THIS DEVICE."
+msgstr "EL PERMISO DE TRANSFERIR ARCHIVOS DEJA QUE OTROS DISPOSITIVOS COPIEN ARCHIVOS DESDE Y HACIA ESTE."
+
+msgctxt "unsigned_trust"
+msgid "ONLY GRANT THIS PERMISSION TO PEOPLE YOU TRUST."
+msgstr "DA ESTE PERMISO SOLO A GENTE DE CONFIANZA."
+
+msgctxt "unsigned_cancel"
+msgid "CANCEL"
+msgstr "CANCELAR"
+
+msgctxt "unsigned_grant"
+msgid "GRANT ANYWAY"
+msgstr "DARLO IGUALMENTE"
 
 msgctxt "net_online"
 msgid "ONLINE"
@@ -4242,6 +4243,10 @@ msgstr "EN LÍNEA"
 msgctxt "net_offline"
 msgid "OFFLINE"
 msgstr "DESCONECTADO"
+
+msgctxt "net_last_known"
+msgid "(LAST KNOWN)"
+msgstr "(LO ÚLTIMO QUE SE SUPO)"
 
 msgctxt "guests_no_screenshot"
 msgid "NO SCREENSHOT AVAILABLE"

@@ -15,22 +15,28 @@
 //   |   DEVICE ID          [3fa2-91c0-7d4e-b815                   ] |
 //   |   STATUS             * READY: PAIRED DEVICES CAN CONNECT      |
 //   | v DEVICES                                                     |
-//   |   CONNECTED CLIENTS   PAIRED CLIENTS      PAIRED HOSTS        |
-//   |   (a card each, its actions splitting its width)              |
+//   |   CONNECTED NOW        PAIRED DEVICES                         |
+//   |   (a card each)        (a card each: both directions)         |
 //   +--------------------------------------------------------------+
 //
 // The settings rows edit piccolo's global settings; main.cpp restarts the
-// listener when ENABLE NETWORKING or PORT change. The device list acts on the
-// running NetAccess (net_window_apply). Pairing isn't here (Andrés,
-// 2026-11-22: SETTINGS holds configuration, not actions): a device asks, and
-// TOOLS > PAIR... (pair_window.h) opens on PAIR WITH A CLIENT to take the
-// code, the game paused.
+// listener when ENABLE NETWORKING or PORT change. Pairing isn't here
+// (Andrés, 2026-11-22: SETTINGS holds configuration, not actions): TOOLS >
+// PAIR... (pair_window.h) does it.
+//
+// DEVICES (Andrés, 2026-11-25: one record per device, pairing v3 page):
+// CONNECTED NOW lists the connections, ours to a device (FILE TRANSFER's)
+// and theirs to us; PAIRED DEVICES has one card per paired device with both
+// directions: PERMISSIONS GRANTED HERE (checkboxes, only what that device
+// uses; FILE TRANSFER and SETTINGS for an unsigned build only after the red
+// question, net_caps_ui.h) and PERMISSIONS GRANTED ON <NAME> (read only, the
+// other device decides; the last it said). CONNECT opens FILE TRANSFER
+// connected to it; FORGET unpairs. Every action names its device by key.
 //
 // Split like every window: *_state fills what it shows (no GUI), *_draw
 // draws it and records what was done in an action, and *_apply acts on it
-// (no GUI). The tab is drawn inside
-// SETTINGS' tab (settings_window.cpp); main.cpp fills its state and applies
-// its action around SETTINGS' drawing.
+// (no GUI). The tab is drawn inside SETTINGS' tab (settings_window.cpp);
+// main.cpp fills its state and applies its action around SETTINGS' drawing.
 
 #include <cstdint>
 #include <string>
@@ -38,6 +44,8 @@
 
 #include "localization.h"
 #include "net_access.h"
+#include "net_caps_ui.h"
+#include "net_share_link.h"
 #include "settings.h"
 #include "settings_ui.h"
 
@@ -59,20 +67,20 @@ struct NetSpeedSummary
     bool     up_tested = false;
 };
 
-// What the tab keeps between frames: SHARE / FULL are given only after their
-// confirmation, to the device with this key (the list may change meanwhile).
+// What the tab keeps between frames: the red question asked for a card's
+// checkbox (the device by key: the list may change meanwhile).
 struct NetWindow
 {
-    uint8_t owner_key[NET_KEY_SIZE] = {};
-    bool    confirm_owner = false;
-    NetAccessLevel confirm_level = NetAccessLevel::share;   // what the confirmation gives
+    NetCapsUnsignedAsk ask;
 };
 
-// One connection of the NetAccess, for CONNECTED and the devices' CONNECTED.
+// One connection, for CONNECTED NOW.
 struct NetWindowPeer
 {
-    bool     connected = false;    // authorized, with a device in the list
-    uint32_t device = 0;           // its index in `devices`
+    bool     connected = false;    // authorized, with a paired device
+    uint8_t  key[NET_KEY_SIZE] = {};
+    std::string name;
+    NetCaps  caps = 0;             // what it uses here now
     bool     has_address = false;
     char     address[64] = {};
     bool     has_stats = false;
@@ -80,64 +88,68 @@ struct NetWindowPeer
     const NetSpeedSummary* speed = nullptr;   // its last speed test, nullptr = none
 };
 
+// One paired device's card.
+struct NetWindowDevice
+{
+    NetTrustedDevice record;       // both directions, as last saved
+    bool             connected = false;   // connected now, either way (GRANTED ON is current)
+    int32_t          online = -1;  // on the beacon now: 1 / 0, -1 unknown
+};
+
 struct NetWindowState
 {
     const Settings*     settings = nullptr;   // the rows (global settings)
     const Localization* strings = nullptr;
-    bool                network = false;      // the NetAccess runs (the lists show)
+    bool                network = false;      // the NetAccess runs
     bool                listen_failed = false;   // on, but the port couldn't be opened
     const char*         this_device = "";     // our key's fingerprint
     bool                internet = false;     // INTERNET is on (the beacon status row shows)
     NetBeaconStatus     beacon = NetBeaconStatus::off;   // INTERNET STATUS
-    // The paired devices, read only (drawn under the network lock).
-    const std::vector<NetTrustedDevice>* devices = nullptr;
-    NetWindowPeer       peers[NET_MAX_PEERS];
-    // The piccolos this one connects to (its client side, FILE TRANSFER /
-    // PAIR); nullptr: unknown (FILE TRANSFER's connection doesn't run).
-    const std::vector<std::string>* hosts = nullptr;
-    const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
+    NetCaps             offers = 0;           // what this device offers (GRANTED HERE's choices)
+    NetCaps             uses = 0;             // what it uses (CONNECT greyed without any there)
+    bool                devices_known = false;   // the list below means something (NetAccess or FILE TRANSFER runs)
+    bool                link_known = false;   // FILE TRANSFER's connection runs (CONNECT works)
+    std::vector<NetWindowDevice> devices;     // copied: drawn without the network lock
+    NetWindowPeer       peers[NET_MAX_PEERS]; // their connections to us
+    // Ours (FILE TRANSFER's), when ready.
+    bool                link_connected = false;
+    std::string         link_name;
+    NetCaps             link_caps = 0;
 };
 
 struct NetWindowAction
 {
-    SettingsUiEdit setting;            // a settings row changed
-    bool           set_level = false;  // ACCESS: `level` for device `level_device`, no confirmation needed
-    uint32_t       level_device = 0;
-    NetAccessLevel level = NetAccessLevel::gamepad;
-    bool           forget = false;     // FORGET device `forget_device`
-    uint32_t       forget_device = 0;
-    bool           owner_yes = false;  // the confirmation said YES: confirm_level to owner_key
-    bool           forget_host = false;   // FORGET host `forget_host_index` (main.cpp: FILE TRANSFER's connection)
-    uint32_t       forget_host_index = 0;
-    bool           disconnect = false;    // DISCONNECT connection `disconnect_peer`, if it's still the
-    uint32_t       disconnect_peer = 0;   // device with `disconnect_key`
+    SettingsUiEdit setting;              // a settings row changed
+    bool           set_grants = false;   // GRANTED HERE: `grants` for the device with `key`
+    NetCaps        grants = 0;
+    bool           forget = false;       // FORGET the device with `key`
+    bool           connect = false;      // CONNECT to the device with `key` (main.cpp: FILE TRANSFER)
+    uint8_t        key[NET_KEY_SIZE] = {};
+    bool           disconnect = false;   // DISCONNECT connection `disconnect_peer`, if it's still the
+    uint32_t       disconnect_peer = 0;  // device with `disconnect_key`
     uint8_t        disconnect_key[NET_KEY_SIZE] = {};
-    bool           connect_host = false;  // CONNECT host `connect_host_index` (main.cpp: FILE TRANSFER)
-    uint32_t       connect_host_index = 0;
-    // FORGET / CONNECT on a host: its name as drawn. The hosts list was
-    // copied for drawing and the index is into the live one: main.cpp acts
-    // only if the live list still has this name there (FILE TRANSFER's
-    // connection tells hosts' names, not their keys).
-    char           host_name[256] = {};   // (room for any name the list holds)
+    bool           disconnect_link = false;   // DISCONNECT our own (FILE TRANSFER's)
 };
 
-// The tab's state. `access` nullptr while networking is off; `speed`: the
-// speed test results, by device key; `hosts` / `hosts_online` nullptr when
-// FILE TRANSFER's connection doesn't run. Under the network lock.
+// The tab's state. `access` nullptr while networking is off; `link`
+// FILE TRANSFER's connection's status, nullptr when it doesn't run; `speed`:
+// the speed test results, by device key. Under the network lock.
 void net_window_state(NetWindowState* state, const Settings* settings, const Localization* strings,
-                      const NetAccess* access, bool listen_failed, const char* this_device,
-                      const std::vector<NetSpeedSummary>* speed, bool internet,
-                      const std::vector<std::string>* hosts, const std::vector<uint8_t>* hosts_online);
+                      const NetAccess* access, const NetShareLinkStatus* link, bool listen_failed,
+                      const char* this_device, const std::vector<NetSpeedSummary>* speed, bool internet,
+                      NetCaps offers, NetCaps uses);
 // The tab's contents, inside SETTINGS' tab. The rows always edit the global
 // settings (networking isn't per core or game), with labels `label_width`
 // wide like the other tabs'.
 void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float label_width,
                          NetWindowAction* action);
-// The settings row's edit, ROLE, FORGET, DISCONNECT and the confirmation's YES, on
-// `access` (nullptr while networking is off). Under the network lock. True
-// when the settings changed (SETTINGS saves when it closes). FORGET on a
-// host and CONNECT are main.cpp's (FILE TRANSFER's connection).
-bool net_window_apply(NetWindow* window, const NetWindowAction* action, Settings* settings, NetAccess* access);
+// The settings row's edit, GRANTED HERE, FORGET and DISCONNECT: on `access`
+// (under the network lock) while networking is on, else through FILE
+// TRANSFER's connection `link` (its status `link_status`; either may be
+// nullptr). True when the settings changed (SETTINGS saves when it closes).
+// CONNECT is main.cpp's (it opens FILE TRANSFER).
+bool net_window_apply(const NetWindowAction* action, Settings* settings, NetAccess* access, NetShareLink* link,
+                      const NetShareLinkStatus* link_status);
 
 // The four port LEDs lit in turn, then `label`: something being waited for.
 void net_window_waiting_leds(const char* label);

@@ -200,6 +200,7 @@ set(PICCOLO_SOURCES
     src/settings_ui.cpp
     src/settings_window.cpp
     src/input_window.cpp
+    src/net_caps_ui.cpp
     src/net_window.cpp
     src/guest_window.cpp
     src/guest_card.cpp

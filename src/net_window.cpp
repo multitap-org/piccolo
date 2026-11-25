@@ -11,9 +11,6 @@
 #include "settings_ui.h"
 #include "ui_toolkit.h"
 
-static const Str ACCESS_LABELS[NET_ACCESS_LEVEL_COUNT] = {Str::net_access_gamepad, Str::net_access_stream,
-                                                          Str::net_access_share, Str::net_access_full};
-
 // ---------------------------------------------------------------------------
 // State
 
@@ -29,10 +26,22 @@ static const NetSpeedSummary* speed_of(const std::vector<NetSpeedSummary>* speed
     return nullptr;
 }
 
+static NetWindowDevice* device_of(NetWindowState* state, const uint8_t* key)
+{
+    for (size_t i = 0; i < state->devices.size(); i++)
+    {
+        if (std::memcmp(state->devices[i].record.key, key, NET_KEY_SIZE) == 0)
+        {
+            return &state->devices[i];
+        }
+    }
+    return nullptr;
+}
+
 void net_window_state(NetWindowState* state, const Settings* settings, const Localization* strings,
-                      const NetAccess* access, bool listen_failed, const char* this_device,
-                      const std::vector<NetSpeedSummary>* speed, bool internet,
-                      const std::vector<std::string>* hosts, const std::vector<uint8_t>* hosts_online)
+                      const NetAccess* access, const NetShareLinkStatus* link, bool listen_failed,
+                      const char* this_device, const std::vector<NetSpeedSummary>* speed, bool internet,
+                      NetCaps offers, NetCaps uses)
 {
     state->settings = settings;
     state->strings = strings;
@@ -40,8 +49,62 @@ void net_window_state(NetWindowState* state, const Settings* settings, const Loc
     state->listen_failed = listen_failed;
     state->this_device = this_device;
     state->internet = internet;
-    state->hosts = hosts;
-    state->hosts_online = hosts_online;
+    state->beacon = NetBeaconStatus::off;
+    state->offers = offers;
+    state->uses = uses;
+    state->link_known = link != nullptr;
+    state->devices_known = access != nullptr || link != nullptr;
+    state->devices.clear();
+    state->link_connected = false;
+    state->link_name.clear();
+    state->link_caps = 0;
+    for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
+    {
+        state->peers[peer] = {};
+    }
+    // The paired devices: the NetAccess's copy while it runs (pairings land
+    // there first), else FILE TRANSFER's (the same file).
+    const std::vector<NetTrustedDevice>* records = nullptr;
+    if (access != nullptr)
+    {
+        records = &access->trust.devices;
+    }
+    else if (link != nullptr)
+    {
+        records = &link->paired_devices;
+    }
+    for (size_t i = 0; records != nullptr && i < records->size(); i++)
+    {
+        NetWindowDevice device;
+        device.record = (*records)[i];
+        state->devices.push_back(device);
+    }
+    if (link != nullptr)
+    {
+        for (size_t i = 0; i < link->paired_devices.size() && i < link->paired_online.size(); i++)
+        {
+            NetWindowDevice* device = device_of(state, link->paired_devices[i].key);
+            if (device != nullptr)
+            {
+                device->online = link->paired_online[i] != 0 ? 1 : 0;
+            }
+        }
+        if (link->state == NetShareLinkState::ready)
+        {
+            state->link_connected = true;
+            state->link_name = link->host_name;
+            state->link_caps = link->caps;
+            if (link->device >= 0 && static_cast<size_t>(link->device) < link->paired_devices.size())
+            {
+                NetWindowDevice* device = device_of(state, link->paired_devices[static_cast<size_t>(link->device)].key);
+                if (device != nullptr)
+                {
+                    device->connected = true;
+                    device->record.granted = link->caps;   // what it says now
+                }
+            }
+        }
+    }
     if (access == nullptr)
     {
         return;
@@ -49,7 +112,6 @@ void net_window_state(NetWindowState* state, const Settings* settings, const Loc
     // INTERNET STATUS: what the beacon says, UDP and signaling together
     // (net_access_internet_status; a browser has only signaling).
     state->beacon = net_access_internet_status(access);
-    state->devices = &access->trust.devices;
     for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
     {
         const NetAccessPeer* entry = &access->peers[peer];
@@ -58,9 +120,12 @@ void net_window_state(NetWindowState* state, const Settings* settings, const Loc
         {
             continue;
         }
+        const NetTrustedDevice* record = &access->trust.devices[static_cast<size_t>(entry->device)];
         NetWindowPeer* row = &state->peers[peer];
         row->connected = true;
-        row->device = static_cast<uint32_t>(entry->device);
+        std::memcpy(row->key, record->key, NET_KEY_SIZE);
+        row->name = record->name;
+        row->caps = net_access_peer_caps(access, peer);
         NetAddress address;
         if (net_access_peer_address(access, peer, &address))
         {
@@ -68,84 +133,17 @@ void net_window_state(NetWindowState* state, const Settings* settings, const Loc
             net_address_to_text(address, row->address, sizeof(row->address));
         }
         row->has_stats = net_access_peer_stats(access, peer, &row->stats);
-        row->speed = speed_of(speed, access->trust.devices[row->device].key);
+        row->speed = speed_of(speed, record->key);
+        NetWindowDevice* device = device_of(state, record->key);
+        if (device != nullptr)
+        {
+            device->connected = true;
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
 // Drawing
-
-// The role a paired client has here (its access level: GAMEPAD / STREAM /
-// SHARE / FULL), as ROLE's list on its card, `width` wide. Applied and saved
-// at once; SHARE and FULL, which write files here, only after their
-// confirmation.
-static void draw_role(NetWindow* window, const NetWindowState* state, uint32_t device, float width,
-                      NetWindowAction* action)
-{
-    const Localization* strings = state->strings;
-    const NetTrustedDevice* entry = &(*state->devices)[device];
-    uint32_t current = static_cast<uint32_t>(entry->access);
-    int32_t picked = -1;
-    retro_ui_next_width(width);
-    if (retro_ui_begin_choice("role", piccolo_text(strings, Str::net_device_role)))
-    {
-        for (uint32_t level = 0; level < NET_ACCESS_LEVEL_COUNT; level++)
-        {
-            if (retro_ui_choice_item(level, piccolo_text(strings, ACCESS_LABELS[level]), level == current))
-            {
-                picked = static_cast<int32_t>(level);
-            }
-        }
-        retro_ui_end_choice();
-    }
-    retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_access_help));
-    if (picked < 0 || static_cast<uint32_t>(picked) == current)
-    {
-        return;
-    }
-    NetAccessLevel chosen = static_cast<NetAccessLevel>(picked);
-    if (net_access_allows(chosen, NetAccessLevel::share) && !net_access_allows(entry->access, NetAccessLevel::share))
-    {
-        // Writing files on this machine: asked first (draw_owner_confirm).
-        std::memcpy(window->owner_key, entry->key, NET_KEY_SIZE);
-        window->confirm_owner = true;
-        window->confirm_level = chosen;
-    }
-    else
-    {
-        action->set_level = true;
-        action->level_device = device;
-        action->level = chosen;
-    }
-}
-
-// The confirmation OWNER asks for: the device can read and write files in
-// the shared folders. Given to the device with the key kept when OWNER was
-// clicked, if it's still in the list (net_window_apply).
-static void draw_owner_confirm(NetWindow* window, const NetWindowState* state, NetWindowAction* action)
-{
-    const Localization* strings = state->strings;
-    float screen_width = 0.0f;
-    float screen_height = 0.0f;
-    ui_toolkit_screen_size(&screen_width, &screen_height);
-    RetroUiQuestion question = {};
-    question.id = "owner_confirm";
-    question.title = piccolo_text(strings, Str::net_owner_confirm_title);
-    question.text = piccolo_text(strings, Str::net_owner_confirm_text);
-    question.yes = piccolo_text(strings, Str::net_owner_confirm_yes);
-    question.no = piccolo_text(strings, Str::net_owner_cancel);
-    question.width = static_cast<float>(static_cast<int>(screen_width * 0.4f));
-    // Escape (B on a gamepad) answers NO, as CANCEL.
-    RetroUiAnswer answer = retro_ui_question(&question, window->confirm_owner);
-    if (answer == RetroUiAnswer::yes)
-    {
-        action->owner_yes = true;
-    }
-    if (answer != RetroUiAnswer::none)
-    {
-        window->confirm_owner = false;
-    }
-}
 
 // "95.0 MBIT/S", or "-" when nothing went through clean.
 static void speed_text(bool tested, uint32_t kbps, char* out, size_t size)
@@ -276,41 +274,32 @@ static void draw_internet(const NetWindowState* state, const SettingsUiContext* 
     retro_ui_end_disabled();
 }
 
-// One device's card in a column of DEVICES: a light (none: 0), the name, a
-// dimmed detail (`detail_help` its tooltip) and the card's buttons, which
-// the caller draws at the cursor `buttons_width` wide.
-struct DeviceCard
-{
-    uint32_t    light = 0;
-    const char* name = "";
-    const char* detail = "";
-    const char* detail_help = nullptr;
-};
-
-// The geometry DEVICES' three columns share, in window pixels: every card is
-// as tall, so the backgrounds are drawn before the cards over them.
+// The geometry DEVICES' two columns share, in window pixels: the
+// backgrounds are drawn before the cards over them, so every card of a
+// column is as tall.
 struct DeviceColumns
 {
     float top = 0.0f;       // the columns' top, down from the window's (area's) top
     float left = 0.0f;      // the first column's left edge
-    float width = 0.0f;     // one column
-    float gap = 0.0f;       // between two columns
+    float width[2] = {};    // each column's
+    float gap = 0.0f;       // between the two columns
     float pad = 0.0f;       // inside a column and a card
     float header = 0.0f;    // the column's title line
-    float card = 0.0f;      // a card's height
+    float card[2] = {};     // a card's height, per column
     float card_gap = 0.0f;  // between two cards
-    float height = 0.0f;    // the columns' height (the tallest one's)
+    float height = 0.0f;    // the columns' height (the taller one's)
 };
 
 static float column_x(const DeviceColumns* columns, uint32_t column)
 {
-    return columns->left + static_cast<float>(column) * (columns->width + columns->gap);
+    return column == 0 ? columns->left : columns->left + columns->width[0] + columns->gap;
 }
 
-// Where card `index` starts, down from the window's top.
-static float card_y(const DeviceColumns* columns, uint32_t index)
+// Where card `index` of `column` starts, down from the window's top.
+static float card_y(const DeviceColumns* columns, uint32_t column, uint32_t index)
 {
-    return columns->top + columns->pad + columns->header + static_cast<float>(index) * (columns->card + columns->card_gap);
+    return columns->top + columns->pad + columns->header +
+           static_cast<float>(index) * (columns->card[column] + columns->card_gap);
 }
 
 // A column's background and its `count` cards' (one canvas each column, so
@@ -322,12 +311,13 @@ static void draw_column_background(const DeviceColumns* columns, uint32_t column
     {
         retro_ui_same_line_at(column_x(columns, column));
     }
-    retro_ui_canvas(columns->width, columns->height);
-    retro_ui_canvas_rect(0.0f, 0.0f, columns->width, columns->height, palette->field_face);
+    float width = columns->width[column];
+    retro_ui_canvas(width, columns->height);
+    retro_ui_canvas_rect(0.0f, 0.0f, width, columns->height, palette->field_face);
     for (uint32_t i = 0; i < count; i++)
     {
-        retro_ui_canvas_rect(columns->pad, card_y(columns, i) - columns->top, columns->width - 2.0f * columns->pad,
-                             columns->card, palette->panel_face);
+        retro_ui_canvas_rect(columns->pad, card_y(columns, column, i) - columns->top, width - 2.0f * columns->pad,
+                             columns->card[column], palette->panel_face);
     }
 }
 
@@ -339,40 +329,51 @@ static void draw_column_title(const DeviceColumns* columns, uint32_t column, con
     retro_ui_down_to(columns->top + columns->pad);
     retro_ui_set_cursor_x(x);
     retro_ui_push_section_text();
-    retro_ui_text_fit(title, columns->width - 2.0f * columns->pad);
+    retro_ui_text_fit(title, columns->width[column] - 2.0f * columns->pad);
     retro_ui_pop_section_text();
     if (count == 0)
     {
-        retro_ui_down_to(card_y(columns, 0));
+        retro_ui_down_to(card_y(columns, column, 0));
         retro_ui_set_cursor_x(x);
-        retro_ui_dim_text_wrapped_at(empty, column_x(columns, column) + columns->width - columns->pad);
+        retro_ui_dim_text_wrapped_at(empty, column_x(columns, column) + columns->width[column] - columns->pad);
     }
 }
 
-// Card `index` of a column: light, name, detail; the cursor is left where
-// its buttons go. Returns their width (the card's, inside its padding).
-static float draw_card(const DeviceColumns* columns, uint32_t column, uint32_t index, const DeviceCard* card)
+// Card `index` of a column: the cursor at its first line, inside its
+// padding. Returns its inner width.
+static float begin_card(const DeviceColumns* columns, uint32_t column, uint32_t index)
 {
     float x = column_x(columns, column) + 2.0f * columns->pad;
-    float inner = columns->width - 4.0f * columns->pad;
-    retro_ui_down_to(card_y(columns, index) + columns->pad);
+    retro_ui_down_to(card_y(columns, column, index) + columns->pad);
     retro_ui_set_cursor_x(x);
-    float name_width = inner;
-    if (card->light != 0)
-    {
-        float before = retro_ui_cursor_x();
-        draw_light(card->light, retro_ui_font_size());
-        name_width -= retro_ui_cursor_x() - before;
-    }
-    retro_ui_text_fit(card->name[0] != '\0' ? card->name : "?", name_width);
-    retro_ui_set_cursor_x(x);
-    retro_ui_dim_text(card->detail, card->detail_help);
-    retro_ui_set_cursor_x(x);
-    return inner;
+    return columns->width[column] - 4.0f * columns->pad;
 }
 
-// The tooltip of a connected client's detail: where it is, the link and the
-// last speed test (what CONNECTED DEVICES showed in full before).
+// A card's name line: a light (none: 0), then the name, `width` in all.
+static void draw_card_name(uint32_t light, const char* name, float width)
+{
+    float x = retro_ui_cursor_x();
+    if (light != 0)
+    {
+        draw_light(light, retro_ui_font_size());
+        width -= retro_ui_cursor_x() - x;
+    }
+    retro_ui_text_fit(name[0] != '\0' ? name : "?", width);
+    retro_ui_set_cursor_x(x);
+}
+
+// A section-colored line (the card's PERMISSIONS headings).
+static void draw_card_heading(const char* text, float width)
+{
+    float x = retro_ui_cursor_x();
+    retro_ui_push_section_text();
+    retro_ui_text_fit(text, width);
+    retro_ui_pop_section_text();
+    retro_ui_set_cursor_x(x);
+}
+
+// The tooltip of a connection's detail: where it is, the link and the last
+// speed test.
 static void connected_help(const NetWindowState* state, const NetWindowPeer* entry, char* out, size_t size)
 {
     const Localization* strings = state->strings;
@@ -404,8 +405,41 @@ static void connected_help(const NetWindowState* state, const NetWindowPeer* ent
     }
 }
 
-// CONNECTED CLIENTS: the devices connected now. DISCONNECT closes the
-// connection (net_window_apply checks it's still the same device).
+// One CONNECTED NOW card: name, what it uses (and the round trip), DISCONNECT.
+static bool draw_connection_card(const DeviceColumns* columns, const NetWindowState* state, uint32_t index,
+                                 const char* name, NetCaps caps, const NetWindowPeer* entry)
+{
+    const Localization* strings = state->strings;
+    float width = begin_card(columns, 0, index);
+    draw_card_name(LIGHT_GOOD, name, width);
+    char list[200];
+    net_caps_ui_list(strings, caps, list, sizeof(list));
+    char detail[256] = {};
+    char help[300] = {};
+    if (entry != nullptr && entry->has_stats)
+    {
+        std::snprintf(detail, sizeof(detail), "%s · %u MS", list, entry->stats.round_trip_ms);
+    }
+    else
+    {
+        std::snprintf(detail, sizeof(detail), "%s", list);
+    }
+    if (entry != nullptr)
+    {
+        connected_help(state, entry, help, sizeof(help));
+    }
+    float x = retro_ui_cursor_x();
+    retro_ui_dim_text(detail, help[0] != '\0' ? help : nullptr);
+    retro_ui_set_cursor_x(x);
+    RetroUiRowButton disconnect = {};
+    disconnect.id = "disconnect";
+    disconnect.label = piccolo_text(strings, Str::net_device_disconnect);
+    disconnect.help = piccolo_text(strings, Str::net_device_disconnect_help);
+    return retro_ui_equal_buttons(&disconnect, 1, width) == 0;
+}
+
+// CONNECTED NOW: our own connection (FILE TRANSFER's), then theirs to us.
+// DISCONNECT closes it (net_window_apply checks it's still the same device).
 static void draw_connected(const DeviceColumns* columns, const NetWindowState* state, uint32_t count,
                            NetWindowAction* action)
 {
@@ -414,6 +448,16 @@ static void draw_connected(const DeviceColumns* columns, const NetWindowState* s
     draw_column_title(columns, 0, piccolo_text(strings, Str::net_section_connected), count,
                       piccolo_text(strings, Str::net_no_connected));
     uint32_t index = 0;
+    if (state->link_connected)
+    {
+        retro_ui_push_id("link");
+        if (draw_connection_card(columns, state, index, state->link_name.c_str(), state->link_caps, nullptr))
+        {
+            action->disconnect_link = true;
+        }
+        retro_ui_pop_id();
+        index++;
+    }
     for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
     {
         const NetWindowPeer* entry = &state->peers[peer];
@@ -421,35 +465,12 @@ static void draw_connected(const DeviceColumns* columns, const NetWindowState* s
         {
             continue;
         }
-        const NetTrustedDevice* device = &(*state->devices)[entry->device];
         retro_ui_push_index(peer);
-        char detail[96] = {};
-        const char* role = piccolo_text(strings, ACCESS_LABELS[static_cast<uint32_t>(device->access)]);
-        if (entry->has_stats)
-        {
-            std::snprintf(detail, sizeof(detail), "%s - %u MS", role, entry->stats.round_trip_ms);
-        }
-        else
-        {
-            std::snprintf(detail, sizeof(detail), "%s", role);
-        }
-        char help[300] = {};
-        connected_help(state, entry, help, sizeof(help));
-        DeviceCard card = {};
-        card.light = LIGHT_GOOD;
-        card.name = device->name.c_str();
-        card.detail = detail;
-        card.detail_help = help[0] != '\0' ? help : nullptr;
-        float width = draw_card(columns, 0, index, &card);
-        RetroUiRowButton disconnect = {};
-        disconnect.id = "disconnect";
-        disconnect.label = piccolo_text(strings, Str::net_device_disconnect);
-        disconnect.help = piccolo_text(strings, Str::net_device_disconnect_help);
-        if (retro_ui_equal_buttons(&disconnect, 1, width) == 0)
+        if (draw_connection_card(columns, state, index, entry->name.c_str(), entry->caps, entry))
         {
             action->disconnect = true;
             action->disconnect_peer = peer;
-            std::memcpy(action->disconnect_key, device->key, NET_KEY_SIZE);
+            std::memcpy(action->disconnect_key, entry->key, NET_KEY_SIZE);
         }
         retro_ui_pop_id();
         index++;
@@ -457,112 +478,162 @@ static void draw_connected(const DeviceColumns* columns, const NetWindowState* s
     retro_ui_pop_id();
 }
 
-// PAIRED CLIENTS: the devices paired with this one, with their role here.
-// ROLE and FORGET change the list: applied after drawing it (net_window_apply,
-// main.cpp checks it's still the list drawn).
-static void draw_clients(NetWindow* window, const DeviceColumns* columns, const NetWindowState* state,
-                         NetWindowAction* action)
+// One PAIRED DEVICES card (the pairing v3 page):
+//
+//   KITCHEN PC  PICCOLO  UNSIGNED BUILD
+//   PERMISSIONS GRANTED HERE
+//   [x] FILE TRANSFER   [x] SETTINGS
+//   PERMISSIONS GRANTED ON KITCHEN PC
+//   FILE TRANSFER, SETTINGS (LAST KNOWN)
+//   [ CONNECT ][ FORGET ]
+static void draw_device_card(NetWindow* window, const DeviceColumns* columns, const NetWindowState* state,
+                             uint32_t index, NetWindowAction* action)
 {
     const Localization* strings = state->strings;
-    const std::vector<NetTrustedDevice>* devices = state->devices;
-    retro_ui_push_id("clients");
-    draw_column_title(columns, 1, piccolo_text(strings, Str::net_section_devices),
-                      static_cast<uint32_t>(devices->size()), piccolo_text(strings, Str::net_no_devices));
-    for (size_t i = 0; i < devices->size(); i++)
+    const NetWindowDevice* device = &state->devices[index];
+    const NetTrustedDevice* record = &device->record;
+    float width = begin_card(columns, 1, index);
+    float x = retro_ui_cursor_x();
+    uint32_t light = device->connected ? LIGHT_GOOD : device->online == 1 ? LIGHT_WAIT : 0;
+    // The name, then its chips: its kind, UNSIGNED BUILD.
+    const char* kind = net_caps_ui_kind(strings, record->kind);
+    const char* unsigned_chip = piccolo_text(strings, Str::unsigned_build);
+    float chips = retro_ui_text_width(kind) + retro_ui_item_spacing();
+    if (!record->signed_build)
     {
-        const NetTrustedDevice* device = &(*devices)[i];
-        retro_ui_push_index(static_cast<uint32_t>(i));
-        char detail[96] = {};
-        std::snprintf(detail, sizeof(detail), "%s: %s", piccolo_text(strings, Str::net_device_role),
-                      piccolo_text(strings, ACCESS_LABELS[static_cast<uint32_t>(device->access)]));
-        char fingerprint[32];
-        net_key_fingerprint(device->key, fingerprint, sizeof(fingerprint));
-        DeviceCard card = {};
-        card.name = device->name.c_str();
-        card.detail = detail;
-        card.detail_help = fingerprint;
-        float width = draw_card(columns, 1, static_cast<uint32_t>(i), &card);
-        // ROLE's list in the first half, FORGET in the second (one grid).
-        float half = std::floor((width - retro_ui_item_spacing()) * 0.5f);
-        draw_role(window, state, static_cast<uint32_t>(i), half, action);
+        chips += retro_ui_text_width(unsigned_chip) + retro_ui_item_spacing();
+    }
+    float name_width = width - chips > width * 0.4f ? width - chips : width * 0.4f;
+    draw_card_name(light, record->name.c_str(), name_width);
+    char fingerprint[32];
+    net_key_fingerprint(record->key, fingerprint, sizeof(fingerprint));
+    retro_ui_item_tooltip(fingerprint);
+    retro_ui_same_line();
+    retro_ui_dim_text(kind, nullptr);
+    if (!record->signed_build)
+    {
         retro_ui_same_line();
-        RetroUiRowButton forget = {};
-        forget.id = "forget";
-        forget.label = piccolo_text(strings, Str::net_device_forget);
-        forget.help = piccolo_text(strings, Str::net_device_forget_help);
-        if (retro_ui_equal_buttons(&forget, 1, width - half - retro_ui_item_spacing()) == 0)
+        retro_ui_text_colored(0xFFF0A8B4u, unsigned_chip);   // the red chip's text
+    }
+    retro_ui_set_cursor_x(x);
+    // GRANTED HERE: only what the device uses (its kind tells) and we offer.
+    draw_card_heading(piccolo_text(strings, Str::pair_granted_here), width);
+    retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_grants_help));
+    NetCaps choices = net_caps_ui_kind_uses(record->kind) & state->offers;
+    if (choices == 0)
+    {
+        retro_ui_text(piccolo_text(strings, Str::cap_none));
+        retro_ui_set_cursor_x(x);
+        retro_ui_space(1.0f, retro_ui_line_step());   // the second row's room
+    }
+    else
+    {
+        NetCaps value = record->grants & choices;
+        NetCaps asked = 0;
+        retro_ui_push_index(index);
+        if (net_caps_ui_checkboxes("grants", strings, choices, record->signed_build, &value, &asked))
         {
-            action->forget = true;
-            action->forget_device = static_cast<uint32_t>(i);
+            action->set_grants = true;
+            action->grants = value | (record->grants & ~choices);
+            std::memcpy(action->key, record->key, NET_KEY_SIZE);
         }
         retro_ui_pop_id();
+        if (asked != 0)
+        {
+            window->ask.cap = asked;
+            window->ask.name = record->name;
+            std::memcpy(window->ask.key, record->key, NET_KEY_SIZE);
+        }
     }
+    retro_ui_down_to(card_y(columns, 1, index) + columns->pad + 2.0f * retro_ui_text_line_step() +
+                     2.0f * retro_ui_line_step());
+    retro_ui_set_cursor_x(x);
+    // GRANTED ON <NAME>: read only, the other device decides.
+    char heading[256];
+    std::snprintf(heading, sizeof(heading), "%s %s", piccolo_text(strings, Str::pair_granted_on), record->name.c_str());
+    draw_card_heading(heading, width);
+    retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_granted_help));
+    char list[200];
+    net_caps_ui_list(strings, record->granted, list, sizeof(list));
+    char granted[256];
+    if (device->connected || record->granted == 0)
+    {
+        std::snprintf(granted, sizeof(granted), "%s", list);
+    }
+    else
+    {
+        std::snprintf(granted, sizeof(granted), "%s %s", list, piccolo_text(strings, Str::net_last_known));
+    }
+    retro_ui_text_fit(granted, width);
+    retro_ui_set_cursor_x(x);
+    // CONNECT: FILE TRANSFER with it; greyed when we use nothing there.
+    bool can_connect = state->link_known && (net_caps_ui_kind_offers(record->kind) & state->uses) != 0;
+    RetroUiRowButton buttons[2] = {};
+    buttons[0].id = "connect";
+    buttons[0].label = piccolo_text(strings, Str::net_host_connect);
+    buttons[0].help = piccolo_text(strings, Str::net_host_connect_help);
+    buttons[0].enabled = can_connect;
+    buttons[1].id = "forget";
+    buttons[1].label = piccolo_text(strings, Str::net_device_forget);
+    buttons[1].help = piccolo_text(strings, Str::net_device_forget_help);
+    retro_ui_push_index(index);
+    int32_t pressed = retro_ui_equal_buttons(buttons, 2, width);
     retro_ui_pop_id();
+    if (pressed == 0)
+    {
+        action->connect = true;
+        std::memcpy(action->key, record->key, NET_KEY_SIZE);
+    }
+    else if (pressed == 1)
+    {
+        action->forget = true;
+        std::memcpy(action->key, record->key, NET_KEY_SIZE);
+    }
 }
 
-// PAIRED HOSTS: the piccolos this one connects to (paired with TOOLS > PAIR /
-// FILE TRANSFER). CONNECT opens FILE TRANSFER connected to it; FORGET forgets
-// it. Their access is the other side's to give (Andrés, 2026-11-22).
-static void draw_hosts(const DeviceColumns* columns, const NetWindowState* state, uint32_t count,
-                       NetWindowAction* action)
+// PAIRED DEVICES, then the red question a card's checkbox asked, if any:
+// the bit is granted on GRANT ANYWAY, to the device asked about.
+static void draw_paired(NetWindow* window, const DeviceColumns* columns, const NetWindowState* state,
+                        NetWindowAction* action)
 {
     const Localization* strings = state->strings;
-    retro_ui_push_id("hosts");
-    draw_column_title(columns, 2, piccolo_text(strings, Str::net_section_hosts), count,
-                      piccolo_text(strings, Str::net_no_hosts));
-    for (uint32_t i = 0; i < count; i++)
+    retro_ui_push_id("paired");
+    draw_column_title(columns, 1, piccolo_text(strings, Str::net_section_devices),
+                      static_cast<uint32_t>(state->devices.size()), piccolo_text(strings, Str::net_no_devices));
+    for (size_t i = 0; i < state->devices.size(); i++)
     {
-        retro_ui_push_index(i);
-        // TODO(round1): the mockup's "GAVE YOU: STREAM" (what the host lets
-        // us do) isn't kept per host, only while connected (NetShareLinkStatus
-        // access): ONLINE / OFFLINE instead, as before.
-        DeviceCard card = {};
-        card.name = (*state->hosts)[i].c_str();
-        if (state->hosts_online != nullptr && i < state->hosts_online->size())
-        {
-            bool online = (*state->hosts_online)[i] != 0;
-            card.light = online ? LIGHT_GOOD : LIGHT_OFF;
-            card.detail = piccolo_text(strings, online ? Str::net_online : Str::net_offline);
-        }
-        float width = draw_card(columns, 2, i, &card);
-        RetroUiRowButton buttons[2] = {};
-        buttons[0].id = "connect";
-        buttons[0].label = piccolo_text(strings, Str::net_host_connect);
-        buttons[0].help = piccolo_text(strings, Str::net_host_connect_help);
-        buttons[1].id = "forget";
-        buttons[1].label = piccolo_text(strings, Str::net_device_forget);
-        buttons[1].help = piccolo_text(strings, Str::net_host_forget_help);
-        int32_t pressed = retro_ui_equal_buttons(buttons, 2, width);
-        if (pressed == 0)
-        {
-            action->connect_host = true;
-            action->connect_host_index = i;
-        }
-        else if (pressed == 1)
-        {
-            action->forget_host = true;
-            action->forget_host_index = i;
-        }
-        if (pressed >= 0)
-        {
-            std::snprintf(action->host_name, sizeof(action->host_name), "%s", card.name);
-        }
-        retro_ui_pop_id();
+        draw_device_card(window, columns, state, static_cast<uint32_t>(i), action);
     }
     retro_ui_pop_id();
+    NetCaps granted = net_caps_ui_unsigned(&window->ask, strings);
+    if (granted == 0)
+    {
+        return;
+    }
+    for (size_t i = 0; i < state->devices.size(); i++)
+    {
+        const NetTrustedDevice* record = &state->devices[i].record;
+        if (std::memcmp(record->key, window->ask.key, NET_KEY_SIZE) == 0)
+        {
+            action->set_grants = true;
+            action->grants = record->grants | granted;
+            std::memcpy(action->key, record->key, NET_KEY_SIZE);
+        }
+    }
 }
 
-// DEVICES: three columns, one per relationship (Andrés, testing round 1):
+// DEVICES: two columns (Andrés, 2026-11-25: one record per device):
 //
-//   CONNECTED CLIENTS    PAIRED CLIENTS        PAIRED HOSTS
-//   +---------------+    +---------------+     +---------------+
-//   | * KITCHEN PC  |    | KITCHEN PC    |     | * DEN PC      |
-//   | FULL - 12 MS  |    | ROLE: GAMEPAD |     | ONLINE        |
-//   | [DISCONNECT ] |    | [ROLE][FORGET]|     |[CONNECT][FORG]|
-//   +---------------+    +---------------+     +---------------+
+//   CONNECTED NOW        PAIRED DEVICES
+//   +---------------+    +--------------------------------+
+//   | * KITCHEN PC  |    | KITCHEN PC  PICCOLO            |
+//   | FILE TRANSFER |    | PERMISSIONS GRANTED HERE       |
+//   | · 12 MS       |    | [x] FILE TRANSFER [x] SETTINGS |
+//   | [DISCONNECT ] |    | PERMISSIONS GRANTED ON ...     |
+//   +---------------+    | [ CONNECT ][ FORGET ]          |
+//                        +--------------------------------+
 //
-// A device both connected and paired shows in both. The actions sit on the
-// device's card, splitting its width. Closed at first.
+// A device both connected and paired shows in both. Closed at first.
 static void draw_devices(NetWindow* window, const NetWindowState* state, NetWindowAction* action)
 {
     const Localization* strings = state->strings;
@@ -570,53 +641,54 @@ static void draw_devices(NetWindow* window, const NetWindowState* state, NetWind
     {
         return;
     }
-    if (!state->network)
+    if (!state->devices_known)
     {
         retro_ui_dim_text(piccolo_text(strings, state->listen_failed ? Str::net_listen_failed : Str::net_off), nullptr);
         return;
     }
-    uint32_t connected = 0;
+    uint32_t connected = state->link_connected ? 1u : 0u;
     for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
     {
         connected += state->peers[peer].connected ? 1u : 0u;
     }
-    uint32_t clients = static_cast<uint32_t>(state->devices->size());
-    uint32_t hosts = state->hosts != nullptr ? static_cast<uint32_t>(state->hosts->size()) : 0;
-    uint32_t most = connected > clients ? connected : clients;
-    most = hosts > most ? hosts : most;
-    most = most > 0 ? most : 1;   // room for the empty columns' note
+    uint32_t paired = static_cast<uint32_t>(state->devices.size());
 
     DeviceColumns columns = {};
     columns.top = retro_ui_cursor_y();
     columns.left = retro_ui_cursor_x();
     columns.gap = retro_ui_item_spacing();
-    columns.width = std::floor((retro_ui_width_left() - 2.0f * columns.gap) / 3.0f);
+    float room = retro_ui_width_left() - columns.gap;
+    columns.width[0] = std::floor(room / 3.0f);
+    columns.width[1] = room - columns.width[0];
     columns.pad = std::floor(columns.gap * 0.5f) > 1.0f ? std::floor(columns.gap * 0.5f) : 1.0f;
     columns.header = retro_ui_text_line_step();
-    // Name and detail (text lines), the buttons (a control), padding round them.
-    columns.card = 2.0f * retro_ui_text_line_step() + retro_ui_line_height() + 2.0f * columns.pad;
+    float text = retro_ui_text_line_step();
+    // A connection: name, detail, the button. A paired device: name,
+    // heading, two rows of checkboxes, heading, list, the buttons.
+    columns.card[0] = 2.0f * text + retro_ui_line_height() + 2.0f * columns.pad;
+    columns.card[1] = 4.0f * text + 2.0f * retro_ui_line_step() + retro_ui_line_height() + 2.0f * columns.pad;
     columns.card_gap = columns.pad;
-    columns.height = columns.pad + columns.header + static_cast<float>(most) * (columns.card + columns.card_gap) +
-                     columns.pad;
+    float tall[2] = {};
+    uint32_t counts[2] = {connected > 0 ? connected : 1u, paired > 0 ? paired : 1u};
+    for (uint32_t column = 0; column < 2; column++)
+    {
+        tall[column] = columns.pad + columns.header +
+                       static_cast<float>(counts[column]) * (columns.card[column] + columns.card_gap) + columns.pad;
+    }
+    columns.height = tall[0] > tall[1] ? tall[0] : tall[1];
 
     // The backgrounds first, side by side on one line; then each column's
     // contents over its own, back at the line's top.
     draw_column_background(&columns, 0, connected);
-    draw_column_background(&columns, 1, clients);
-    draw_column_background(&columns, 2, hosts);
+    draw_column_background(&columns, 1, paired);
     retro_ui_same_line_at(column_x(&columns, 0));
     retro_ui_begin_group();
     draw_connected(&columns, state, connected, action);
     retro_ui_end_group();
     retro_ui_same_line_at(column_x(&columns, 1));
     retro_ui_begin_group();
-    draw_clients(window, &columns, state, action);
+    draw_paired(window, &columns, state, action);
     retro_ui_end_group();
-    retro_ui_same_line_at(column_x(&columns, 2));
-    retro_ui_begin_group();
-    draw_hosts(&columns, state, hosts, action);
-    retro_ui_end_group();
-    draw_owner_confirm(window, state, action);
 }
 
 void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float label_width,
@@ -651,25 +723,50 @@ void net_window_waiting_leds(const char* label)
 // ---------------------------------------------------------------------------
 // Apply
 
-bool net_window_apply(NetWindow* window, const NetWindowAction* action, Settings* settings, NetAccess* access)
+// The device with `key` in FILE TRANSFER's list, or -1.
+static int32_t link_device(const NetShareLinkStatus* status, const uint8_t* key)
+{
+    for (size_t i = 0; status != nullptr && i < status->paired_devices.size(); i++)
+    {
+        if (std::memcmp(status->paired_devices[i].key, key, NET_KEY_SIZE) == 0)
+        {
+            return static_cast<int32_t>(i);
+        }
+    }
+    return -1;
+}
+
+bool net_window_apply(const NetWindowAction* action, Settings* settings, NetAccess* access, NetShareLink* link,
+                      const NetShareLinkStatus* link_status)
 {
     SettingsUiEdit edit = action->setting;
     bool changed = settings_ui_apply_edit(settings, &edit);
-    if (access == nullptr)
+    // GRANTED HERE and FORGET: by key, on whichever side runs (both keep the
+    // same file: the other reloads it).
+    if (action->set_grants || action->forget)
     {
-        return changed;   // the lists aren't shown
-    }
-    if (action->set_level)
-    {
-        net_access_set_level(access, action->level_device, action->level);
-    }
-    if (action->forget)
-    {
-        net_access_remove_device(access, action->forget_device);
+        int32_t device = access != nullptr ? net_trust_find(&access->trust, action->key) : -1;
+        int32_t linked = link != nullptr ? link_device(link_status, action->key) : -1;
+        if (device >= 0 && action->set_grants)
+        {
+            net_access_set_grants(access, static_cast<uint32_t>(device), action->grants);
+        }
+        else if (linked >= 0 && action->set_grants)
+        {
+            net_share_link_set_grants(link, static_cast<uint32_t>(linked), action->grants);
+        }
+        if (device >= 0 && action->forget)
+        {
+            net_access_remove_device(access, static_cast<uint32_t>(device));   // tells it, if connected
+        }
+        else if (linked >= 0 && action->forget)
+        {
+            net_share_link_forget_host(link, static_cast<uint32_t>(linked));
+        }
     }
     // DISCONNECT names a connection as drawn: closed only if it's still that
     // device's (the network thread may have given the slot to another since).
-    if (action->disconnect && action->disconnect_peer < NET_MAX_PEERS)
+    if (access != nullptr && action->disconnect && action->disconnect_peer < NET_MAX_PEERS)
     {
         const NetAccessPeer* peer = &access->peers[action->disconnect_peer];
         if (peer->state == NetAccessPeerState::authorized &&
@@ -678,15 +775,9 @@ bool net_window_apply(NetWindow* window, const NetWindowAction* action, Settings
             net_access_close(access, action->disconnect_peer);
         }
     }
-    if (action->owner_yes)
+    if (link != nullptr && action->disconnect_link)
     {
-        for (size_t i = 0; i < access->trust.devices.size(); i++)
-        {
-            if (std::memcmp(access->trust.devices[i].key, window->owner_key, NET_KEY_SIZE) == 0)
-            {
-                net_access_set_level(access, static_cast<uint32_t>(i), window->confirm_level);
-            }
-        }
+        net_share_link_disconnect(link);
     }
     return changed;
 }
