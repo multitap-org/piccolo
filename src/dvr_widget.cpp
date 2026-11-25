@@ -6,14 +6,14 @@
 
 #include <SDL3/SDL.h>
 
-#include "imgui.h"
-
 #include "core_session.h"
 #include "hud_view.h"
 #include "input_bindings.h"
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
+#include "retro_ui_controls.h"
 #include "settings.h"
+#include "ui_toolkit.h"
 
 // Previews every 5 s in SCRUB (Andrés: "se ven frames cada 5 segundos").
 constexpr double PREVIEW_SECONDS = 5.0;
@@ -802,8 +802,7 @@ void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const
     DvrViewInput input = {};
     dvr_view_draw(&widget->view, pixel_font, scale, &text, &input);
     // WATCH on the keyboard: Space (not an interface action of the router).
-    if (input.action == DvrViewAction::none && !ImGui::GetIO().WantTextInput &&
-        ImGui::IsKeyPressed(ImGuiKey_Space, false))
+    if (input.action == DvrViewAction::none && !ui_toolkit_wants_text() && retro_ui_key_pressed(RetroUiKey::space, false))
     {
         input.action = DvrViewAction::watch;
         widget->keyboard = true;
