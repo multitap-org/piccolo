@@ -5583,12 +5583,13 @@ static bool app_frame(App* app)
         input_context.now_ms = SDL_GetTicks();
         bool input_was_open = app->input_window.open;
         input_window_draw(&app->input_window, &input_context, app->pixel_font, app->ui_scale);
-        MapWindowContext map_context = {};
-        map_context.input = &app->input;
-        map_context.strings = &app->strings;
-        map_context.layouts = &app->layouts;
-        map_context.now_ms = SDL_GetTicks();
-        map_window_draw(&app->map_window, &map_context, app->pixel_font, app->ui_scale);
+        uint64_t map_now = SDL_GetTicks();
+        map_window_update(&app->map_window, &app->input, map_now);
+        MapWindowState map_state = {};
+        map_window_state(&map_state, &app->map_window, &app->strings, &app->layouts, map_now);
+        MapWindowAction map_action = {};
+        map_window_draw(&app->map_window, &map_state, app->pixel_font, app->ui_scale, &map_action);
+        map_window_apply(&app->map_window, &map_action, &app->input, &app->strings, &app->layouts, map_now);
         if (app->input_window.edit_touch_layout)
         {
             // EDIT LAYOUT: INPUT closes, the touch gamepad's editor takes the screen.
