@@ -1183,8 +1183,8 @@ msgid "NOTHING STORED: THE CORE'S DEFAULTS"
 msgstr "NADA GUARDADO: LOS VALORES DEL CORE"
 
 msgctxt "core_options_section_core"
-msgid "FOR THE CORE"
-msgstr "PARA EL CORE"
+msgid "GENERAL"
+msgstr "GENERAL"
 
 msgctxt "core_options_section_folder"
 msgid "FOLDER"
@@ -1194,19 +1194,15 @@ msgctxt "core_options_section_game"
 msgid "GAME"
 msgstr "JUEGO"
 
-msgctxt "core_options_delete"
-msgid "DELETE"
-msgstr "BORRAR"
+msgctxt "core_options_reset"
+msgid "RESET"
+msgstr "RESTABLECER"
 
-msgctxt "core_options_delete_section"
-msgid "DELETE SECTION"
-msgstr "BORRAR SECCIÓN"
+msgctxt "core_options_reset_all"
+msgid "RESET ALL"
+msgstr "RESTABLECER TODO"
 
-msgctxt "core_options_delete_all"
-msgid "DELETE ALL FOR THIS CORE"
-msgstr "BORRAR TODO DE ESTE CORE"
-
-msgctxt "core_options_delete_all_help"
+msgctxt "core_options_reset_all_help"
 msgid "Back to the core's own defaults for every game. Use it when an option keeps the core from starting."
 msgstr "Volver a los valores del propio core en todos los juegos. Úsalo cuando una opción no deja arrancar al core."
 
@@ -2856,8 +2852,8 @@ msgid "-"
 msgstr "-"
 
 msgctxt "cores_status_by_hand"
-msgid "YOURS"
-msgstr "TUYO"
+msgid "N/A"
+msgstr "N/D"
 
 msgctxt "cores_free"
 msgid "FREE"

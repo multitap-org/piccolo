@@ -108,6 +108,7 @@ static void draw_core_combo(CoreOptionsUi* ui, const CoreOptionsUiState* state, 
             if (retro_ui_choice_item(static_cast<uint32_t>(i), label, (*cores)[i] == ui->selected_core))
             {
                 ui->selected_core = (*cores)[i];
+                ui->choose_sections = true;   // its sections open as a fresh look
             }
         }
         retro_ui_end_choice();
@@ -400,8 +401,10 @@ static const CachedCoreOption* cached_option(const std::vector<CachedCoreOption>
     return nullptr;
 }
 
-// What core_options.cfg keeps for `core`, from any core (no need to load it).
-static void draw_stored(const CoreOptionsUi* ui, const CoreOptionsUiState* state, CoreOptionsManagerAction* action)
+// What core_options.cfg keeps for `core`, from any core (no need to load it):
+// a foldable section per layer stored (GENERAL, each folder, each game),
+// RESET on each section and row, RESET ALL below.
+static void draw_stored(CoreOptionsUi* ui, const CoreOptionsUiState* state, CoreOptionsManagerAction* action)
 {
     const Localization* strings = state->strings;
     const char* core = ui->selected_core.c_str();
@@ -418,18 +421,40 @@ static void draw_stored(const CoreOptionsUi* ui, const CoreOptionsUiState* state
     }
     std::vector<CachedCoreOption> cached;
     core_options_cache_get(state->cache, core, &cached);
-    // A delete stops the list there this frame, as when it changed the store
+
+    // Which section opens (Andres, testing round 1): the running game's when
+    // it has values for this core (that's what is being looked at), GENERAL
+    // otherwise. Folders and other games start folded.
+    const std::string* game_section = nullptr;
+    if (state->store != nullptr && state->game_has_values && ui->selected_core == state->running_core)
+    {
+        game_section = core_options_store_section(state->store, CoreOptionLayer::game);
+    }
+    bool game_listed = false;
+    for (size_t s = 0; game_section != nullptr && s < sections.size(); s++)
+    {
+        game_listed = game_listed || sections[s] == *game_section;
+    }
+    // Just opened or another core: the sections take that choice once, then
+    // keep what the user opens or folds.
+    bool choose = ui->choose_sections;
+    ui->choose_sections = false;
+
+    // A reset stops the list there this frame, as when it changed the store
     // here (core_options_manager_apply deletes it right after).
     bool changed = false;
-    const char* delete_text = piccolo_text(strings, Str::core_options_delete);
+    const char* reset_text = piccolo_text(strings, Str::core_options_reset);
 
     for (size_t s = 0; s < sections.size() && !changed; s++)
     {
-        retro_ui_push_index(static_cast<uint32_t>(s));
         const std::string& name = sections[s];
+        // The section's name as its id: a section keeps its open state when
+        // another one before it goes away.
+        retro_ui_push_id(name.c_str());
         size_t core_length = std::strlen(core);
+        bool general = name.size() == core_length;
         char title[600] = {};
-        if (name.size() == core_length)
+        if (general)
         {
             std::snprintf(title, sizeof(title), "%s", piccolo_text(strings, Str::core_options_section_core));
         }
@@ -444,18 +469,27 @@ static void draw_stored(const CoreOptionsUi* ui, const CoreOptionsUiState* state
             std::snprintf(title, sizeof(title), "%s: %s", piccolo_text(strings, Str::core_options_section_game),
                           colon != std::string::npos ? name.c_str() + colon + 1 : name.c_str());
         }
-        retro_ui_separator_text(title);
-        const char* delete_section = piccolo_text(strings, Str::core_options_delete_section);
-        if (retro_ui_button(delete_section))
+
+        int32_t index = settings_file_find_section(&state->store->file, name.c_str());
+        const SettingsFileSection* section =
+            index < 0 ? nullptr : &state->store->file.sections[static_cast<size_t>(index)];
+        bool has_entries = section != nullptr && !section->entries.empty();
+        bool open_first = has_entries && (game_listed ? name == *game_section : general);
+        bool open = choose ? retro_ui_section_header_open("section", title, open_first)
+                           : retro_ui_section_header("section", title, open_first);
+        if (!open)
+        {
+            retro_ui_pop_id();
+            continue;
+        }
+
+        if (retro_ui_button(reset_text))
         {
             action->press = CoreOptionsManagerPress::delete_section;
             action->section = name;
             changed = true;
         }
 
-        int32_t index = settings_file_find_section(&state->store->file, name.c_str());
-        const SettingsFileSection* section =
-            changed || index < 0 ? nullptr : &state->store->file.sections[static_cast<size_t>(index)];
         for (size_t e = 0; section != nullptr && e < section->entries.size() && !changed; e++)
         {
             const SettingsFileEntry* entry = &section->entries[e];
@@ -468,13 +502,13 @@ static void draw_stored(const CoreOptionsUi* ui, const CoreOptionsUiState* state
                     value_text = option->labels[v].c_str();
                 }
             }
-            // A row: "OPTION = VALUE" (the key as its tooltip), DELETE at the right end.
+            // A row: "OPTION = VALUE" (the key as its tooltip), RESET at the right end.
             char text[600] = {};
             RetroUiRow row = {};
             row.id = "entry";
             row.marker_column = false;
             row.label = text;
-            row.end_button = delete_text;
+            row.end_button = reset_text;
             if (option != nullptr)
             {
                 std::snprintf(text, sizeof(text), "%s = %s", option->label.c_str(), value_text);
@@ -506,11 +540,11 @@ static void draw_stored(const CoreOptionsUi* ui, const CoreOptionsUiState* state
     }
 
     retro_ui_spacing();
-    if (!changed && retro_ui_button(piccolo_text(strings, Str::core_options_delete_all)))
+    if (!changed && retro_ui_button(piccolo_text(strings, Str::core_options_reset_all)))
     {
         action->press = CoreOptionsManagerPress::delete_all;
     }
-    retro_ui_item_tooltip(piccolo_text(strings, Str::core_options_delete_all_help));
+    retro_ui_item_tooltip(piccolo_text(strings, Str::core_options_reset_all_help));
 }
 
 void core_options_ui_draw_running(CoreOptionsUi* ui, const CoreOptionsUiState* state, float label_width,
@@ -616,6 +650,7 @@ void core_options_manager_open(bool* open, CoreOptionsUi* ui)
     if (!*open)
     {
         ui->selected_core.clear();   // the running core (or the first one)
+        ui->choose_sections = true;  // STORED VALUES opens the sections that matter now
     }
     *open = true;
 }

@@ -161,7 +161,7 @@ cores_column_status = STATUS
 cores_status_installed = INSTALLED
 cores_status_update = UPDATE
 cores_status_not_installed = -
-cores_status_by_hand = YOURS
+cores_status_by_hand = N/A
 cores_free = FREE
 cores_non_free = NON-FREE
 cores_license = LICENSE
@@ -190,13 +190,12 @@ cores_experimental_note = EXPERIMENTAL: UNSUPPORTED, OR NOT FULLY WORKING IN PIC
 core_options_no_cores = NO CORE HAS RUN YET
 core_options_stored = STORED VALUES
 core_options_stored_none = NOTHING STORED: THE CORE'S DEFAULTS
-core_options_section_core = FOR THE CORE
+core_options_section_core = GENERAL
 core_options_section_folder = FOLDER
 core_options_section_game = GAME
-core_options_delete = DELETE
-core_options_delete_section = DELETE SECTION
-core_options_delete_all = DELETE ALL FOR THIS CORE
-core_options_delete_all_help = Back to the core's own defaults for every game. Use it when an option keeps the core from starting.
+core_options_reset = RESET
+core_options_reset_all = RESET ALL
+core_options_reset_all_help = Back to the core's own defaults for every game. Use it when an option keeps the core from starting.
 core_options_gone = NO LONGER DECLARED
 
 # SAFE START window
