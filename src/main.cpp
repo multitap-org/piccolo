@@ -5665,32 +5665,28 @@ static bool app_frame(App* app)
         }
         if (app->safe_start_open)
         {
-            SafeStartChoice answer = safe_start_window_draw(app->pixel_font, app->ui_scale, &app->strings,
-                                                            app->crashed_core.c_str(), app->crashed_after_options);
-            if (answer == SafeStartChoice::delete_stored)
+            SafeStartWindowState safe_start_state = {};
+            safe_start_window_state(&safe_start_state, &app->strings, app->crashed_core.c_str(),
+                                    app->crashed_after_options);
+            SafeStartWindowAction safe_start_action = {};
+            safe_start_window_draw(&safe_start_state, app->pixel_font, app->ui_scale, &safe_start_action);
+            SafeStartResult answer = safe_start_window_apply(&safe_start_action, &app->option_store,
+                                                             app->crashed_core.c_str());
+            if (answer.options_deleted)
             {
-                std::vector<std::string> sections;
-                core_options_store_sections_of(&app->option_store, app->crashed_core.c_str(), &sections);
-                for (size_t i = 0; i < sections.size(); i++)
-                {
-                    core_options_store_remove_section(&app->option_store, sections[i].c_str());
-                }
                 save_core_options(app);
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Safe start: deleted the stored options of %s",
-                            app->crashed_core.c_str());
             }
-            if (answer == SafeStartChoice::defaults)
+            if (answer.skip_stored_options_once)
             {
                 app->session.skip_stored_options_once = true;
             }
-            if (answer == SafeStartChoice::stored || answer == SafeStartChoice::defaults ||
-                answer == SafeStartChoice::delete_stored)
+            if (answer.start)
             {
                 app->pending_start = app->safe_start_pending;   // started at the top of the next loop
                 app->has_pending_start = true;
                 app->safe_start_confirmed = true;
             }
-            if (answer != SafeStartChoice::none)
+            if (answer.closed)
             {
                 app->safe_start_open = false;
                 if (app->net_load_waiting && !app->has_pending_start)
