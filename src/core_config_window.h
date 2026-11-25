@@ -19,6 +19,13 @@
 //
 // PAGE LEFT / RIGHT switch tabs. Core options and remaps are saved when it
 // closes (main.cpp), so an option that crashes the core at once isn't kept.
+//
+// Split like every window: core_config_window_update runs a SET / BIND ALL
+// or a macro recording in progress and picks SHADER's scope (no GUI),
+// core_config_window_state fills what the window shows,
+// core_config_window_draw draws it and records what was pressed, and
+// core_config_window_apply changes the ports, the remaps, the combos and
+// macros, the core devices and the shader settings (no GUI).
 
 #include <cstdint>
 #include <string>
@@ -31,6 +38,7 @@
 #include "input_sdl.h"
 #include "localization.h"
 #include "settings.h"
+#include "settings_ui.h"
 
 #include "retro_ui_font.h"
 
@@ -42,6 +50,7 @@ enum class CoreConfigTab
     count,
 };
 
+// What the window keeps between frames (the drawing may change it).
 struct CoreConfigWindow
 {
     bool          open = false;
@@ -90,29 +99,99 @@ struct CoreConfigWindow
     std::vector<uint16_t> macro_record_buttons; // ...and to what
     bool          input_dirty = false;
     // SHADER: the settings scope it edits (GLOBAL / THIS CORE / THIS GAME,
-    // the most specific one in use when the window opens), and CHOOSE, which
-    // piccolo answers by opening the shader picker for that scope.
+    // the most specific one in use when the window opens). Its CHOOSE is
+    // answered by piccolo (CoreConfigRequest::choose_shader), which opens the
+    // shader picker for that scope.
     SettingLayer  shader_scope = SettingLayer::global;
-    bool          shader_choose_scope = true;
-    bool          choose_shader_request = false;
+    bool          shader_choose_scope = true;   // pick the scope on the next update (just opened)
 };
 
-struct CoreConfigContext
+// What the window shows from the rest of piccolo, read only. The drawing
+// reads the controllers, ports, devices, remaps, combos and macros through
+// `input`, the core's ports and descriptors through `host`, SDL's gamepads
+// through `sdl` and the shader rows through `settings`.
+struct CoreConfigWindowState
 {
     const Localization*  strings = nullptr;
-    // OPTIONS (core_options_ui.h): its own state, what it shows, what was done.
-    CoreOptionsUi*            core_options_ui = nullptr;
-    const CoreOptionsUiState* core_options = nullptr;
-    CoreOptionsUiAction*      core_options_action = nullptr;
-    InputSystem*         input = nullptr;   // CONTROLS: who plays on which port
-    LibretroHost*        host = nullptr;    // CONTROLS: the core's devices per port, and the one plugged in
-    Settings*            settings = nullptr;   // CONTROLS: the device picked is kept per core
-    const InputSdl*      sdl = nullptr;        // CONTROLS: button names
-    const InputLayouts*  layouts = nullptr;    // CONTROLS: the controllers' button names
-    uint64_t             now_ms = 0;
     const char*          core_name = "";         // the title line and SHADER's scope names
     const char*          game_name = "";
+    uint64_t             now_ms = 0;
     bool                 shaders_available = false;   // librashader was found
+    CoreOptionsUiState   options;                // OPTIONS (core_options_ui.h)
+    const InputSystem*   input = nullptr;        // CONTROLS: who plays on which port (nullptr: no CONTROLS)
+    const LibretroHost*  host = nullptr;         // CONTROLS: the core's devices per port, and the one plugged in
+    const Settings*      settings = nullptr;     // SHADER's rows (nullptr: no SHADER)
+    const InputSdl*      sdl = nullptr;          // CONTROLS: button names
+    const InputLayouts*  layouts = nullptr;      // CONTROLS: the controllers' button names
+    bool                 game_loaded = false;    // a core with a game: CORE DEVICE, REMAP
+    uint32_t             ports = INPUT_PORT_COUNT;   // the ports shown (SETTINGS > INPUT > PORTS)
+    uint64_t             press_ms = 0;           // TIME TO PRESS (SET's countdown)
+    // A SET / BIND ALL in progress: the control being held, and how far.
+    bool                 holding = false;
+    InputSource          held = {};
+    float                hold_progress = 0.0f;
+    // The remap view (when it's up and its controller and port exist): what
+    // plays now, the game's own remap if any, the controller and its names.
+    bool                    remap_valid = false;
+    InputBindingSet         remap_effective;
+    const InputCoreProfile* remap_active = nullptr;   // the remap in use (its combos' bindings)
+    const InputCoreProfile* remap_game = nullptr;     // THIS GAME's own remap, or nullptr (SCOPE)
+    const InputDevice*      remap_pad = nullptr;
+    const InputLayout*      remap_layout = nullptr;
+    const InputProfile*     remap_profile = nullptr;
+};
+
+enum class CoreConfigPress
+{
+    none,
+    port_device,          // CORE DEVICE picked: `port`'s core device is `device`
+    unassign,             // UNASSIGN: `controller` leaves `port`
+    add,                  // ADD: `controller` joins `port`
+    move_port,            // MOVE UP / DOWN: `port` swaps with `other_port`
+    remap_back,           // the remap's BACK: kept as it is, and seen (not asked again)
+    remap_scope_core,     // SCOPE: THIS CORE (the game's own remap is dropped)
+    remap_scope_game,     // SCOPE: THIS GAME (a copy of the core's)
+    bind_all,             // BIND ALL: from `input_action` on
+    use_retropad,         // DEFAULT ALL: the remap back to the RetroPad's
+    cancel_capture,       // CANCEL: the SET / BIND ALL stops, its changes put back
+    set,                  // SET or +: `input_action`'s `row` takes the next control
+    clear,                // CLEAR: `row` of `input_action` removed
+    percent,              // a stick direction's `row` pushes it `percent`
+    turbo,                // TURBO box: `row` of `input_action` gets `turbo`
+    combo_set,            // SET or + on combo / macro `combo`'s `row`
+    combo_clear,          // CLEAR on combo / macro `combo`'s `row`
+    combo_save,           // the combo editor's SAVE (what it edits is in the window)
+    combo_delete,         // the combo editor's DELETE
+    macro_save,           // the macro editor's SAVE
+    macro_delete,         // the macro editor's DELETE
+    macro_record,         // RECORD: get ready, then record
+    macro_stop,           // STOP: a recording ends (getting ready: cancelled)
+    macro_cancel_record,  // Escape while recording: cancelled
+};
+
+// What the user did this frame (zeroed before drawing).
+struct CoreConfigWindowAction
+{
+    CoreOptionsUiAction options;             // OPTIONS: piccolo applies it (core_options_ui_apply)
+    SettingsUiEdit      setting;             // SHADER: a settings row changed
+    bool                choose_shader = false;   // SHADER's CHOOSE
+    CoreConfigPress     press = CoreConfigPress::none;
+    uint32_t            port = 0;
+    uint32_t            other_port = 0;
+    uint32_t            controller = 0;
+    unsigned            device = 0;
+    InputAction         input_action = InputAction::pad_b;
+    uint32_t            row = 0;
+    uint8_t             percent = 0;
+    bool                turbo = false;
+    std::string         combo;               // the combo's or macro's id
+};
+
+// What main.cpp does itself after core_config_window_apply.
+enum class CoreConfigRequest
+{
+    none,
+    choose_shader,   // open the shader picker for shader_scope
 };
 
 // Opens on the tab it was last closed on (the remap view and any SET closed).
@@ -130,7 +209,29 @@ bool core_config_window_sub_view(const CoreConfigWindow* config);
 // BACK out of the remap view.
 void core_config_window_close_sub_view(CoreConfigWindow* config);
 
-// Draws the window while open (its X closes it: open = false). Also drops
-// a SET or a macro recording nobody looks at any more: call every frame.
-void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* context, RetroUiFont* pixel_font,
-                             int32_t scale);
+// Every frame, before the state: SHADER's scope (just opened: the most
+// specific layer in use; the core or game gone: GLOBAL), a remap whose
+// controller or core is gone closes, and a SET / BIND ALL or a macro
+// recording in progress runs.
+void core_config_window_update(CoreConfigWindow* config, InputSystem* input, const LibretroHost* host,
+                               const Settings* settings, const Localization* strings, const char* core_name,
+                               const char* game_name, uint64_t now_ms);
+
+void core_config_window_state(CoreConfigWindowState* state, const CoreConfigWindow* config,
+                              const Localization* strings, const CoreOptionsUiState* options, const InputSystem* input,
+                              const LibretroHost* host, const Settings* settings, const InputSdl* sdl,
+                              const InputLayouts* layouts, const char* core_name, const char* game_name,
+                              bool shaders_available, uint64_t now_ms);
+
+// Draws the window while open (its X closes it: open = false). OPTIONS is
+// drawn with `options_ui`, the core options panel's own state.
+void core_config_window_draw(CoreConfigWindow* config, CoreOptionsUi* options_ui, const CoreConfigWindowState* state,
+                             RetroUiFont* pixel_font, int32_t scale, CoreConfigWindowAction* action);
+
+// The press and SHADER's row edit: ports, core devices, remaps, combos and
+// macros, a SET / BIND ALL started or cancelled, a recording started or
+// stopped. Also drops a SET or a macro recording nobody looks at any more:
+// call every frame. Changes to the input mark input_dirty. (OPTIONS' action
+// is applied by piccolo.)
+CoreConfigRequest core_config_window_apply(CoreConfigWindow* config, const CoreConfigWindowAction* action,
+                                           InputSystem* input, LibretroHost* host, Settings* settings, uint64_t now_ms);

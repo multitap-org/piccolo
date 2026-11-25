@@ -3253,7 +3253,9 @@ static void open_shader_picker(App* app, SettingLayer scope)
     file_picker_open_shader(&app->shader_picker, folder.c_str(), shader_extension(app));
 }
 
-// Drawn over the QUICK MENU.
+// CORE CONFIGURATION > SHADER > CHOOSE's picker, drawn over that window:
+// the file picker's own state, drawing and apply; the pick goes to the scope
+// it was opened for, and is saved (App's).
 static void draw_shader_picker(App* app)
 {
     file_picker_update(&app->shader_picker, &app->catalog);
@@ -5377,26 +5379,21 @@ static bool app_frame(App* app)
         }
         CoreOptionsUiState options_state = {};
         core_options_state(app, &options_state);
-        CoreOptionsUiAction options_action = {};
-        CoreConfigContext config = {};
-        config.strings = &app->strings;
-        config.core_options_ui = &app->core_options_ui;
-        config.core_options = &options_state;
-        config.core_options_action = &options_action;
-        config.input = &app->input;
-        config.host = app->session.host;
-        config.settings = &app->settings;
-        config.sdl = &app->input_sdl;
-        config.layouts = &app->layouts;
-        config.now_ms = SDL_GetTicks();
-        config.core_name = app->core_name;
-        config.game_name = app->game_name;
-        config.shaders_available = app->shader_library.loaded;
-        core_config_window_draw(&app->core_config, &config, app->pixel_font, app->ui_scale);
-        core_options_ui_apply(&app->core_options_ui, &options_action, &app->session);
-        if (app->core_config.choose_shader_request)
+        uint64_t config_now = SDL_GetTicks();
+        core_config_window_update(&app->core_config, &app->input, app->session.host, &app->settings, &app->strings,
+                                  app->core_name, app->game_name, config_now);
+        CoreConfigWindowState config_state = {};
+        core_config_window_state(&config_state, &app->core_config, &app->strings, &options_state, &app->input,
+                                 app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
+                                 app->game_name, app->shader_library.loaded, config_now);
+        CoreConfigWindowAction config_action = {};
+        core_config_window_draw(&app->core_config, &app->core_options_ui, &config_state, app->pixel_font, app->ui_scale,
+                                &config_action);
+        CoreConfigRequest config_request = core_config_window_apply(&app->core_config, &config_action, &app->input,
+                                                                    app->session.host, &app->settings, config_now);
+        core_options_ui_apply(&app->core_options_ui, &config_action.options, &app->session);
+        if (config_request == CoreConfigRequest::choose_shader)
         {
-            app->core_config.choose_shader_request = false;
             open_shader_picker(app, app->core_config.shader_scope);
         }
         draw_shader_picker(app);   // over CORE CONFIGURATION
