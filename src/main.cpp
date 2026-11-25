@@ -1717,8 +1717,7 @@ static void handle_menu_action(App* app, MenuAction action)
             open_share_window(app);
             break;
         case MenuAction::pair:
-            start_share_link(app);
-            pair_window_open(&app->pair_window, nullptr);
+            pair_window_open(&app->pair_window, nullptr);   // app_ui_update starts FILE TRANSFER's connection
             break;
         case MenuAction::guests:
             open_guest_window(app);
@@ -4928,6 +4927,9 @@ static void net_stop(App* app)
         }
         net_service_stop(&app->net_service);
         app->net_running = false;
+        // A pairing request (it pauses the game) or our code's wait can't be
+        // answered any more, and a restarted listener numbers its peers anew.
+        pair_window_network_stopped(&app->pair_window);
     }
 }
 
@@ -5412,7 +5414,13 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         share_window_update(&app->share_window, &app->share_folders, share_link);
     }
     // TOOLS > PAIR... (PAIR WITH A HOST on SHARE's connection). Also while
-    // closed: a request opens it.
+    // closed: a request opens it. However it opened (the menu, SHARE's PAIR,
+    // a request, a pairing), FILE TRANSFER's connection starts here, the one
+    // place, so PAIR WITH A HOST never finds it missing.
+    if (app->pair_window.open)
+    {
+        start_share_link(app);
+    }
     pair_update(app);
     {
         const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start

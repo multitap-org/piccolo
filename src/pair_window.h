@@ -74,6 +74,7 @@ struct PairRequest
     bool        waiting = false;   // ALLOW pressed: until paired, or a new request (wrong code)
     bool        retry = false;     // the last code typed was wrong
     bool        focus = false;     // the code boxes take the keyboard next frame
+    bool        fresh = false;     // just came (or came back with a new code): the window is raised for it
     uint32_t    peer = 0;
     char        name[NET_DEVICE_NAME_MAX + 1] = {};
     char        code[NET_PAIR_CODE_DIGITS + 1] = {};
@@ -99,6 +100,7 @@ struct PairWindow
     bool            open = false;
     PairMode        mode = PairMode::host;
     bool            select_mode = false;   // the drawing switches the tabs to `mode` (a request came)
+    bool            raise = false;         // the drawing brings the window over every other one (a request came)
 
     // PAIR WITH A HOST.
     PairWindowPhase phase = PairWindowPhase::list;
@@ -179,3 +181,7 @@ bool pair_window_take_request(PairWindow* window, NetAccess* access, const NetAc
 void pair_window_paired(PairWindow* window, NetAccess* access, const NetAccessEvent* event, const char* name);
 // A request ended without pairing (it cancelled, left, or failed).
 void pair_window_request_gone(PairWindow* window, uint32_t peer);
+// Networking stopped (turned off, or the listener restarted): the request
+// and our own code's wait belonged to the NetAccess that's gone (its peer
+// numbers mean nothing to the next one).
+void pair_window_network_stopped(PairWindow* window);
