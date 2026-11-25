@@ -5394,6 +5394,13 @@ static void app_ui_windows(App* app, UiWindows* windows)
 // from the next frame.
 static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, UiActions* actions)
 {
+    // The pickers as they were drawn: an earlier apply below may open one
+    // again (SETTINGS' CHOOSE FOLDER, CORE CONFIGURATION's shader CHOOSE), and
+    // what was clicked in the old one must not land in the new one.
+    bool picker_drawn = app->picker.open;
+    FilePickerMode picker_mode = app->picker.mode;
+    bool shader_picker_drawn = app->shader_picker.open;
+
     onscreen_pad_apply(&app->onscreen_pad, &actions->pad);
     if (actions->pad.menu && game_has_keyboard(app))
     {
@@ -5436,8 +5443,9 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     settings_apply(app, frame, &actions->settings);
     // LOAD GAME, or CHOOSE FOLDER (opened from SETTINGS).
     FilePickerChoice picked;
-    bool choosing_folder = app->picker.mode == FilePickerMode::folder;
-    if (file_picker_apply(&app->picker, &actions->picker, &app->catalog, &picked))
+    bool choosing_folder = picker_mode == FilePickerMode::folder;
+    bool picker_same = picker_drawn && app->picker.open && app->picker.mode == picker_mode;
+    if (picker_same && file_picker_apply(&app->picker, &actions->picker, &app->catalog, &picked))
     {
         if (choosing_folder)
         {
@@ -5453,11 +5461,16 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     CoreConfigRequest config_request = core_config_window_apply(&app->core_config, &actions->config, &app->input,
                                                                 app->session.host, &app->settings, frame->config_now);
     core_options_ui_apply(&app->core_options_ui, &actions->config.options, &app->session);
+    bool shader_picker_same = shader_picker_drawn;
     if (config_request == CoreConfigRequest::choose_shader)
     {
+        shader_picker_same = false;   // opened again: this frame's clicks were in the old one
         open_shader_picker(app, app->core_config.shader_scope);
     }
-    shader_picker_apply(app, &actions->shader_picker);
+    if (shader_picker_same)
+    {
+        shader_picker_apply(app, &actions->shader_picker);
+    }
     ports_widget_apply(&app->ports_widget, &actions->ports, &app->input);
     dvr_widget_apply(&app->dvr, &actions->dvr, frame->dvr_now);
     switch (actions->quick.press)

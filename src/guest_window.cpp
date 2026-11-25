@@ -39,6 +39,7 @@ void guest_window_state(GuestWindowState* state, GuestWindow* window, const NetA
             continue;
         }
         row->present = true;
+        std::memcpy(row->key, guest->key, sizeof(row->key));
         std::snprintf(row->name, sizeof(row->name), "%s", guest->guest_name);
         row->port = input_net_peer_port(input_net, input, peer);
         NetLinkStats stats;
@@ -255,6 +256,7 @@ static void draw_guests(const GuestWindow* window, const GuestWindowState* state
         {
             action->kick = true;
             action->kick_peer = peer;
+            std::memcpy(action->kick_key, guest->key, sizeof(action->kick_key));
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::guests_kick_tip));
         retro_ui_pop_id();
@@ -411,9 +413,15 @@ GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction
     {
         net_access_guest_set_level(access, static_cast<NetGuestLevel>(window->level));
     }
+    // The network lock was let go while drawing: the guest on that peer may
+    // have left and another taken its place. Kick only the one that was shown.
     if (action->kick && access != nullptr)
     {
-        net_access_guest_kick(access, action->kick_peer);
+        const NetAccessPeer* guest = net_access_guest(access, action->kick_peer);
+        if (guest != nullptr && std::memcmp(guest->key, action->kick_key, sizeof(action->kick_key)) == 0)
+        {
+            net_access_guest_kick(access, action->kick_peer);
+        }
     }
     if (action->copy)
     {

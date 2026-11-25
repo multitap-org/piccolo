@@ -89,6 +89,7 @@ struct GuestWindow
 struct GuestWindowGuest
 {
     bool     present = false;                    // a guest is on this peer
+    uint8_t  key[NET_KEY_SIZE] = {};             // which guest (KICK checks it's still the same one)
     char     name[NET_GUEST_MAX_NAME + 1] = {};  // "" : it gave none
     int32_t  port = INPUT_NO_PORT;               // where it plays (the router)
     bool     ping_known = false;
@@ -113,8 +114,9 @@ struct GuestWindowAction
     GuestWindowPress press = GuestWindowPress::none;
     bool     seats_changed = false;              // window->seats changed: a live link takes it
     bool     level_changed = false;              // window->level changed: a live link takes it
-    bool     kick = false;                       // KICK on `kick_peer`
+    bool     kick = false;                       // KICK on `kick_peer`, if it's still `kick_key`
     uint32_t kick_peer = 0;
+    uint8_t  kick_key[NET_KEY_SIZE] = {};
     bool     copy = false;                       // COPY: the link to the clipboard
 };
 
