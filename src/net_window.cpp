@@ -543,6 +543,10 @@ static void draw_hosts(const DeviceColumns* columns, const NetWindowState* state
             action->forget_host = true;
             action->forget_host_index = i;
         }
+        if (pressed >= 0)
+        {
+            std::snprintf(action->host_name, sizeof(action->host_name), "%s", card.name);
+        }
         retro_ui_pop_id();
     }
     retro_ui_pop_id();

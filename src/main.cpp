@@ -3698,6 +3698,17 @@ static bool net_devices_unchanged(const std::vector<NetTrustedDevice>* shown, co
     return true;
 }
 
+// A host's FORGET / CONNECT names it by its index in the hosts list as
+// drawn (a copy); the live list may have changed since (a pairing, a host
+// forgotten), so the press counts only if that index still holds the same
+// host. By name: FILE TRANSFER's connection doesn't tell the hosts' keys.
+static bool share_host_unchanged(App* app, uint32_t index, const char* name)
+{
+    NetShareLinkStatus live;
+    net_share_link_status(&app->share_link, &live);
+    return index < live.paired.size() && live.paired[index] == name;
+}
+
 // What was done in SETTINGS (its NETWORK tab under the network lock: it
 // changes the NetAccess, pairing, levels, FORGET).
 static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowAction* action)
@@ -3724,14 +3735,16 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
     {
         net_service_unlock(&app->net_service);
     }
-    if (action->network.forget_host && frame->hosts_known)
+    if (action->network.forget_host && frame->hosts_known &&
+        share_host_unchanged(app, action->network.forget_host_index, action->network.host_name))
     {
         net_share_link_forget_host(&app->share_link, action->network.forget_host_index);
     }
     // CONNECT on a paired host: FILE TRANSFER opens, connected to it (the
     // only thing a connection to a host is for here), across the internet
     // through BEACON SERVER as FILE TRANSFER's own CONNECT does.
-    if (action->network.connect_host && frame->hosts_known)
+    if (action->network.connect_host && frame->hosts_known &&
+        share_host_unchanged(app, action->network.connect_host_index, action->network.host_name))
     {
         open_share_window(app);
         net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));

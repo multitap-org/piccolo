@@ -20,7 +20,7 @@
 //   +--------------------------------------------------------------+
 //
 // The settings rows edit piccolo's global settings; main.cpp restarts the
-// listener when ALLOW CONNECTIONS or PORT change. The device list acts on the
+// listener when ENABLE NETWORKING or PORT change. The device list acts on the
 // running NetAccess (net_window_apply). Pairing isn't here (Andrés,
 // 2026-11-22: SETTINGS holds configuration, not actions): a device asks, and
 // TOOLS > PAIR... (pair_window.h) opens on PAIR WITH A CLIENT to take the
@@ -92,8 +92,8 @@ struct NetWindowState
     // The paired devices, read only (drawn under the network lock).
     const std::vector<NetTrustedDevice>* devices = nullptr;
     NetWindowPeer       peers[NET_MAX_PEERS];
-    // The piccolos this one connects to (its client side, SHARE / PAIR);
-    // nullptr: unknown (SHARE's connection doesn't run).
+    // The piccolos this one connects to (its client side, FILE TRANSFER /
+    // PAIR); nullptr: unknown (FILE TRANSFER's connection doesn't run).
     const std::vector<std::string>* hosts = nullptr;
     const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
 };
@@ -107,18 +107,23 @@ struct NetWindowAction
     bool           forget = false;     // FORGET device `forget_device`
     uint32_t       forget_device = 0;
     bool           owner_yes = false;  // the confirmation said YES: confirm_level to owner_key
-    bool           forget_host = false;   // FORGET host `forget_host_index` (main.cpp: SHARE's connection)
+    bool           forget_host = false;   // FORGET host `forget_host_index` (main.cpp: FILE TRANSFER's connection)
     uint32_t       forget_host_index = 0;
     bool           disconnect = false;    // DISCONNECT connection `disconnect_peer`, if it's still the
     uint32_t       disconnect_peer = 0;   // device with `disconnect_key`
     uint8_t        disconnect_key[NET_KEY_SIZE] = {};
     bool           connect_host = false;  // CONNECT host `connect_host_index` (main.cpp: FILE TRANSFER)
     uint32_t       connect_host_index = 0;
+    // FORGET / CONNECT on a host: its name as drawn. The hosts list was
+    // copied for drawing and the index is into the live one: main.cpp acts
+    // only if the live list still has this name there (FILE TRANSFER's
+    // connection tells hosts' names, not their keys).
+    char           host_name[256] = {};   // (room for any name the list holds)
 };
 
 // The tab's state. `access` nullptr while networking is off; `speed`: the
 // speed test results, by device key; `hosts` / `hosts_online` nullptr when
-// SHARE's connection doesn't run. Under the network lock.
+// FILE TRANSFER's connection doesn't run. Under the network lock.
 void net_window_state(NetWindowState* state, const Settings* settings, const Localization* strings,
                       const NetAccess* access, bool listen_failed, const char* this_device,
                       const std::vector<NetSpeedSummary>* speed, bool internet,

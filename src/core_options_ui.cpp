@@ -422,7 +422,7 @@ static void draw_stored(CoreOptionsUi* ui, const CoreOptionsUiState* state, Core
     std::vector<CachedCoreOption> cached;
     core_options_cache_get(state->cache, core, &cached);
 
-    // Which section opens (Andres, testing round 1): the running game's when
+    // Which section opens (Andrés, testing round 1): the running game's when
     // it has values for this core (that's what is being looked at), GENERAL
     // otherwise. Folders and other games start folded.
     const std::string* game_section = nullptr;
