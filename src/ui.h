@@ -19,6 +19,7 @@
 #include "core_config_window.h"
 #include "core_options_ui.h"
 #include "cores_window.h"
+#include "debug_preview.h"
 #include "debug_window.h"
 #include "dvr_widget.h"
 #include "file_picker.h"
@@ -118,6 +119,7 @@ struct UiView
     TextInputWindowState    text_input = {};
     bool                    debug_shown = false;
     DebugWindowState        debug = {};
+    DebugPreviewView        preview = {};   // the debug window's preview of a window, if any
     AboutWindowState        about = {};
     bool                    fps_shown = false;
     const FpsMeter*         fps_meter = nullptr;
@@ -147,6 +149,7 @@ struct UiWindows
     MapWindow*         map = nullptr;
     TextInputWindow*   text_input = nullptr;
     AboutWindow*       about = nullptr;
+    DebugPreviews*     previews = nullptr;   // the debug window's fake windows
 };
 
 // What the user did this frame, every window's action. Zeroed before
@@ -173,6 +176,7 @@ struct UiActions
     ShaderCheckChoice        shader_check = ShaderCheckChoice::none;
     TextInputWindowAction    text_input = {};
     DebugWindowAction        debug = {};
+    DebugPreviewActions      preview = {};
     AboutWindowAction        about = {};
 };
 

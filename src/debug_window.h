@@ -22,6 +22,23 @@
 // play, fast forward).
 constexpr uint32_t DEBUG_WINDOW_ICON_COUNT = 4;
 
+// The windows the debug window shows as previews (debug_preview.h), one at a
+// time: drawn by their own draw functions with fake state, what's pressed in
+// them ignored, closing them (X, CLOSE, Escape) ends the preview.
+enum class DebugPreview
+{
+    none,
+    // PAIR, each step of both modes (pair_window.h).
+    pair_host_list,            // PAIR WITH A HOST: the devices found
+    pair_host_code_lan,        // our code, for a device on this network
+    pair_host_code_internet,   // our code, across the internet
+    pair_host_paired,          // paired, with LET IT CONNECT ...? YES / NO
+    pair_client_type,          // PAIR WITH A CLIENT: type the code
+    pair_client_waiting,       // ALLOW pressed: waiting
+    pair_client_request,       // a device asking
+    pair_client_paired,        // paired
+};
+
 struct DebugWindowState
 {
     // About
@@ -55,6 +72,7 @@ struct DebugWindowState
     bool text_box_allowed  = false;   // no text box is pending already
     bool keep_revert_allowed = false; // KEEP / REVERT isn't asking already
     bool pair_request_card = false;   // the fake pairing request's card is up
+    bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
 };
 
 enum class DebugWindowPress
@@ -81,6 +99,7 @@ struct DebugWindowAction
     bool closed = false;
     bool icons_forced[DEBUG_WINDOW_ICON_COUNT] = {};   // the checkboxes after this frame
     bool pair_request_card = false;                    // its checkbox after this frame
+    DebugPreview preview = DebugPreview::none;         // a preview to show
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).

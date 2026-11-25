@@ -88,6 +88,40 @@ static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction
     retro_ui_dim_text("Text box and KEEP / REVERT show once the menu is closed.", nullptr);
 }
 
+static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)
+{
+    if (same_line)
+    {
+        retro_ui_same_line();
+    }
+    if (retro_ui_button(label))
+    {
+        action->preview = what;
+    }
+}
+
+// Every new or rebuilt window, with fake state (debug_preview.h).
+static void draw_previews(const DebugWindowState* state, DebugWindowAction* action)
+{
+    retro_ui_dim_text("Fake state: presses do nothing; X, CLOSE or Escape ends a preview.", nullptr);
+    retro_ui_begin_disabled(state->pair_open);
+    retro_ui_text("PAIR WITH A HOST");
+    preview_button(action, "Devices", DebugPreview::pair_host_list, false);
+    preview_button(action, "Code: this network", DebugPreview::pair_host_code_lan, true);
+    preview_button(action, "Code: internet", DebugPreview::pair_host_code_internet, true);
+    preview_button(action, "Paired: YES / NO", DebugPreview::pair_host_paired, true);
+    retro_ui_text("PAIR WITH A CLIENT");
+    preview_button(action, "Type the code", DebugPreview::pair_client_type, false);
+    preview_button(action, "Waiting", DebugPreview::pair_client_waiting, true);
+    preview_button(action, "A request", DebugPreview::pair_client_request, true);
+    preview_button(action, "Paired", DebugPreview::pair_client_paired, true);
+    retro_ui_end_disabled();
+    if (state->pair_open)
+    {
+        retro_ui_dim_text("PAIR is open: close it to preview it.", nullptr);
+    }
+}
+
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)
 {
     *action = {};
@@ -114,6 +148,10 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", true))
         {
             draw_window_widgets(state, action);
+        }
+        if (retro_ui_section_header("previews", "Dialogs (preview)", true))
+        {
+            draw_previews(state, action);
         }
     }
     retro_ui_window_end();

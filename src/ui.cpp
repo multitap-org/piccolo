@@ -119,6 +119,8 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
         text_input_window_draw(windows->text_input, &view->text_input, pixel_font, scale, &actions->text_input);
     }
     about_window_draw(windows->about, &view->about, pixel_font, scale, &actions->about);
+    // The debug window's preview of a window (never up with the real one).
+    debug_preview_draw(windows->previews, &view->preview, pixel_font, scale, &actions->preview);
     if (view->debug_shown)
     {
         debug_window_draw(&view->debug, pixel_font, scale, &actions->debug);

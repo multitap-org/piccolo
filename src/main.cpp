@@ -325,7 +325,7 @@ struct App
     // A core's TEXT request (text_input_window.h): open while it's pending.
     TextInputWindow  text_input_window = {};
     AboutWindow      about_window = {};       // MISC > ABOUT
-    DebugPreviews    debug_previews;          // the debug window's fake cards (debug_preview.h)
+    DebugPreviews    debug_previews;          // the debug window's fake cards and windows (debug_preview.h)
 
     bool             safe_start_open = false;
     bool             safe_start_confirmed = false;    // the next start skips the check (answered)
@@ -2598,6 +2598,12 @@ static bool pair_accept_held(const App* app)
 // then the game.
 static void ui_do_back(App* app)
 {
+    // The debug window's preview first: it's on top, and not a MAIN MENU window.
+    if (debug_preview_shown(&app->debug_previews))
+    {
+        debug_preview_end(&app->debug_previews);
+        return;
+    }
     // A view inside CORE CONFIGURATION (its shader picker, the remap view)
     // closes before the window, while it's the top one.
     bool sub_view = ui_top_window(&app->ui) == UiWindow::core_config &&
@@ -3916,6 +3922,7 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->text_box_allowed = state->game_running && !text_input_pending(app);
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
     state->pair_request_card = app->debug_previews.request_card;
+    state->pair_open = app->pair_window.open;
 }
 
 // What was pressed in the debug window.
@@ -3932,6 +3939,10 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
 
     uint64_t now_ms = SDL_GetTicks();
     debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
+    if (action->preview != DebugPreview::none)
+    {
+        debug_preview_show(&app->debug_previews, action->preview);
+    }
     static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
     uint32_t dvr_card = 3;
     switch (action->press)
@@ -5559,6 +5570,8 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         }
         pair_window_update(&app->pair_window, pair_link, pair_request_in_game(app), SDL_GetTicks());
     }
+    // The debug window's preview of a window ends when the real one opens.
+    debug_preview_update(&app->debug_previews, app->pair_window.open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();
@@ -5676,6 +5689,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     {
         debug_window_state(app, &view->debug);
     }
+    debug_preview_state(&view->preview, &app->debug_previews, &app->strings);
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {
@@ -5707,6 +5721,7 @@ static void app_ui_windows(App* app, UiWindows* windows)
     windows->map = &app->map_window;
     windows->text_input = &app->text_input_window;
     windows->about = &app->about_window;
+    windows->previews = &app->debug_previews;
 }
 
 // What the user did this frame, applied in the order the windows are drawn
@@ -5953,6 +5968,9 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         }
         text_input_window_apply(&app->text_input_window, &actions->text_input, app->session.host);
     }
+    // (Before the debug window's: a preview it starts now gets this frame's
+    // presses of the one before.)
+    debug_preview_apply(&app->debug_previews, &actions->preview);
     if (view->debug_shown)
     {
         debug_window_apply(app, &actions->debug);
