@@ -5,11 +5,11 @@
 
 #include <SDL3/SDL.h>
 
-#include "imgui.h"
-
 #include "app_shell.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
 // Room for any thumbnail (the picture at x1: a few hundred pixels across).
 constexpr uint32_t THUMBNAIL_CAPACITY = 1024;
@@ -109,45 +109,36 @@ static void draw_slots(QuickMenu* menu, float block, bool appearing)
     {
         if (slot > LIBRETRO_STATE_SLOT_FIRST)
         {
-            ImGui::SameLine();
+            retro_ui_same_line();
         }
-        bool used = menu->slots[slot].used;
         bool selected = slot == menu->slot;
-        if (used)
-        {
-            ImGui::PushStyleColor(ImGuiCol_Button, retro_ui_color_vec4(USED_SLOT));
-        }
-        if (selected)
-        {
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, block);
-        }
+        RetroUiTile tile = {};
+        tile.width = size;
+        tile.height = size;
+        tile.face = menu->slots[slot].used ? USED_SLOT : 0;
+        tile.chosen = selected;
+        tile.edge = block;
         // The focused button is the selection (arrows move it), so a slot
         // picked otherwise (opening, 1-9) takes the focus too.
         if ((appearing || menu->focus_slot) && selected)
         {
-            ImGui::SetKeyboardFocusHere();
+            tile.focus = true;
             menu->focus_slot = false;
         }
         char label[16] = {};
         std::snprintf(label, sizeof(label), "%u", slot);
-        if (retro_ui_button_sized(label, size, size) || ImGui::IsItemFocused())
+        retro_ui_push_index(slot);
+        if (retro_ui_tile("slot", label, &tile))
         {
             menu->slot = slot;
         }
-        if (selected)
-        {
-            ImGui::PopStyleVar();
-        }
-        if (used)
-        {
-            ImGui::PopStyleColor();
-        }
+        retro_ui_pop_id();
     }
     // Number keys pick a slot directly.
     for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
     {
-        ImGuiKey key = static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_1) + static_cast<int>(slot - 1));
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(key, false))
+        RetroUiKey key = static_cast<RetroUiKey>(static_cast<int32_t>(RetroUiKey::digit_1) + static_cast<int32_t>(slot - 1));
+        if (retro_ui_window_focused() && retro_ui_key_pressed(key, false))
         {
             menu->slot = slot;
             menu->focus_slot = true;
@@ -159,99 +150,97 @@ static void draw_slots(QuickMenu* menu, float block, bool appearing)
 static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* context, float block, bool appearing)
 {
     const Localization* strings = context->strings;
-    const ImGuiIO& io = ImGui::GetIO();
     QuickMenuAction action = QuickMenuAction::none;
     draw_slots(menu, block, appearing);
     load_thumbnail(menu);
 
     // The thumbnail at the biggest whole-number scale that fits (sharp pixels:
     // nearest filtering, on whole pixels), the slot's details beside it. Room:
-    // most of the width, the height left under the slots.
+    // most of the width, the height left under the slots (less the spacing
+    // below a line).
     const StateSlotInfo* info = &menu->slots[menu->slot];
-    ImVec2 room = ImGui::GetContentRegionAvail();
-    room.x = static_cast<float>(static_cast<int>(room.x * 0.6f));
-    room.y = static_cast<float>(static_cast<int>(room.y - ImGui::GetStyle().ItemSpacing.y));
-    room.x = room.x > 160.0f * block ? room.x : 160.0f * block;
-    room.y = room.y > 120.0f * block ? room.y : 120.0f * block;
+    float room_x = static_cast<float>(static_cast<int>(retro_ui_width_left() * 0.6f));
+    float room_y = static_cast<float>(static_cast<int>(retro_ui_height_left() - (retro_ui_line_step() - retro_ui_line_height())));
+    room_x = room_x > 160.0f * block ? room_x : 160.0f * block;
+    room_y = room_y > 120.0f * block ? room_y : 120.0f * block;
     bool showing = menu->has_picture && menu->shown_slot == menu->slot && menu->texture.imgui_id != 0 &&
                    menu->width > 0 && menu->height > 0;
-    ImVec2 box(room.x, room.x * 3.0f / 4.0f);   // no picture: a 4:3 box
-    if (box.y > room.y)
+    float box_x = room_x;   // no picture: a 4:3 box
+    float box_y = room_x * 3.0f / 4.0f;
+    if (box_y > room_y)
     {
-        box = ImVec2(room.y * 4.0f / 3.0f, room.y);
+        box_x = room_y * 4.0f / 3.0f;
+        box_y = room_y;
     }
     if (showing)
     {
         float width = static_cast<float>(menu->width);
         float height = static_cast<float>(menu->height);
-        int scale_x = static_cast<int>(room.x / width);
-        int scale_y = static_cast<int>(room.y / height);
+        int scale_x = static_cast<int>(room_x / width);
+        int scale_y = static_cast<int>(room_y / height);
         int scale = scale_x < scale_y ? scale_x : scale_y;
         if (scale >= 1)
         {
-            box = ImVec2(width * static_cast<float>(scale), height * static_cast<float>(scale));
+            box_x = width * static_cast<float>(scale);
+            box_y = height * static_cast<float>(scale);
         }
         else
         {
             // Not even once: shrunk to fit (it can't be whole pixels then).
             float aspect = width / height;
-            box = ImVec2(room.x, room.x / aspect);
-            if (box.y > room.y)
+            box_x = room_x;
+            box_y = room_x / aspect;
+            if (box_y > room_y)
             {
-                box = ImVec2(room.y * aspect, room.y);
+                box_x = room_y * aspect;
+                box_y = room_y;
             }
         }
     }
-    box = ImVec2(static_cast<float>(static_cast<int>(box.x)), static_cast<float>(static_cast<int>(box.y)));
-    ImVec2 corner = ImGui::GetCursorScreenPos();
-    corner = ImVec2(static_cast<float>(static_cast<int>(corner.x)), static_cast<float>(static_cast<int>(corner.y)));
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(corner, ImVec2(corner.x + box.x, corner.y + box.y), IM_COL32(0, 0, 0, 255));
+    box_x = static_cast<float>(static_cast<int>(box_x));
+    box_y = static_cast<float>(static_cast<int>(box_y));
+    // A canvas: its corner is on a whole pixel, and retro_ui_begin_window()
+    // switched the window to nearest sampling.
+    retro_ui_canvas(box_x, box_y);
+    retro_ui_canvas_rect(0.0f, 0.0f, box_x, box_y, 0xFF000000u);
     if (showing)
     {
         float u = 0.0f;
         float v = 0.0f;
         video_texture_uv_max(&menu->texture, &u, &v);
-        const ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
-        draw_list->AddImage(ImTextureRef(static_cast<ImTextureID>(menu->texture.imgui_id)), corner,
-                            ImVec2(corner.x + box.x, corner.y + box.y), ImVec2(0.0f, 0.0f), ImVec2(u, v));
-        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
+        retro_ui_canvas_image(menu->texture.imgui_id, 0.0f, 0.0f, box_x, box_y, u, v, 0xFFFFFFFFu);
     }
-    ImGui::Dummy(box);
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    ImGui::Text("%s %u", piccolo_text(strings, Str::quick_menu_slot), menu->slot);
+    retro_ui_same_line();
+    retro_ui_begin_group();
+    retro_ui_text_format("%s %u", piccolo_text(strings, Str::quick_menu_slot), menu->slot);
     if (info->used)
     {
         SDL_DateTime date = {};
         SDL_TimeToDateTime(info->modified, &date, true);
-        ImGui::Text("%04d-%02d-%02d", date.year, date.month, date.day);   // two lines: the panel is narrow
-        ImGui::Text("%02d:%02d", date.hour, date.minute);
+        retro_ui_text_format("%04d-%02d-%02d", date.year, date.month, date.day);   // two lines: the panel is narrow
+        retro_ui_text_format("%02d:%02d", date.hour, date.minute);
     }
     else
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::quick_menu_empty));
+        retro_ui_dim_text(piccolo_text(strings, Str::quick_menu_empty), nullptr);
     }
-    ImGui::Spacing();
-    bool keys = !io.WantTextInput && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    if (retro_ui_button(piccolo_text(strings, Str::quick_menu_save)) || (keys && ImGui::IsKeyPressed(ImGuiKey_S, false)))
+    retro_ui_spacing();
+    bool keys = !ui_toolkit_wants_text() && retro_ui_window_focused();
+    if (retro_ui_button(piccolo_text(strings, Str::quick_menu_save)) || (keys && retro_ui_key_pressed(RetroUiKey::s, false)))
     {
         action = QuickMenuAction::save;
     }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!info->used);
+    retro_ui_same_line();
+    retro_ui_begin_disabled(!info->used);
     if (retro_ui_button(piccolo_text(strings, Str::quick_menu_load)) ||
-        (info->used && keys && ImGui::IsKeyPressed(ImGuiKey_L, false)))
+        (info->used && keys && retro_ui_key_pressed(RetroUiKey::l, false)))
     {
         action = QuickMenuAction::load;
     }
-    ImGui::EndDisabled();
-    ImGui::EndGroup();
-    ImGui::Spacing();
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", piccolo_text(strings, Str::quick_menu_keys));
-    ImGui::PopTextWrapPos();
+    retro_ui_end_disabled();
+    retro_ui_end_group();
+    retro_ui_spacing();
+    retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::quick_menu_keys), 0.0f);
     return action;
 }
 
@@ -274,60 +263,62 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
 
     QuickMenuAction action = QuickMenuAction::none;
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
     // A window in the middle, 320 x 250 retro pixels, never bigger than the
-    // screen. The same size every frame (the thumbnail takes the room left).
-    ImVec2 size(320.0f * block, 250.0f * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 8.0f * block ? size.y : io.DisplaySize.y - 8.0f * block;
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(static_cast<int>(size.x)), static_cast<float>(static_cast<int>(size.y))),
-                             ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-    char title[200] = {};
-    std::snprintf(title, sizeof(title), "%s###quick_menu", piccolo_text(strings, Str::quick_menu_title));
-    if (ImGui::Begin(title, nullptr, flags))
+    // screen. The same size every frame (the thumbnail takes the room left),
+    // and it never scrolls.
+    float width = 320.0f * block;
+    float height = 250.0f * block;
+    width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    height = height < screen_height - 8.0f * block ? height : screen_height - 8.0f * block;
+    RetroUiWindow window = {};
+    window.id = "quick_menu";
+    window.title = piccolo_text(strings, Str::quick_menu_title);
+    window.width = static_cast<float>(static_cast<int>(width));
+    window.height = static_cast<float>(static_cast<int>(height));
+    window.centered = true;
+    window.focus_on_open = true;
+    window.scrolls = false;
+    bool closed = false;
+    if (retro_ui_window_begin(&window, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             menu->open = false;
         }
-        bool appearing = ImGui::IsWindowAppearing();
-        if (appearing)
-        {
-            ImGui::SetWindowFocus();
-        }
-        const ImGuiStyle& style = ImGui::GetStyle();
+        bool appearing = retro_ui_window_appearing();
 
         // What runs (the pixel font draws it in capitals).
+        char running[600] = {};
         if (context->game_name[0] != '\0')
         {
-            ImGui::TextDisabled("%s - %s", context->game_name, context->core_name);
+            std::snprintf(running, sizeof(running), "%s - %s", context->game_name, context->core_name);
         }
         else
         {
-            ImGui::TextDisabled("%s", context->core_name);
+            std::snprintf(running, sizeof(running), "%s", context->core_name);
         }
-        ImGui::Spacing();
+        retro_ui_dim_text(running, nullptr);
+        retro_ui_spacing();
         // The actions on the running core: PAUSE, DVR and CONFIG (CORE
         // CONFIGURATION), then RESET and CLOSE GAME, a row apart.
-        float width = ImGui::GetContentRegionAvail().x;
-        float third = static_cast<float>(static_cast<int>((width - 2.0f * style.ItemSpacing.x) / 3.0f));
-        float half = static_cast<float>(static_cast<int>((width - style.ItemSpacing.x) / 2.0f));
+        float row_width = retro_ui_width_left();
+        float third = static_cast<float>(static_cast<int>((row_width - 2.0f * retro_ui_item_spacing()) / 3.0f));
+        float half = static_cast<float>(static_cast<int>((row_width - retro_ui_item_spacing()) / 2.0f));
         if (retro_ui_button_sized(piccolo_text(strings, context->user_paused ? Str::quick_menu_resume : Str::quick_menu_pause),
                                   third, 0.0f))
         {
             action = QuickMenuAction::pause;
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_dvr), third, 0.0f))
         {
             action = QuickMenuAction::dvr;   // a window widget: it replaces QUICK MENU
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_config), third, 0.0f))
         {
             action = QuickMenuAction::config;   // CORE CONFIGURATION, a MAIN MENU window
@@ -337,18 +328,17 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
         {
             action = QuickMenuAction::reset;
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_close_game), half, 0.0f))
         {
             action = QuickMenuAction::close_game;
         }
-        ImGui::Separator();
-        ImGui::Spacing();
+        retro_ui_separator();
+        retro_ui_spacing();
         QuickMenuAction states = draw_states(menu, context, block, appearing);
         action = states != QuickMenuAction::none ? states : action;
-        retro_ui_end_window();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
     return action;
 }
