@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdio>
 
-#include "imgui.h"
 #include "retro_ui.h"
 
 // The chip, in the retro UI's blocks (the DVR's HUD chip has the same size).
