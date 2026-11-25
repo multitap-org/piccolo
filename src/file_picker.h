@@ -72,7 +72,7 @@ struct FilePicker
     // Current folder's contents, sorted (case-insensitive). Re-read when the
     // folder, the core or "show all" changes.
     // Any number of them (a full No-Intro set is thousands); only the rows
-    // in view are drawn (ImGuiListClipper).
+    // in view are drawn (retro_ui_begin_clipped).
     std::vector<std::string> folders;
     std::vector<std::string> files;
     int32_t selected_file = -1;
