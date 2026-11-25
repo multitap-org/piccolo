@@ -196,7 +196,6 @@ add_subdirectory(deps/libretro/frontend-libretro)
 
 set(PICCOLO_SOURCES
     src/main.cpp
-    src/menus.cpp
     src/file_picker.cpp
     src/piccolo_settings.cpp
     src/settings_ui.cpp
@@ -228,7 +227,6 @@ set(PICCOLO_SOURCES
     src/fps_meter.cpp
     src/remap_widget.cpp
     src/state_widget.cpp
-    src/screen_effects.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)
@@ -274,8 +272,8 @@ add_custom_command(
     COMMENT "Generating piccolo's string IDs from strings.txt"
     VERBATIM)
 
-# piccolo's logic with no GUI: the settings rows' view state, the UI modes and
-# the UI text. Built without ImGui's include path (it links frontend_settings,
+# piccolo's logic with no GUI: the settings rows' view state, the UI modes,
+# the UI text, the menus as data and the screen effects' rules. Built without ImGui's include path (it links frontend_settings,
 # not frontend_common), so a stray #include "imgui.h" here fails to compile:
 # the separation doesn't depend on anyone remembering it. The windows' drawing
 # stays in the piccolo target.
@@ -283,6 +281,8 @@ add_library(piccolo_logic STATIC
     src/settings_view.cpp
     src/piccolo_text.cpp
     src/ui_mode.cpp
+    src/menus.cpp
+    src/screen_effects.cpp
     "${PICCOLO_GENERATED}/piccolo_strings.cpp"
 )
 target_include_directories(piccolo_logic PUBLIC src "${PICCOLO_GENERATED}")
@@ -517,9 +517,8 @@ if(MULTITAP_BUILD_TESTS)
         PASS_REGULAR_EXPRESSION "settings view: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp src/screen_effects.cpp)
-    target_include_directories(piccolo_screen_effects_test PRIVATE src)
-    target_link_libraries(piccolo_screen_effects_test PRIVATE frontend_common)
+    add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp)
+    target_link_libraries(piccolo_screen_effects_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_screen_effects_test)
     add_test(NAME piccolo_screen_effects COMMAND piccolo_screen_effects_test)
     set_tests_properties(piccolo_screen_effects PROPERTIES
