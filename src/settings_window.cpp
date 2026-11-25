@@ -15,6 +15,7 @@
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "settings_ui.h"
 
 void settings_window_open(SettingsWindow* window, SettingsTab tab)
@@ -81,33 +82,28 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     {
         set++;
     }
-    // The field up to "-" at the right edge.
-    float remove_width = ImGui::CalcTextSize("-").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    // The field up to "-" at the right edge, lined up with the setting rows.
     const char* label = piccolo_text(ui->strings, Str::setting_path_games);
     int32_t remove = -1;
     for (uint32_t i = 0; i < set; i++)
     {
-        ImGui::PushID(PICCOLO_PATH_GAMES[i]);
-        ImGui::Dummy(ImGui::CalcTextSize("C"));   // the marker column, so rows line up with the others
-        ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
-        float start = ImGui::GetCursorPosX();
-        ImGui::TextUnformatted(label);
-        retro_ui_item_tooltip(piccolo_text(ui->strings, Str::setting_path_games_help));
-        ImGui::SameLine(start + ui->label_width);
-
-        if (settings_ui_folder_field(ui, settings_get_text(ui->settings, PICCOLO_PATH_GAMES[i]), nullptr,
-                                     remove_width + ImGui::GetStyle().ItemSpacing.x))
+        RetroUiRow row = {};
+        row.id = PICCOLO_PATH_GAMES[i];
+        row.label = label;
+        row.help = piccolo_text(ui->strings, Str::setting_path_games_help);
+        row.label_width = ui->label_width;
+        row.end_button = "-";
+        row.end_button_help = piccolo_text(ui->strings, Str::game_folder_remove_help);
+        retro_ui_row_begin(&row);
+        if (retro_ui_picker_field("value", nullptr, settings_get_text(ui->settings, PICCOLO_PATH_GAMES[i]),
+                                  piccolo_text(ui->strings, Str::game_folder_choose_help)))
         {
             window->choose_folder_key = PICCOLO_PATH_GAMES[i];
         }
-        ImGui::SameLine(ImGui::GetContentRegionMax().x - remove_width);
-        if (retro_ui_button("-"))
+        if (retro_ui_row_end(&row))
         {
             remove = static_cast<int32_t>(i);
         }
-        retro_ui_item_tooltip(piccolo_text(ui->strings, Str::game_folder_remove_help));
-        ImGui::PopID();
     }
     if (remove >= 0)
     {

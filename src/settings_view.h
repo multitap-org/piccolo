@@ -27,7 +27,13 @@ struct SettingRowState
     const char* key   = nullptr;
     const char* label = nullptr;   // in the current language
     const char* help  = nullptr;   // in the current language; nullptr: none
-    const char* value = nullptr;   // in effect at the scope being edited
+    const char* value = nullptr;   // in effect at the scope being edited, as text
+    // The same value read for its type (only the field of the setting's type counts):
+    bool     checked    = false;   // boolean
+    uint32_t enum_index = 0;       // enumeration: index into descriptor->values (0 if unknown)
+    int32_t  integer    = 0;       // integer
+    float    real       = 0.0f;    // real
+    uint32_t color      = 0xFF000000u;   // color, 0xFFRRGGBB
     bool enabled = true;           // false: a global-only setting while a core or game scope is edited
     SettingLayer override_layer = SettingLayer::defaults;   // core or game: draw C or G; anything else: nothing
     bool can_reset = false;        // the scope being edited defines the value (RESET shows)

@@ -3,6 +3,7 @@
 #include "settings_view.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include "piccolo_text.h"
@@ -21,6 +22,38 @@ static double round_to_step(const SettingDescriptor* descriptor, double number)
     return std::round(number / descriptor->step_real) * descriptor->step_real;
 }
 
+// The row's text value read for its type, so the drawing doesn't parse text.
+static void read_typed_value(const SettingDescriptor* descriptor, SettingRowState* row)
+{
+    switch (descriptor->type)
+    {
+    case SettingType::boolean:
+        row->checked = std::strcmp(row->value, "true") == 0;
+        break;
+    case SettingType::enumeration:
+        for (uint32_t i = 0; i < descriptor->value_count; i++)
+        {
+            if (std::strcmp(descriptor->values[i].key, row->value) == 0)
+            {
+                row->enum_index = i;
+            }
+        }
+        break;
+    case SettingType::integer:
+        row->integer = static_cast<int32_t>(std::strtol(row->value, nullptr, 10));
+        break;
+    case SettingType::real:
+        row->real = std::strtof(row->value, nullptr);
+        break;
+    case SettingType::color:
+        settings_color_from_text(row->value, &row->color);
+        break;
+    case SettingType::path:
+    case SettingType::text:
+        break;
+    }
+}
+
 bool settings_view_row(const Settings* settings, const Localization* strings, SettingLayer scope, const char* key,
                        SettingRowState* row)
 {
@@ -35,6 +68,7 @@ bool settings_view_row(const Settings* settings, const Localization* strings, Se
     row->label = piccolo_text_id(strings, descriptor->label);   // "" when it has none
     row->help = descriptor->help == SETTING_NO_TEXT ? nullptr : piccolo_text_id(strings, descriptor->help);
     row->value = settings_get_at(settings, scope, key, nullptr);
+    read_typed_value(descriptor, row);
     row->enabled = descriptor->overridable || scope == SettingLayer::global;
     // The marker shows where the effective value comes from, whatever scope is edited.
     SettingLayer source = SettingLayer::defaults;

@@ -21,11 +21,16 @@ static void check(bool condition, const char* what)
     }
 }
 
+static const SettingEnumValue ASPECTS[] = {{"4:3"}, {"16:9"}, {"8:7"}};
+
 static const SettingDescriptor DESCRIPTORS[] = {
     {"volume", SettingType::integer, "50", true, 0, 100, 5},
     {"language", SettingType::text, "en", false},
     {"scale", SettingType::real, "1.0", true, 0, 0, 1, 0.5, 4.0, 0.5},
     {"folder", SettingType::path, "", true},
+    {"vsync", SettingType::boolean, "true", true},
+    {"aspect", SettingType::enumeration, "16:9", true, 0, 0, 1, 0.0, 0.0, 0.0, ASPECTS, 3},
+    {"tint", SettingType::color, "#FF8000", true},
 };
 constexpr uint32_t DESCRIPTOR_COUNT = sizeof(DESCRIPTORS) / sizeof(DESCRIPTORS[0]);
 
@@ -64,6 +69,28 @@ static void test_rows()
     check(!row.enabled && !row.can_reset, "global-only while editing a core: greyed out, no RESET");
     settings_view_row(&settings, nullptr, SettingLayer::global, "language", &row);
     check(row.enabled, "global-only while editing global: enabled");
+}
+
+static void test_typed_values()
+{
+    Settings settings;
+    make_settings(&settings);
+    SettingRowState row = {};
+
+    settings_view_row(&settings, nullptr, SettingLayer::global, "vsync", &row);
+    check(row.checked, "a boolean: read as checked");
+    settings_view_row(&settings, nullptr, SettingLayer::global, "aspect", &row);
+    check(row.enum_index == 1, "an enum: read as its index");
+    settings_view_row(&settings, nullptr, SettingLayer::global, "volume", &row);
+    check(row.integer == 50, "an integer: read as a number");
+    settings_view_row(&settings, nullptr, SettingLayer::global, "scale", &row);
+    check(row.real == 1.0f, "a real: read as a number");
+    settings_view_row(&settings, nullptr, SettingLayer::global, "tint", &row);
+    check(row.color == 0xFFFF8000u, "a color: read as ARGB");
+
+    settings_set_bool(&settings, SettingLayer::game, "vsync", false);
+    settings_view_row(&settings, nullptr, SettingLayer::game, "vsync", &row);
+    check(!row.checked, "the typed value follows the scope being edited");
 }
 
 static void test_apply()
@@ -136,6 +163,7 @@ static void test_scope()
 int main()
 {
     test_rows();
+    test_typed_values();
     test_apply();
     test_scope();
     if (g_failures == 0)

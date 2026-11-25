@@ -15,10 +15,10 @@
 //          from that scope (back to the layer below).
 // Global-only settings are greyed out while a core or game scope is edited.
 //
-// Only the drawing is here. What a row shows (value, greyed out, marker,
-// RESET) is decided by settings_view.h, which has no GUI; the drawing hands
-// back what the user did and settings_view applies it. Another GUI toolkit
-// would rewrite this file and nothing below it.
+// Only the choice of controls is here. What a row shows (value, greyed out,
+// marker, RESET) is decided by settings_view.h, which has no GUI; the
+// controls and the row's layout are retroui's (retro_ui_controls.h), so this
+// file makes no toolkit calls. Another GUI toolkit reimplements retroui.
 
 #include "localization.h"
 #include "settings.h"
@@ -40,12 +40,6 @@ bool settings_ui_row(const SettingsUiContext* context, const char* key, const ch
 // but the field is read-only and a click on it returns true (the caller
 // opens the picker). `hint` as in settings_ui_row; RESET as usual.
 bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, const char* hint);
-
-// The field of a folder row: `value` read-only (or `hint` when empty) and
-// "..." after it, filling the row up to `reserved` pixels from its right
-// edge (room for a button after it; 0 = none). True when either was
-// clicked (the caller opens CHOOSE FOLDER).
-bool settings_ui_folder_field(const SettingsUiContext* context, const char* value, const char* hint, float reserved);
 
 // A path setting's row with a button after the field (e.g. CHOOSE, which
 // opens a picker). Sets *button_clicked. Returns true if the value changed
