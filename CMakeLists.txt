@@ -200,7 +200,6 @@ set(PICCOLO_SOURCES
     src/file_picker.cpp
     src/piccolo_settings.cpp
     src/settings_ui.cpp
-    src/settings_view.cpp
     src/settings_window.cpp
     src/input_window.cpp
     src/net_window.cpp
@@ -213,9 +212,7 @@ set(PICCOLO_SOURCES
     src/map_window.cpp
     src/image_window.cpp
     src/piccolo_window.cpp
-    src/piccolo_text.cpp
     src/recent_games.cpp
-    src/ui_mode.cpp
     src/ui_toolkit_imgui.cpp
     src/debug_window.cpp
     src/core_options_ui.cpp
@@ -276,8 +273,22 @@ add_custom_command(
     DEPENDS multitap_strings_generator "${CMAKE_CURRENT_SOURCE_DIR}/src/strings.txt"
     COMMENT "Generating piccolo's string IDs from strings.txt"
     VERBATIM)
-target_sources(piccolo PRIVATE "${PICCOLO_GENERATED}/piccolo_strings.cpp")
-target_include_directories(piccolo PRIVATE "${PICCOLO_GENERATED}")
+
+# piccolo's logic with no GUI: the settings rows' view state, the UI modes and
+# the UI text. Built without ImGui's include path (it links frontend_settings,
+# not frontend_common), so a stray #include "imgui.h" here fails to compile:
+# the separation doesn't depend on anyone remembering it. The windows' drawing
+# stays in the piccolo target.
+add_library(piccolo_logic STATIC
+    src/settings_view.cpp
+    src/piccolo_text.cpp
+    src/ui_mode.cpp
+    "${PICCOLO_GENERATED}/piccolo_strings.cpp"
+)
+target_include_directories(piccolo_logic PUBLIC src "${PICCOLO_GENERATED}")
+target_link_libraries(piccolo_logic PUBLIC frontend_settings libretro_api)
+multitap_set_project_flags(piccolo_logic)
+target_link_libraries(piccolo PRIVATE piccolo_logic)
 
 # Translations (lang/<code>.po) next to the program, in the build folder and
 # in piccolo's own folder.
@@ -491,17 +502,15 @@ if(MULTITAP_BUILD_TESTS)
                          PASS_REGULAR_EXPRESSION "gl presets: all [0-9]+ load, run and come out even"
                          FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    add_executable(piccolo_ui_mode_test tools/ui_mode_test.cpp src/ui_mode.cpp)
-    target_include_directories(piccolo_ui_mode_test PRIVATE src)
+    add_executable(piccolo_ui_mode_test tools/ui_mode_test.cpp)
+    target_link_libraries(piccolo_ui_mode_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_ui_mode_test)
     add_test(NAME piccolo_ui_mode COMMAND piccolo_ui_mode_test)
     set_tests_properties(piccolo_ui_mode PROPERTIES
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    add_executable(piccolo_settings_view_test tools/settings_view_test.cpp src/settings_view.cpp src/piccolo_text.cpp
-                   "${PICCOLO_GENERATED}/piccolo_strings.cpp")
-    target_include_directories(piccolo_settings_view_test PRIVATE src "${PICCOLO_GENERATED}")
-    target_link_libraries(piccolo_settings_view_test PRIVATE frontend_common libretro_api)
+    add_executable(piccolo_settings_view_test tools/settings_view_test.cpp)
+    target_link_libraries(piccolo_settings_view_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_settings_view_test)
     add_test(NAME piccolo_settings_view COMMAND piccolo_settings_view_test)
     set_tests_properties(piccolo_settings_view PROPERTIES
