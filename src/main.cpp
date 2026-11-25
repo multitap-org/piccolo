@@ -75,6 +75,7 @@
 #include "map_window.h"
 #include "input_net.h"
 #include "net_access.h"
+#include "build_target.h"
 #include "net_build.h"
 #include "net_caps_ui.h"
 #include "net_service.h"
@@ -1406,7 +1407,7 @@ static const NetDeviceInfo* net_device_info(App* app)
         NetBuildIdentity build;
         build.app = "piccolo";
         build.version = PICCOLO_VERSION;
-        build.target = core_index_build_target();
+        build.target = build_target();   // as the release names its assets
 #if defined(_WIN32)
         build.exe_path = std::string(base != nullptr ? base : "") + "piccolo.exe";
 #else
