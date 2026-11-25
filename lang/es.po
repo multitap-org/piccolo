@@ -3271,8 +3271,8 @@ msgid "NO GAME RUNNING"
 msgstr "NINGÚN JUEGO CORRIENDO"
 
 msgctxt "share_title"
-msgid "SHARE"
-msgstr "COMPARTIR"
+msgid "FILE TRANSFER"
+msgstr "TRANSFERIR ARCHIVOS"
 
 msgctxt "share_this_piccolo"
 msgid "THIS PICCOLO"
@@ -3391,8 +3391,8 @@ msgid "A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)"
 msgstr "UN PICCOLO EN OTRA RED (SIN VINCULAR)"
 
 msgctxt "share_pair_internet_help"
-msgid "CONNECT shows YOUR CODE: type it on the other piccolo in TOOLS > INVITE. Both need the same BEACON SERVER."
-msgstr "CONECTAR muestra TU CÓDIGO: escríbelo en el otro piccolo en HERRAMIENTAS > INVITAR. Los dos necesitan el mismo SERVIDOR BEACON."
+msgid "CONNECT shows a code in TOOLS > PAIR...: type it on the other piccolo in PAIR WITH A CLIENT. Both need the same BEACON SERVER."
+msgstr "CONECTAR muestra un código en HERRAMIENTAS > VINCULAR...: escríbelo en el otro piccolo en VINCULAR CON UN CLIENTE. Los dos necesitan el mismo SERVIDOR BEACON."
 
 msgctxt "share_refused_host_offline"
 msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."
@@ -4204,8 +4204,8 @@ msgid "PAIRED HOSTS"
 msgstr "HOSTS VINCULADOS"
 
 msgctxt "net_no_hosts"
-msgid "NONE YET (TOOLS > PAIR)"
-msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
+msgid "NONE YET (TOOLS > PAIR...)"
+msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR...)"
 
 msgctxt "net_host_forget_help"
 msgid "Forgets this piccolo here (and there too, if connected now)."

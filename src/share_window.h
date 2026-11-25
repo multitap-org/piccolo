@@ -1,9 +1,10 @@
 #pragma once
 
-// SHARE: copies games, saves and states between this piccolo and another one
-// that gave us OWNER access (piccolo-share), in the retro style:
+// TOOLS > FILE TRANSFER (was SHARE): copies games, saves and states between
+// this piccolo and another one that gave us OWNER access (piccolo-share), in
+// the retro style:
 //
-//   +- SHARE --------------------------------------------------------+
+//   +- FILE TRANSFER ------------------------------------------------+
 //   | THIS PICCOLO                        LIVING ROOM PC *            |
 //   | [ roms                        v ]   [ ROMS                  v ] |
 //   | roms/gba                            ROMS/gba                    |

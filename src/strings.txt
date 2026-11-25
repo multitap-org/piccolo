@@ -845,7 +845,7 @@ net_no_devices = NO DEVICES PAIRED YET
 net_section_hosts = PAIRED HOSTS
 net_online = ONLINE
 net_offline = OFFLINE
-net_no_hosts = NONE YET (TOOLS > PAIR)
+net_no_hosts = NONE YET (TOOLS > PAIR...)
 net_host_forget_help = Forgets this piccolo here (and there too, if connected now).
 net_host_connect = CONNECT
 net_host_connect_help = Connects to this piccolo and opens FILE TRANSFER with it.
@@ -919,7 +919,7 @@ quick_menu_pause = PAUSE
 quick_menu_resume = RESUME
 
 # SHARE (TOOLS > SHARE): games, saves and states with another piccolo (OWNER access)
-share_title = SHARE
+share_title = FILE TRANSFER
 share_this_piccolo = THIS PICCOLO
 share_other_piccolo = OTHER PICCOLO
 share_shared_folders = SHARED FOLDERS
@@ -944,7 +944,7 @@ share_connecting = CONNECTING...
 share_internet = PAIRED, ACROSS THE INTERNET
 share_internet_help = Through the beacon (SETTINGS > NETWORK > BEACON SERVER). The other piccolo needs INTERNET on.
 share_pair_internet = A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)
-share_pair_internet_help = CONNECT shows YOUR CODE: type it on the other piccolo in TOOLS > INVITE. Both need the same BEACON SERVER.
+share_pair_internet_help = CONNECT shows a code in TOOLS > PAIR...: type it on the other piccolo in PAIR WITH A CLIENT. Both need the same BEACON SERVER.
 share_refused_host_offline = IT ISN'T ONLINE (INTERNET ON THERE?).
 share_refused_no_route = THE NETWORKS DIDN'T LET US THROUGH.
 share_refused_beacon = NO ANSWER FROM THE BEACON SERVER.
