@@ -5310,15 +5310,16 @@ static bool app_frame(App* app)
                 onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
             }
         }
-        onscreen_pad_draw(&app->onscreen_pad, app->pixel_font, piccolo_text(&app->strings, Str::touch_pad_menu),
-                          piccolo_text(&app->strings, Str::touch_pad_quick),
-                          static_cast<float>(settings_get_int(&app->settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f,
-                          settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
-        if (app->onscreen_pad.menu_pressed && game_has_keyboard(app))
+        OnscreenPadState pad_state = {};
+        onscreen_pad_state(&pad_state, &app->settings, &app->strings);
+        OnscreenPadAction pad_action = {};
+        onscreen_pad_draw(&app->onscreen_pad, &pad_state, app->pixel_font, &pad_action);
+        onscreen_pad_apply(&app->onscreen_pad, &pad_action);
+        if (pad_action.menu && game_has_keyboard(app))
         {
             app_enter_main_menu(app);
         }
-        if (app->onscreen_pad.quick_pressed && game_has_keyboard(app))
+        if (pad_action.quick && game_has_keyboard(app))
         {
             app_open_quick_menu(app);
         }
