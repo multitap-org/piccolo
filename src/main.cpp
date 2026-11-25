@@ -184,7 +184,7 @@ struct App
     NetSpeedSender   net_speed_sender;     // a speed test, down (one at a time)
     NetSpeedReceiver net_speed_receiver;   // a speed test, up
     bool             net_speed_reporting = false;   // the sender finished: its report goes out
-    NetWindowState net_window_state;   // SETTINGS > NETWORK between frames (OWNER's confirmation)
+    NetWindow      net_window;         // SETTINGS > NETWORK between frames (OWNER's confirmation)
     GuestWindow    guest_window;       // TOOLS > REMOTE PLAY TOGETHER (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
     NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
@@ -1621,7 +1621,7 @@ static void handle_menu_action(App* app, MenuAction action)
             pair_window_open(&app->pair_window, nullptr);
             break;
         case MenuAction::invite:
-            net_invite_open(&app->net_window_state.invite);
+            net_invite_open(&app->net_window.invite);
             break;
         case MenuAction::guests:
             open_guest_window(app);
@@ -2370,7 +2370,7 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
-    facts.pairing_request = app->net_window_state.request.active;
+    facts.pairing_request = app->net_window.request.active;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -3357,27 +3357,23 @@ static void draw_settings(App* app)
     context.image = &image;
     context.strings = &app->strings;
     context.themes = &app->themes;
-    NetWindowContext network;
-    network.state = &app->net_window_state;
+    // The NETWORK tab: its state is filled under the network lock, below.
     // The hosts list (our client side): SHARE's connection knows it.
     NetShareLinkStatus hosts_status;
-    int32_t forget_host = -1;
+    const std::vector<std::string>* hosts = nullptr;
+    const std::vector<uint8_t>* hosts_online = nullptr;
     if (app->settings_window.open && app->settings_window.tab == SettingsTab::network && start_share_link(app))
     {
         net_share_link_status(&app->share_link, &hosts_status);
-        network.hosts = &hosts_status.paired;
-        network.hosts_online = &hosts_status.paired_online;
+        hosts = &hosts_status.paired;
+        hosts_online = &hosts_status.paired_online;
         net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        network.forget_host = &forget_host;
     }
-    network.settings = &app->settings;
-    network.strings = &app->strings;
-    network.access = app->net_running ? &app->net_service.access : nullptr;
-    network.listen_failed = app->net_listen_failed;
-    network.this_device = app->net_fingerprint;
-    network.speed = &app->net_speed_results;
-    network.internet = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET);
-    context.network = &network;
+    NetWindowState network_state = {};
+    NetWindowAction network_action = {};
+    context.network_window = &app->net_window;
+    context.network = &network_state;
+    context.network_action = &network_action;
     // Text with numbers: the translated part, then the numbers (no formats in translations).
     const char* window_label = piccolo_text(&app->strings, Str::section_window);
     char window_size[200] = {};
@@ -3491,14 +3487,19 @@ static void draw_settings(App* app)
     {
         net_service_lock(&app->net_service);
     }
+    NetAccess* network_access = app->net_running ? &app->net_service.access : nullptr;
+    net_window_state(&network_state, &app->settings, &app->strings, network_access, app->net_listen_failed,
+                     app->net_fingerprint, &app->net_speed_results,
+                     PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET), hosts, hosts_online);
     settings_window_draw(&app->settings_window, &context, app->pixel_font, app->ui_scale);
+    net_window_apply(&app->net_window, &network_action, &app->settings, network_access);   // SETTINGS saves on closing
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
     }
-    if (forget_host >= 0)
+    if (network_action.forget_host && hosts != nullptr)
     {
-        net_share_link_forget_host(&app->share_link, static_cast<uint32_t>(forget_host));
+        net_share_link_forget_host(&app->share_link, network_action.forget_host_index);
     }
     choose_folder_start(app);
     if (app->settings_window.search_frame_delay)
@@ -4872,21 +4873,21 @@ static void net_update_locked(App* app)
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
             // The dialog that waited for it closes by itself.
-            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);
+                net_pairing_request_close(&app->net_window.request);
             }
-            if (app->net_window_state.invite.answered && app->net_window_state.invite.peer == event.peer)
+            if (app->net_window.invite.answered && app->net_window.invite.peer == event.peer)
             {
-                net_invite_close(&app->net_window_state.invite, &app->net_service.access);
+                net_invite_close(&app->net_window.invite, &app->net_service.access);
             }
             break;
         }
         case NetAccessEventType::closed:
-            if (event.device < 0 && app->net_window_state.request.active &&
-                app->net_window_state.request.peer == event.peer)
+            if (event.device < 0 && app->net_window.request.active &&
+                app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);   // it cancelled, or left
+                net_pairing_request_close(&app->net_window.request);   // it cancelled, or left
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -4922,22 +4923,22 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);
+                net_pairing_request_close(&app->net_window.request);
             }
             break;
         case NetAccessEventType::pairing_requested:
             // A device asks (Andrés, 2026-11-22): the dialog takes its code and
             // the level; the game pauses while it's up. One at a time: another
             // waits until this one is done (it asks again on its own if refused).
-            if (net_invite_take_request(&app->net_window_state.invite, &app->net_service.access, &event))
+            if (net_invite_take_request(&app->net_window.invite, &app->net_service.access, &event))
             {
                 SDL_Log("Network: \"%s\" came with the invite's code", event.name);
             }
-            else if (!app->net_window_state.request.active || app->net_window_state.request.peer == event.peer)
+            else if (!app->net_window.request.active || app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_open(&app->net_window_state.request, &event);
+                net_pairing_request_open(&app->net_window.request, &event);
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
             }
             break;
@@ -5542,19 +5543,30 @@ static bool app_frame(App* app)
         // A device asking to pair: over anything, the game paused (ui_derive).
         // TOOLS > INVITE too. They answer on the NetAccess: the network thread
         // waits meanwhile.
-        if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
+        if (app->net_running && (app->net_window.request.active || app->net_window.invite.open))
         {
             net_service_lock(&app->net_service);
-            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings,
-                                     app->pixel_font, app->ui_scale);
-            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings, app->pixel_font,
-                            app->ui_scale);
+            NetAccess* access = &app->net_service.access;
+            NetPairingRequestState request_state = {};
+            net_pairing_request_state(&request_state, &app->strings);
+            NetPairingRequestAction request_action = {};
+            net_pairing_request_draw(&app->net_window.request, &request_state, app->pixel_font, app->ui_scale,
+                                     &request_action);
+            net_pairing_request_apply(&app->net_window.request, &request_action, access);
+            NetInviteState invite_state = {};
+            net_invite_state(&invite_state, &app->strings, access);
+            NetInviteAction invite_action = {};
+            net_invite_draw(&app->net_window.invite, &invite_state, app->pixel_font, app->ui_scale, &invite_action);
+            net_invite_apply(&app->net_window.invite, &invite_action, access);
             net_service_unlock(&app->net_service);
         }
-        else if (app->net_window_state.invite.open)
+        else if (app->net_window.invite.open)
         {
-            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings, app->pixel_font,
-                            app->ui_scale);   // says the network is off
+            NetInviteState invite_state = {};
+            net_invite_state(&invite_state, &app->strings, nullptr);   // says the network is off
+            NetInviteAction invite_action = {};
+            net_invite_draw(&app->net_window.invite, &invite_state, app->pixel_font, app->ui_scale, &invite_action);
+            net_invite_apply(&app->net_window.invite, &invite_action, nullptr);
         }
         // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
         if (app->guest_window.open)

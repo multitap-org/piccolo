@@ -20,9 +20,16 @@
 //
 // The settings rows edit piccolo's global settings; main.cpp restarts the
 // listener when ALLOW CONNECTIONS or PORT change. The device list acts on the
-// running NetAccess directly. Pairing isn't here (Andrés, 2026-11-22: SETTINGS
-// holds configuration, not actions): a device asks, and the pairing request
-// dialog below (shown over anything, the game paused) takes the code.
+// running NetAccess (net_window_apply). Pairing isn't here (Andrés,
+// 2026-11-22: SETTINGS holds configuration, not actions): a device asks, and
+// the pairing request dialog below (shown over anything, the game paused)
+// takes the code.
+//
+// Split like every window, the tab, the pairing request and INVITE alike:
+// *_state fills what it shows (no GUI), *_draw draws it and records what was
+// done in an action, and *_apply acts on it (no GUI). The tab is drawn inside
+// SETTINGS' tab (settings_window.cpp); main.cpp fills its state and applies
+// its action around SETTINGS' drawing.
 
 #include <cstdint>
 #include <string>
@@ -31,6 +38,7 @@
 #include "localization.h"
 #include "net_access.h"
 #include "settings.h"
+#include "settings_ui.h"
 
 #include "retro_ui_font.h"
 
@@ -65,6 +73,23 @@ struct NetPairingRequest
     uint32_t    level = 0;         // NetAccessLevel
 };
 
+struct NetPairingRequestState
+{
+    const Localization* strings = nullptr;
+};
+
+enum class NetPairingRequestPress
+{
+    none,
+    allow,     // ALLOW (or Enter with a whole code): answer with the code and level typed
+    refuse,    // REFUSE, or CANCEL while waiting
+};
+
+struct NetPairingRequestAction
+{
+    NetPairingRequestPress press = NetPairingRequestPress::none;
+};
+
 // TOOLS > INVITE: a device across the internet shows a code; typed here with
 // the level, ALLOW waits in that code's pairing room on the beacon
 // (net_access_invite) and answers the request that comes from there.
@@ -79,9 +104,21 @@ struct NetInvite
     bool     focus = false;
 };
 
+struct NetInviteState
+{
+    const Localization* strings = nullptr;
+    bool                network = false;   // the network runs (else: NETWORK IS OFF)
+};
+
+struct NetInviteAction
+{
+    bool allow = false;   // ALLOW (or Enter with a whole code): wait in the code's pairing room
+    bool close = false;   // CANCEL, or the title bar's X
+};
+
 // What the tab keeps between frames: SHARE / FULL are given only after their
 // confirmation, to the device with this key (the list may change meanwhile).
-struct NetWindowState
+struct NetWindow
 {
     uint8_t owner_key[NET_KEY_SIZE] = {};
     bool    confirm_owner = false;
@@ -90,40 +127,85 @@ struct NetWindowState
     NetInvite         invite;
 };
 
-struct NetWindowContext
+// One connection of the NetAccess, for CONNECTED and the devices' CONNECTED.
+struct NetWindowPeer
 {
-    NetWindowState*     state = nullptr;
-    Settings*           settings = nullptr;
-    const Localization* strings = nullptr;
-    NetAccess*          access = nullptr;   // nullptr while networking is off
-    bool                listen_failed = false;   // on, but the port couldn't be opened
-    const char*         this_device = "";   // our key's fingerprint
-    const std::vector<NetSpeedSummary>* speed = nullptr;   // speed test results, by device key
-    bool                internet = false;   // INTERNET is on (the beacon status row shows)
-    // The piccolos this one connects to (its client side, SHARE / PAIR), and
-    // FORGET on one of them (the index, for main.cpp; -1 = none).
-    const std::vector<std::string>* hosts = nullptr;
-    const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
-    int32_t*            forget_host = nullptr;
+    bool     connected = false;    // authorized, with a device in the list
+    uint32_t device = 0;           // its index in `devices`
+    bool     has_address = false;
+    char     address[64] = {};
+    bool     has_stats = false;
+    NetLinkStats stats;
+    const NetSpeedSummary* speed = nullptr;   // its last speed test, nullptr = none
 };
 
+struct NetWindowState
+{
+    const Settings*     settings = nullptr;   // the rows (global settings)
+    const Localization* strings = nullptr;
+    bool                network = false;      // the NetAccess runs (the lists show)
+    bool                listen_failed = false;   // on, but the port couldn't be opened
+    const char*         this_device = "";     // our key's fingerprint
+    bool                internet = false;     // INTERNET is on (the beacon status row shows)
+    NetBeaconStatus     beacon = NetBeaconStatus::off;   // INTERNET STATUS
+    // The paired devices, read only (drawn under the network lock).
+    const std::vector<NetTrustedDevice>* devices = nullptr;
+    NetWindowPeer       peers[NET_MAX_PEERS];
+    // The piccolos this one connects to (its client side, SHARE / PAIR);
+    // nullptr: unknown (SHARE's connection doesn't run).
+    const std::vector<std::string>* hosts = nullptr;
+    const std::vector<uint8_t>*     hosts_online = nullptr;   // per host: on the beacon now; empty = unknown
+};
+
+struct NetWindowAction
+{
+    SettingsUiEdit setting;            // a settings row changed
+    bool           set_level = false;  // ACCESS: `level` for device `level_device`, no confirmation needed
+    uint32_t       level_device = 0;
+    NetAccessLevel level = NetAccessLevel::gamepad;
+    bool           forget = false;     // FORGET device `forget_device`
+    uint32_t       forget_device = 0;
+    bool           owner_yes = false;  // the confirmation said YES: confirm_level to owner_key
+    bool           forget_host = false;   // FORGET host `forget_host_index` (main.cpp: SHARE's connection)
+    uint32_t       forget_host_index = 0;
+};
+
+// The tab's state. `access` nullptr while networking is off; `speed`: the
+// speed test results, by device key; `hosts` / `hosts_online` nullptr when
+// SHARE's connection doesn't run. Under the network lock.
+void net_window_state(NetWindowState* state, const Settings* settings, const Localization* strings,
+                      const NetAccess* access, bool listen_failed, const char* this_device,
+                      const std::vector<NetSpeedSummary>* speed, bool internet,
+                      const std::vector<std::string>* hosts, const std::vector<uint8_t>* hosts_online);
 // The tab's contents, inside SETTINGS' tab. The rows always edit the global
 // settings (networking isn't per core or game), with labels `label_width`
 // wide like the other tabs'.
-void net_window_draw_tab(const NetWindowContext* context, float label_width);
+void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float label_width,
+                         NetWindowAction* action);
+// The settings row's edit, ACCESS, FORGET and the confirmation's YES, on
+// `access` (nullptr while networking is off). Under the network lock. True
+// when the settings changed (SETTINGS saves when it closes). FORGET on a
+// host is main.cpp's (SHARE's connection).
+bool net_window_apply(NetWindow* window, const NetWindowAction* action, Settings* settings, NetAccess* access);
 
-// The pairing request dialog (drawn every frame while one is active).
-void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event);
-void net_pairing_request_close(NetPairingRequest* request);
-void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings,
-                             RetroUiFont* pixel_font, int32_t scale);
 // The four port LEDs lit in turn, then `label`: something being waited for.
 void net_window_waiting_leds(const char* label);
+
+// The pairing request dialog (drawn every frame while one is active, under
+// the network lock).
+void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event);
+void net_pairing_request_close(NetPairingRequest* request);
+void net_pairing_request_state(NetPairingRequestState* state, const Localization* strings);
+void net_pairing_request_draw(NetPairingRequest* request, const NetPairingRequestState* state,
+                              RetroUiFont* pixel_font, int32_t scale, NetPairingRequestAction* action);
+void net_pairing_request_apply(NetPairingRequest* request, const NetPairingRequestAction* action, NetAccess* access);
 
 // TOOLS > INVITE (drawn every frame while open). `access` nullptr = network off.
 void net_invite_open(NetInvite* invite);
 void net_invite_close(NetInvite* invite, NetAccess* access);
-void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, RetroUiFont* pixel_font,
-                     int32_t scale);
+void net_invite_state(NetInviteState* state, const Localization* strings, const NetAccess* access);
+void net_invite_draw(NetInvite* invite, const NetInviteState* state, RetroUiFont* pixel_font, int32_t scale,
+                     NetInviteAction* action);
+void net_invite_apply(NetInvite* invite, const NetInviteAction* action, NetAccess* access);
 // A pairing request while waiting: answered with the typed code (true), or not ours.
 bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event);

@@ -744,7 +744,7 @@ static void draw_tabs(SettingsWindow* window, const SettingsUiContext* ui, const
     {
         window->tab = SettingsTab::network;
         begin_tab_content();
-        net_window_draw_tab(context->network, ui->label_width);
+        net_window_draw_tab(context->network_window, context->network, ui->label_width, context->network_action);
         end_tab_content();
         retro_ui_end_tab();
     }

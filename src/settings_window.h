@@ -90,7 +90,10 @@ struct SettingsWindowContext
     const char*              rewind_note = "";    // what AUTO chose for the running game ("" = nothing to say)
     bool                     rewind_known = false;   // the running game has AUTO's verdict (MEASURE AGAIN shows)
     const std::vector<PiccoloThemeFile>* themes = nullptr;   // themes/*.cfg, for THEME
-    const NetWindowContext*  network = nullptr;  // the NETWORK tab
+    // The NETWORK tab (net_window.h): its own state, what it shows, what was done.
+    NetWindow*               network_window = nullptr;
+    const NetWindowState*    network = nullptr;
+    NetWindowAction*         network_action = nullptr;
 };
 
 void settings_window_open(SettingsWindow* window, SettingsTab tab);
