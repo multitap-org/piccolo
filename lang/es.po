@@ -4167,6 +4167,18 @@ msgctxt "pair_done"
 msgid "PAIRED WITH"
 msgstr "VINCULADO CON"
 
+msgctxt "pair_card_accept"
+msgid "TO ACCEPT"
+msgstr "PARA ACEPTAR"
+
+msgctxt "pair_timed_out"
+msgid "PAIRING TIMED OUT"
+msgstr "SE AGOTÓ EL TIEMPO PARA VINCULAR"
+
+msgctxt "pair_failed"
+msgid "PAIRING FAILED"
+msgstr "NO SE PUDO VINCULAR"
+
 msgctxt "pair_back_before"
 msgid "LET"
 msgstr "¿DEJAR QUE"
