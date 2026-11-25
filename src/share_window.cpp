@@ -1,6 +1,7 @@
 #include "share_window.h"
 
 #include "net_window.h"
+#include "share_paths.h"
 
 #include <cfloat>
 #include <cstdio>
@@ -15,13 +16,6 @@
 // ---------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------
-
-// The shared folder a virtual path starts with ("ROMS/gba" -> "ROMS").
-static std::string root_of(const std::string* path)
-{
-    size_t slash = path->find('/');
-    return slash == std::string::npos ? *path : path->substr(0, slash);
-}
 
 static std::string child(const std::string* path, const std::string* name)
 {
@@ -47,15 +41,8 @@ static void go_to(SharePane* pane, const std::string* path)
 // the root listing; games when it isn't known.
 static NetShareKind root_kind(const std::vector<NetShareEntry>* roots, const std::string* path)
 {
-    std::string root = root_of(path);
-    for (size_t i = 0; i < roots->size(); i++)
-    {
-        if ((*roots)[i].name == root)
-        {
-            return (*roots)[i].kind;
-        }
-    }
-    return NetShareKind::games;
+    const NetShareEntry* root = share_paths_find_root(roots, path);
+    return root == nullptr ? NetShareKind::games : root->kind;
 }
 
 static bool is_folder(NetShareKind kind)
@@ -417,7 +404,7 @@ static void draw_pane(SharePane* pane, std::vector<NetShareEntry>* roots, const 
     retro_ui_text(name);
 
     // The shared folder we're in. Picking it again goes back to its top.
-    std::string root = root_of(&pane->path);
+    std::string root = share_paths_root(&pane->path);
     const char* preview = root.empty() ? piccolo_text(strings, Str::share_shared_folders) : root.c_str();
     retro_ui_next_width(layout->width);
     if (retro_ui_begin_choice("root", preview))
@@ -696,7 +683,8 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
 }
 
 // The game's saves and states go into the other side's SAVES and STATES,
-// under the same core folder (made there when missing).
+// under the same core folder (made there when missing): mirrored, with
+// MIRROR FOLDER STRUCTURE on or off (they always landed by path).
 static void queue_companions(const ShareWindow* window, bool to_remote, std::vector<ShareCopy>* copies)
 {
     const std::vector<NetShareEntry>* from_roots = to_remote ? &window->local_roots : &window->remote_roots;
@@ -705,24 +693,15 @@ static void queue_companions(const ShareWindow* window, bool to_remote, std::vec
     for (size_t i = 0; i < companions->files.size(); i++)
     {
         const ShareCompanion* file = &companions->files[i];
-        NetShareKind kind = root_kind(from_roots, &file->path);
-        const std::string* to_root = nullptr;
-        for (size_t j = 0; j < to_roots->size() && to_root == nullptr; j++)
-        {
-            if ((*to_roots)[j].kind == kind)
-            {
-                to_root = &(*to_roots)[j].name;
-            }
-        }
-        size_t slash = file->path.find('/');
-        if (to_root == nullptr || slash == std::string::npos)
+        std::string to;
+        if (!share_paths_mirror(from_roots, to_roots, &file->path, &to))
         {
             continue;   // the other side shares no SAVES (or STATES)
         }
         ShareCopy copy;
         copy.to_remote = to_remote;
         copy.from = file->path;
-        copy.to = *to_root + file->path.substr(slash);
+        copy.to = to;
         copy.size = file->size;
         copy.mtime = file->mtime;
         copies->push_back(copy);
@@ -739,28 +718,45 @@ static const NetShareEntry* selected_file(const SharePane* pane)
     return entry->kind == NetShareKind::file ? entry : nullptr;
 }
 
-// An arrow copies the selected file from `from` into the folder open in `to`.
+// An arrow copies the selected file from `from`: to the same path in the
+// other side's shared folder of its kind (MIRROR FOLDER STRUCTURE), or into
+// the folder open in `to` (share_paths.h).
 static void draw_arrow(const ShareWindow* window, bool to_remote, bool connected, float width, float height,
                        const Localization* strings, ShareWindowAction* action)
 {
     const SharePane* from = to_remote ? &window->local : &window->remote;
     const SharePane* to = to_remote ? &window->remote : &window->local;
+    const std::vector<NetShareEntry>* from_roots = to_remote ? &window->local_roots : &window->remote_roots;
+    const std::vector<NetShareEntry>* to_roots = to_remote ? &window->remote_roots : &window->local_roots;
     const NetShareEntry* file = selected_file(from);
+    std::string from_path;
+    std::string target;
+    bool has_target = false;
+    if (file != nullptr)
+    {
+        from_path = child(&from->path, &file->name);
+        has_target = share_paths_target(window->mirror_folders, from_roots, to_roots, &from_path, &to->path, &target);
+    }
     // With its saves and states: wait until they've all been found.
     bool along = window->with_companions && companions_for(window, !to_remote, from);
-    bool can = connected && file != nullptr && !to->path.empty() && !to->waiting &&
+    bool can = connected && file != nullptr && has_target && !to->waiting &&
                !(along && companions_looking(&window->companions));
     retro_ui_begin_disabled(!can);
     bool clicked = retro_ui_arrow_button(to_remote ? "##to_remote" : "##to_local",
                                          to_remote ? RetroUiArrow::right : RetroUiArrow::left, width, height);
     retro_ui_end_disabled();
-    retro_ui_item_tooltip(piccolo_text(strings, to_remote ? Str::share_copy_to_remote_help : Str::share_copy_to_local_help));
+    Str help = to_remote ? Str::share_copy_to_remote_help : Str::share_copy_to_local_help;
+    if (window->mirror_folders)
+    {
+        help = to_remote ? Str::share_copy_to_remote_mirror_help : Str::share_copy_to_local_mirror_help;
+    }
+    retro_ui_item_tooltip(piccolo_text(strings, help));
     if (clicked && can)
     {
         ShareCopy copy;
         copy.to_remote = to_remote;
-        copy.from = child(&from->path, &file->name);
-        copy.to = child(&to->path, &file->name);
+        copy.from = from_path;
+        copy.to = target;
         copy.size = file->size;
         copy.mtime = file->mtime;
         action->copies.push_back(copy);
@@ -777,7 +773,8 @@ static void draw_line(const ShareWindow* window, const ShareTransferLine* line, 
 {
     if (line == nullptr || !line->active)
     {
-        retro_ui_dim_label(window->message.empty() ? piccolo_text(strings, Str::share_hint) : window->message.c_str(),
+        Str hint = window->mirror_folders ? Str::share_hint_mirror : Str::share_hint;
+        retro_ui_dim_label(window->message.empty() ? piccolo_text(strings, hint) : window->message.c_str(),
                            nullptr);
         if (connected)
         {

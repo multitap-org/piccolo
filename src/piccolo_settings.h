@@ -72,6 +72,9 @@ constexpr const char* PICCOLO_NET_PORT = "net_port";
 constexpr const char* PICCOLO_NET_NAME = "net_name";   // what discovery shows
 constexpr const char* PICCOLO_NET_INTERNET = "net_internet";   // paired devices from outside, through the beacon
 constexpr const char* PICCOLO_NET_BEACON = "net_beacon";       // the beacon server (net_beacon.h)
+// FILE TRANSFER: copies land at the same path in the other side's shared
+// folder of their kind, not in the folder open there (share_paths.h).
+constexpr const char* PICCOLO_SHARE_MIRROR_FOLDERS = "share_mirror_folders";
 constexpr const char* PICCOLO_PATH_CORES = "path_cores";
 constexpr const char* PICCOLO_PATH_SYSTEM = "path_system";
 constexpr const char* PICCOLO_PATH_SAVES = "path_saves";

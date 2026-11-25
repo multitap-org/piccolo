@@ -1,8 +1,8 @@
 #pragma once
 
-// TOOLS > FILE TRANSFER (was SHARE): copies games, saves and states between
-// this piccolo and another one that gave us OWNER access (piccolo-share), in
-// the retro style:
+// TOOLS > FILE TRANSFER (was SHARE): copies games, saves, states and
+// screenshots between this piccolo and another one that gave us OWNER access
+// (piccolo-share), in the retro style:
 //
 //   +- FILE TRANSFER ------------------------------------------------+
 //   | THIS PICCOLO                        LIVING ROOM PC *            |
@@ -17,10 +17,12 @@
 //   | SENDING METROID FUSION.GBA [####    ] 3.1 / 8.0 MIB   [CANCEL] |
 //   +-----------------------------------------------------------------+
 //
-// Each side: its shared folders in the combo (game folders, SAVES, STATES),
-// where we are, folders on top and files below. The arrows in the middle
-// (retro_ui_arrow_button) copy the selected file into the folder open on
-// the other side. This side is this piccolo's own shared folders
+// Each side: its shared folders in the combo (game folders, SAVES, STATES,
+// SCREENSHOTS), where we are, folders on top and files below. The arrows in
+// the middle (retro_ui_arrow_button) copy the selected file to the same path
+// in the other side's shared folder of its kind (MIRROR FOLDER STRUCTURE, on
+// by default: `mirror_folders`), or into the folder open on the other side
+// (share_paths.h has the rule). This side is this piccolo's own shared folders
 // (net_share_folders.h, read here directly); the other side is what its
 // list_results say, asked for and handed in by the caller
 // (share_window_remote_wants_list / share_window_set_remote_list). Copies
@@ -130,6 +132,7 @@ struct ShareWindow
 
     ShareCompanions companions;
     bool      with_companions = true;      // WITH ITS SAVE AND N STATES
+    bool      mirror_folders = true;       // MIRROR FOLDER STRUCTURE (the caller's, from the setting)
     std::vector<ShareCopy> conflicts;      // found another file there: replace? (from the caller)
     bool      remote_asked = false;        // a listing of the other side is on its way
     bool      same_stale = true;           // the grey marks need working out again

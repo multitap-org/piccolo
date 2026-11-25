@@ -1361,11 +1361,20 @@ static void open_cores_window(App* app)
 // What this piccolo shares with OWNER devices (and lists on SHARE's own
 // side): the game folders, SAVES and STATES as the settings say now.
 static void share_folder_paths(const App* app, std::vector<std::string>* game_folders, std::string* saves,
-                               std::string* states)
+                               std::string* states, std::string* screenshots)
 {
     piccolo_settings_game_folders(&app->settings, game_folders);
     *saves = folder_setting(app, PICCOLO_PATH_SAVES, app->paths.saves);
     *states = folder_setting(app, PICCOLO_PATH_STATES, app->paths.states);
+    *screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
+    // The default screenshots folder is made by the first screenshot; made
+    // here too, so SCREENSHOTS is offered (and can receive) before that, like
+    // SAVES and STATES. A folder of the user's that isn't there (a drive not
+    // mounted) is left alone and not offered.
+    if (*screenshots == app->paths.screenshots && !screenshots->empty())
+    {
+        host_fs_make_directories(screenshots->c_str());
+    }
 }
 
 static bool net_prepare(App* app);
@@ -1440,13 +1449,14 @@ static void open_share_window(App* app)
     std::vector<std::string> game_folders;
     std::string saves;
     std::string states;
-    share_folder_paths(app, &game_folders, &saves, &states);
-    net_share_set_folders(&app->share_folders, &game_folders, saves.c_str(), states.c_str());
+    std::string screenshots;
+    share_folder_paths(app, &game_folders, &saves, &states, &screenshots);
+    net_share_set_folders(&app->share_folders, &game_folders, saves.c_str(), states.c_str(), screenshots.c_str());
     if (start_share_link(app))
     {
         // The paired piccolos' ONLINE / OFFLINE is asked through BEACON SERVER.
         net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        net_share_link_set_folders(&app->share_link, &game_folders, saves.c_str(), states.c_str());
+        net_share_link_set_folders(&app->share_link, &game_folders, saves.c_str(), states.c_str(), screenshots.c_str());
     }
     share_window_open(&app->share_window);
 }
@@ -5128,12 +5138,13 @@ static void net_update(App* app)
     std::vector<std::string> share_games;
     std::string share_saves;
     std::string share_states;
+    std::string share_screenshots;
     std::string share_key;
     if (share_check)
     {
         app->net_share_revision = app->settings.revision;
-        share_folder_paths(app, &share_games, &share_saves, &share_states);
-        share_key = share_saves + "\n" + share_states;
+        share_folder_paths(app, &share_games, &share_saves, &share_states, &share_screenshots);
+        share_key = share_saves + "\n" + share_states + "\n" + share_screenshots;
         for (size_t i = 0; i < share_games.size(); i++)
         {
             share_key += "\n" + share_games[i];
@@ -5146,7 +5157,8 @@ static void net_update(App* app)
     {
         app->net_share_applied = share_key;
         app->net_share_set = true;
-        net_service_set_share_folders(&app->net_service, &share_games, share_saves.c_str(), share_states.c_str());
+        net_service_set_share_folders(&app->net_service, &share_games, share_saves.c_str(), share_states.c_str(),
+                                      share_screenshots.c_str());
     }
     net_update_locked(app);
     net_service_unlock(&app->net_service);
@@ -5553,6 +5565,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         {
             share_link = &app->share_status;
         }
+        app->share_window.mirror_folders = settings_get_bool(&app->settings, PICCOLO_SHARE_MIRROR_FOLDERS);
         share_window_update(&app->share_window, &app->share_folders, share_link);
     }
     // TOOLS > PAIR... (PAIR WITH A HOST on SHARE's connection). Also while

@@ -632,6 +632,9 @@ void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float l
     settings_ui_row(&rows, PICCOLO_NET_ENABLED, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_NAME, nullptr);
     settings_ui_row(&rows, PICCOLO_NET_PORT, nullptr);
+    // FILE TRANSFER's (TOOLS), here with the network settings; it works
+    // with NETWORK off too (copying to another piccolo needs no listening).
+    settings_ui_row(&rows, PICCOLO_SHARE_MIRROR_FOLDERS, nullptr);
     draw_internet(state, &rows);
     draw_devices(window, state, action);
 }
