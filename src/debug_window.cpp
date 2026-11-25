@@ -120,6 +120,23 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     {
         retro_ui_dim_text("PAIR is open: close it to preview it.", nullptr);
     }
+    retro_ui_begin_disabled(state->guest_open);
+    retro_ui_text("REMOTE PLAY");
+    preview_button(action, "No link", DebugPreview::remote_no_link, false);
+    preview_button(action, "Link, no guests", DebugPreview::remote_no_guests, true);
+    preview_button(action, "Link and guests", DebugPreview::remote_guests, true);
+    retro_ui_end_disabled();
+    if (state->guest_open)
+    {
+        retro_ui_dim_text("REMOTE PLAY is open: close it to preview it.", nullptr);
+    }
+    retro_ui_text("OTHERS");
+    retro_ui_begin_disabled(state->about_open);
+    preview_button(action, "ABOUT", DebugPreview::about, false);
+    retro_ui_end_disabled();
+    // The real QUICK MENU needs a game; this one is a fake game's, its
+    // slots without pictures.
+    preview_button(action, "QUICK MENU, SAVE STATES open", DebugPreview::quick_menu, true);
 }
 
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)

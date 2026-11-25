@@ -3923,6 +3923,8 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
     state->pair_request_card = app->debug_previews.request_card;
     state->pair_open = app->pair_window.open;
+    state->about_open = app->about_window.open;
+    state->guest_open = app->guest_window.open;
 }
 
 // What was pressed in the debug window.
@@ -5571,7 +5573,8 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         pair_window_update(&app->pair_window, pair_link, pair_request_in_game(app), SDL_GetTicks());
     }
     // The debug window's preview of a window ends when the real one opens.
-    debug_preview_update(&app->debug_previews, app->pair_window.open);
+    debug_preview_update(&app->debug_previews, app->pair_window.open, app->about_window.open, app->guest_window.open,
+                         app->quick_menu.open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();
@@ -5689,7 +5692,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     {
         debug_window_state(app, &view->debug);
     }
-    debug_preview_state(&view->preview, &app->debug_previews, &app->strings);
+    debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION);
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {

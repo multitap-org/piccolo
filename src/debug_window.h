@@ -37,6 +37,12 @@ enum class DebugPreview
     pair_client_waiting,       // ALLOW pressed: waiting
     pair_client_request,       // a device asking
     pair_client_paired,        // paired
+    about,                     // MISC > ABOUT (about_window.h)
+    // REMOTE PLAY (guest_window.h).
+    remote_no_link,            // before CREATE LINK
+    remote_no_guests,          // a link, nobody in
+    remote_guests,             // a link, a player on a port and a spectator
+    quick_menu,                // QUICK MENU with SAVE STATES open (quick_menu.h): no game needed
 };
 
 struct DebugWindowState
@@ -73,6 +79,8 @@ struct DebugWindowState
     bool keep_revert_allowed = false; // KEEP / REVERT isn't asking already
     bool pair_request_card = false;   // the fake pairing request's card is up
     bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
+    bool about_open = false;          // the real ABOUT
+    bool guest_open = false;          // the real REMOTE PLAY
 };
 
 enum class DebugWindowPress

@@ -92,6 +92,8 @@ struct QuickMenu
     bool          refresh = true;   // read the slots again on the next update
     bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 0-9)
     uint32_t      focus_wait = 0;       // draws left where only `slot`'s tile counts as focused (the focus moves late)
+    bool          states_open = false;  // SAVE STATES unfolded (collapsed at first; kept here, so the
+                                        // debug window's preview can show it open without touching this one)
 
     // Each slot's thumbnail as saved (the picture at x1, at the aspect in
     // use: core_session.h), and the selected one scaled up by a whole number

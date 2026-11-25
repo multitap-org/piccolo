@@ -421,7 +421,9 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
         }
         handle_keys(menu, action);
         // Collapsed at first (Andrés): the actions are what's used most.
-        if (retro_ui_section_header("states", piccolo_text(strings, Str::quick_menu_tab_states), false))
+        menu->states_open = retro_ui_section_header_open("states", piccolo_text(strings, Str::quick_menu_tab_states),
+                                                         menu->states_open);
+        if (menu->states_open)
         {
             draw_states(menu, state, block, grid, slot_width, screen_room, appearing, action);
         }
