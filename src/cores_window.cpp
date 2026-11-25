@@ -3,9 +3,10 @@
 #include <cstdio>
 #include <string>
 
-#include "imgui.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
 void cores_window_open(CoresWindow* window, CoreUpdater* updater)
 {
@@ -112,15 +113,17 @@ static void draw_list(CoresWindow* window, const CoresWindowContext* context, fl
     CoreUpdater* updater = context->updater;
     const Localization* strings = context->strings;
     retro_ui_begin_list("cores", 0.0f, height);
+    RetroUiColumn columns[4] = {};
+    columns[0].label = piccolo_text(strings, Str::cores_column_core);
+    columns[0].width = 80.0f * block;
+    columns[1].label = piccolo_text(strings, Str::cores_column_systems);   // the rest
+    columns[2].label = piccolo_text(strings, Str::cores_column_version);
+    columns[2].width = 50.0f * block;
+    columns[3].label = piccolo_text(strings, Str::cores_column_status);
+    columns[3].width = 60.0f * block;
     // A gap between columns, so a long SYSTEMS text doesn't run into VERSION.
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f * block, ImGui::GetStyle().CellPadding.y));
-    if (ImGui::BeginTable("cores_table", 4, ImGuiTableFlags_SizingFixedFit))
+    if (retro_ui_begin_table("cores_table", columns, 4, 4.0f * block))
     {
-        ImGui::TableSetupColumn(piccolo_text(strings, Str::cores_column_core), ImGuiTableColumnFlags_WidthFixed, 80.0f * block);
-        ImGui::TableSetupColumn(piccolo_text(strings, Str::cores_column_systems), ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn(piccolo_text(strings, Str::cores_column_version), ImGuiTableColumnFlags_WidthFixed, 50.0f * block);
-        ImGui::TableSetupColumn(piccolo_text(strings, Str::cores_column_status), ImGuiTableColumnFlags_WidthFixed, 60.0f * block);
-        ImGui::TableHeadersRow();
         for (size_t i = 0; i < updater->index.entries.size(); i++)
         {
             const CoreIndexEntry* entry = &updater->index.entries[i];
@@ -129,25 +132,18 @@ static void draw_list(CoresWindow* window, const CoresWindowContext* context, fl
             {
                 continue;
             }
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
             char label[300];
-            std::snprintf(label, sizeof(label), "%s%s###core%d", entry->name.c_str(), entry->free ? "" : " *",
-                          static_cast<int>(index));
-            if (ImGui::Selectable(label, window->selected == index, ImGuiSelectableFlags_SpanAllColumns))
+            std::snprintf(label, sizeof(label), "%s%s", entry->name.c_str(), entry->free ? "" : " *");
+            if (retro_ui_table_row(static_cast<uint32_t>(index), label, window->selected == index))
             {
                 window->selected = index;
             }
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(systems_text(entry->systems).c_str());
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(entry->version.c_str());
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(status_text(strings, core_updater_status(updater, index)));
+            retro_ui_table_cell(systems_text(entry->systems).c_str());
+            retro_ui_table_cell(entry->version.c_str());
+            retro_ui_table_cell(status_text(strings, core_updater_status(updater, index)));
         }
-        ImGui::EndTable();
+        retro_ui_end_table();
     }
-    ImGui::PopStyleVar();
     retro_ui_end_list();
 }
 
@@ -163,43 +159,42 @@ static void draw_selected(CoresWindow* window, const CoresWindowContext* context
     }
     if (window->selected < 0)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, updater->index.entries.empty() ? Str::cores_empty
-                                                                                         : Str::cores_none_selected));
+        retro_ui_dim_text(piccolo_text(strings, updater->index.entries.empty() ? Str::cores_empty : Str::cores_none_selected),
+                          nullptr);
         return;
     }
     const CoreIndexEntry* entry = &updater->index.entries[static_cast<size_t>(window->selected)];
     CoreStatus status = core_updater_status(updater, window->selected);
     char size[32];
     size_text(entry->size, size, sizeof(size));
-    ImGui::Text("%s %s (%s)   %s %s", piccolo_text(strings, Str::cores_license), entry->license.c_str(),
-                piccolo_text(strings, entry->free ? Str::cores_free : Str::cores_non_free),
-                piccolo_text(strings, Str::cores_size), size);
+    retro_ui_text_format("%s %s (%s)   %s %s", piccolo_text(strings, Str::cores_license), entry->license.c_str(),
+                         piccolo_text(strings, entry->free ? Str::cores_free : Str::cores_non_free),
+                         piccolo_text(strings, Str::cores_size), size);
     if (status == CoreStatus::installed || status == CoreStatus::update)
     {
-        ImGui::SameLine();
-        ImGui::Text("   %s %s", piccolo_text(strings, Str::cores_installed_version),
-                    core_updater_installed_version(updater, entry->file.c_str()).c_str());
+        retro_ui_same_line();
+        retro_ui_text_format("   %s %s", piccolo_text(strings, Str::cores_installed_version),
+                             core_updater_installed_version(updater, entry->file.c_str()).c_str());
     }
-    ImGui::PushTextWrapPos(0.0f);
+    // The notes wrap at the window's edge.
     if (!entry->free)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::cores_non_free_note));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::cores_non_free_note), 0.0f);
     }
     if (entry->type == CoreType::legacy)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::cores_legacy_note));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::cores_legacy_note), 0.0f);
     }
     else if (entry->type == CoreType::experimental)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::cores_experimental_note));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::cores_experimental_note), 0.0f);
     }
     if (status == CoreStatus::installed_by_hand)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::cores_by_hand_note));
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::cores_by_hand_note), 0.0f);
     }
-    ImGui::PopTextWrapPos();
 
-    ImGui::BeginDisabled(busy);
+    retro_ui_begin_disabled(busy);
     if (status != CoreStatus::installed)
     {
         Str action = Str::cores_install;
@@ -215,20 +210,20 @@ static void draw_selected(CoresWindow* window, const CoresWindowContext* context
         {
             core_updater_install(updater, window->selected, context->running_file);
         }
-        ImGui::SameLine();
+        retro_ui_same_line();
     }
     if (status != CoreStatus::not_installed && retro_ui_button(piccolo_text(strings, Str::cores_remove)))
     {
         core_updater_remove(updater, window->selected, context->running_file);
     }
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
 }
 
 // NON-FREE, and the confirmation turning it on asks for.
 static void draw_non_free_switch(CoresWindow* window, const Localization* strings)
 {
     bool shown = window->show_non_free;
-    if (retro_ui_checkbox(piccolo_text(strings, Str::cores_non_free), &shown))
+    if (retro_ui_check("non_free", piccolo_text(strings, Str::cores_non_free), &shown))
     {
         if (shown)
         {
@@ -242,48 +237,34 @@ static void draw_non_free_switch(CoresWindow* window, const Localization* string
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::cores_show_non_free_help));
 
-    char title[128] = {};
-    std::snprintf(title, sizeof(title), "%s###non_free_confirm", piccolo_text(strings, Str::cores_non_free_confirm_title));
-    if (window->confirm_non_free && !ImGui::IsPopupOpen(title))
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
+    RetroUiQuestion question = {};
+    question.id = "non_free_confirm";
+    question.title = piccolo_text(strings, Str::cores_non_free_confirm_title);
+    question.text = piccolo_text(strings, Str::cores_non_free_confirm_text);
+    question.yes = piccolo_text(strings, Str::cores_non_free_confirm_yes);
+    question.no = piccolo_text(strings, Str::cores_cancel);
+    question.width = static_cast<float>(static_cast<int>(screen_width * 0.4f));
+    RetroUiAnswer answer = retro_ui_question(&question, window->confirm_non_free);
+    if (answer == RetroUiAnswer::yes)
     {
-        ImGui::OpenPopup(title);
+        window->show_non_free = true;
+        window->show_changed = true;
     }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(static_cast<int>(viewport->Size.x * 0.4f)), 0.0f),
-                             ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove))
+    if (answer != RetroUiAnswer::none)
     {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(piccolo_text(strings, Str::cores_non_free_confirm_text));
-        ImGui::PopTextWrapPos();
-        ImGui::Spacing();
-        bool close = ImGui::IsKeyPressed(ImGuiKey_Escape);   // (B on a gamepad sends Escape while a popup is up)
-        if (retro_ui_button(piccolo_text(strings, Str::cores_non_free_confirm_yes)))
-        {
-            window->show_non_free = true;
-            window->show_changed = true;
-            close = true;
-        }
-        ImGui::SameLine();
-        if (retro_ui_button(piccolo_text(strings, Str::cores_cancel)))
-        {
-            close = true;
-        }
-        if (close)
-        {
-            window->confirm_non_free = false;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
+        window->confirm_non_free = false;
     }
 }
 
 // One SHOW switch without a confirmation (OLDER VERSIONS, EXPERIMENTAL).
-static void draw_show_switch(CoresWindow* window, const Localization* strings, Str label, Str help, bool* value)
+static void draw_show_switch(CoresWindow* window, const Localization* strings, const char* id, Str label, Str help,
+                             bool* value)
 {
     bool shown = *value;
-    if (retro_ui_checkbox(piccolo_text(strings, label), &shown))
+    if (retro_ui_check(id, piccolo_text(strings, label), &shown))
     {
         *value = shown;
         window->show_changed = true;
@@ -295,17 +276,16 @@ static void draw_show_switch(CoresWindow* window, const Localization* strings, S
 static void draw_show_row(CoresWindow* window, const CoresWindowContext* context)
 {
     const Localization* strings = context->strings;
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::cores_show));
+    retro_ui_label(piccolo_text(strings, Str::cores_show));
     if (!context->updater->free_only)
     {
-        ImGui::SameLine();
+        retro_ui_same_line();
         draw_non_free_switch(window, strings);
     }
-    ImGui::SameLine();
-    draw_show_switch(window, strings, Str::cores_show_legacy, Str::cores_show_legacy_help, &window->show_legacy);
-    ImGui::SameLine();
-    draw_show_switch(window, strings, Str::cores_show_experimental, Str::cores_show_experimental_help,
+    retro_ui_same_line();
+    draw_show_switch(window, strings, "legacy", Str::cores_show_legacy, Str::cores_show_legacy_help, &window->show_legacy);
+    retro_ui_same_line();
+    draw_show_switch(window, strings, "experimental", Str::cores_show_experimental, Str::cores_show_experimental_help,
                      &window->show_experimental);
 }
 
@@ -320,59 +300,61 @@ void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, I
     continue_update_all(window, context);
 
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
-    // The same size as SETTINGS: 360 x 240 retro pixels, never bigger than the window.
-    ImVec2 size(360.0f * block, 240.0f * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
-                            ImVec2(0.5f, 0.5f));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-    char title[200] = {};
-    std::snprintf(title, sizeof(title), "%s###cores_window", piccolo_text(strings, Str::cores_title));
-    if (ImGui::Begin(title, nullptr, flags))
+    // The same size as SETTINGS: 360 x 240 retro pixels, never bigger than the
+    // window. It doesn't scroll: the list does.
+    float width = 360.0f * block;
+    float height = 240.0f * block;
+    RetroUiWindow frame = {};
+    frame.id = "cores_window";
+    frame.title = piccolo_text(strings, Str::cores_title);
+    frame.width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    frame.height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    frame.centered_on_open = true;
+    frame.scrolls = false;
+    bool closed = false;
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             window->open = false;
         }
         if (!core_updater_available())
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::cores_unavailable));
+            retro_ui_dim_text(piccolo_text(strings, Str::cores_unavailable), nullptr);
         }
         else
         {
             // The list takes what's left above the details, buttons and status,
             // measured last frame (their height changes with notes and buttons;
             // the first frame guesses 4 lines).
-            float line = ImGui::GetFrameHeightWithSpacing();
+            float line = retro_ui_line_step();
             float bottom = window->bottom_height > 0.0f ? window->bottom_height : line * 4.0f;
-            float list_height = ImGui::GetContentRegionAvail().y - bottom;
+            float list_height = retro_ui_height_left() - bottom;
             draw_list(window, context, block, list_height > line * 3.0f ? list_height : line * 3.0f);
-            float bottom_start = ImGui::GetCursorPosY();
+            float bottom_start = retro_ui_cursor_y();
             draw_selected(window, context);
 
             bool busy = updater->state != CoreUpdaterState::idle;
-            ImGui::BeginDisabled(busy);
+            retro_ui_begin_disabled(busy);
             if (retro_ui_button(piccolo_text(strings, Str::cores_refresh)))
             {
                 window->update_all = false;
                 core_updater_refresh(updater);
             }
-            ImGui::SameLine();
+            retro_ui_same_line();
             if (retro_ui_button(piccolo_text(strings, Str::cores_update_all)))
             {
                 window->update_all = true;
                 updater->message_is_error = false;   // a new run: don't stop on the last error
             }
-            ImGui::EndDisabled();
+            retro_ui_end_disabled();
             if (busy)
             {
-                ImGui::SameLine();
+                retro_ui_same_line();
                 if (retro_ui_button(piccolo_text(strings, Str::cores_cancel)))
                 {
                     window->update_all = false;
@@ -387,22 +369,22 @@ void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, I
             core_updater_progress(updater, &received, &total);
             if (updater->state == CoreUpdaterState::installing && total > 0)
             {
-                ImGui::Text("%s %s %d%%", piccolo_text(strings, Str::cores_downloading), updater->task_entry.name.c_str(),
-                            static_cast<int>(received * 100 / total));
+                retro_ui_text_format("%s %s %d%%", piccolo_text(strings, Str::cores_downloading),
+                                     updater->task_entry.name.c_str(), static_cast<int>(received * 100 / total));
             }
             else if (updater->message_is_error)
             {
-                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(retro_ui_attention_color()), "%s",
-                                   updater->message.c_str());
+                retro_ui_push_section_text();   // the attention color
+                retro_ui_text(updater->message.c_str());
+                retro_ui_pop_section_text();
             }
             else
             {
-                ImGui::TextDisabled("%s", updater->message.c_str());
+                retro_ui_dim_text(updater->message.c_str(), nullptr);
             }
-            window->bottom_height = ImGui::GetCursorPosY() - bottom_start;
+            window->bottom_height = retro_ui_cursor_y() - bottom_start;
         }
-        retro_ui_end_window();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
 }
