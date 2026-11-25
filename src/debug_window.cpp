@@ -4,7 +4,6 @@
 
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
-#include "ui_toolkit.h"
 
 static void draw_about(const DebugWindowState* state)
 {
@@ -40,13 +39,12 @@ static void press(DebugWindowAction* action, bool pressed, DebugWindowPress what
     }
 }
 
-static void draw_widgets(const DebugWindowState* state, DebugWindowAction* action)
+static void draw_hud_widgets(DebugWindowAction* action)
 {
     static const char* const ICON_NAMES[DEBUG_WINDOW_ICON_COUNT] = {"PAUSED icon", "REWINDING icon", "PLAY icon",
                                                                     "FAST FORWARD icon"};
     static const char* const ICON_IDS[DEBUG_WINDOW_ICON_COUNT] = {"pause", "rewind", "play", "fast_forward"};
 
-    retro_ui_text("Widgets (HUD)");
     press(action, retro_ui_button("Remap card: port 1's first controller"), DebugWindowPress::remap_card);
     for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
     {
@@ -63,8 +61,10 @@ static void draw_widgets(const DebugWindowState* state, DebugWindowAction* actio
     retro_ui_same_line();
     press(action, retro_ui_button("DVR card: NOTHING YET"), DebugWindowPress::dvr_card_nothing);
     press(action, retro_ui_button("Ports' tabs rise"), DebugWindowPress::ports_rise);
+}
 
-    retro_ui_text("Widgets (windows; a game must run)");
+static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction* action)
+{
     retro_ui_begin_disabled(!state->game_running);
     // Asked for by the user: they replace what's up, this window included.
     press(action, retro_ui_button("DEVICES") && state->devices_available, DebugWindowPress::open_devices);
@@ -86,7 +86,6 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     {
         action->icons_forced[i] = state->icons_forced[i];
     }
-    action->toolkit_demo_shown = state->toolkit_demo_shown;
 
     retro_ui_push_theme(pixel_font, scale);
     RetroUiWindow window = {};
@@ -97,16 +96,16 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     if (retro_ui_window_begin(&window, scale, &action->closed))
     {
         draw_about(state);
-        retro_ui_separator();
-        draw_widgets(state, action);
-        retro_ui_separator();
-        retro_ui_check("toolkit_demo", "GUI toolkit demo window", &action->toolkit_demo_shown);
+        // Every section after the numbers folds away (Andrés, testing round 1).
+        if (retro_ui_section_header("hud", "Widgets (HUD)", true))
+        {
+            draw_hud_widgets(action);
+        }
+        if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", true))
+        {
+            draw_window_widgets(state, action);
+        }
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
-    // Outside the theme: the toolkit's demo shows its own look.
-    if (action->toolkit_demo_shown)
-    {
-        ui_toolkit_demo_window(&action->toolkit_demo_shown);
-    }
 }

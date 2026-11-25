@@ -3,7 +3,8 @@
 // The debug window (MENU > DEBUG): versions, the GPU, timing and audio
 // numbers, and WIDGETS, every widget on demand to see and try them without
 // the situation that brings them up (Andrés, 2026-11-21). In English only:
-// it's for developers.
+// it's for developers. The numbers stay in view; the widget sections fold
+// away (testing round 1).
 //
 // The pattern of every window: main.cpp fills a DebugWindowState (plain
 // data, no GUI), debug_window_draw draws it with retroui and returns what was
@@ -49,8 +50,6 @@ struct DebugWindowState
     bool devices_available = false;   // a port has a controller (DEVICES has something to show)
     bool text_box_allowed  = false;   // no text box is pending already
     bool keep_revert_allowed = false; // KEEP / REVERT isn't asking already
-
-    bool toolkit_demo_shown = false;  // the GUI toolkit's own demo window (ImGui's today)
 };
 
 enum class DebugWindowPress
@@ -73,9 +72,8 @@ struct DebugWindowAction
     DebugWindowPress press = DebugWindowPress::none;
     bool closed = false;
     bool icons_forced[DEBUG_WINDOW_ICON_COUNT] = {};   // the checkboxes after this frame
-    bool toolkit_demo_shown = false;
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).
-// action->icons_forced and ->toolkit_demo_shown start as the state's.
+// action->icons_forced starts as the state's.
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);

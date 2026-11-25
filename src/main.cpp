@@ -118,7 +118,6 @@ struct App
 
     bool     running = false;
     bool     show_debug_window = false;
-    bool     show_imgui_demo = false;
 
     RetroUiFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
@@ -3803,7 +3802,6 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->devices_available = app->ports_widget.port_count > 0;
     state->text_box_allowed = state->game_running && !text_input_pending(app);
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
-    state->toolkit_demo_shown = app->show_imgui_demo;
 }
 
 // What was pressed in the debug window.
@@ -3817,7 +3815,6 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
     {
         app->state_icons.debug_show[i] = action->icons_forced[i];
     }
-    app->show_imgui_demo = action->toolkit_demo_shown;
 
     uint64_t now_ms = SDL_GetTicks();
     static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
