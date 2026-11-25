@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "imgui.h"
 #include "port_indicators.h"
 
 #include "app_shell.h"
@@ -12,6 +11,7 @@
 #include "net_window.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 
 void guest_window_open(GuestWindow* window)
 {
@@ -101,69 +101,68 @@ static void draw_preview(GuestWindow* window, float width, const Localization* s
     float aspect = window->preview_height > 0
                        ? static_cast<float>(window->preview_width) / static_cast<float>(window->preview_height)
                        : 4.0f / 3.0f;
-    ImVec2 box = ImVec2(std::floor(width), std::floor(width / aspect));
-    ImVec2 corner = ImGui::GetCursorScreenPos();
-    corner = ImVec2(std::floor(corner.x), std::floor(corner.y));
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(corner, ImVec2(corner.x + box.x, corner.y + box.y), IM_COL32(0, 0, 0, 255));
+    float box_width = std::floor(width);
+    float box_height = std::floor(width / aspect);
+    retro_ui_canvas(box_width, box_height);
+    retro_ui_canvas_rect(0.0f, 0.0f, box_width, box_height, 0xFF000000u);
     if (window->has_preview)
     {
         float u = 0.0f;
         float v = 0.0f;
         video_texture_uv_max(&window->preview, &u, &v);
-        const ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
-        draw_list->AddImage(ImTextureRef(static_cast<ImTextureID>(window->preview.imgui_id)), corner,
-                            ImVec2(corner.x + box.x, corner.y + box.y), ImVec2(0.0f, 0.0f), ImVec2(u, v));
-        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
+        // retro_ui_window_begin() switched this window to nearest sampling: sharp pixels.
+        retro_ui_canvas_image(window->preview.imgui_id, 0.0f, 0.0f, box_width, box_height, u, v, 0xFFFFFFFFu);
     }
     else
     {
         // Two lines, centered: the box is narrow.
         const char* text = piccolo_text(strings, Str::guests_no_screenshot);
-        float line = ImGui::GetTextLineHeight();
-        float y = corner.y + (box.y - line * 2.0f) * 0.5f;
+        uint32_t dim = retro_ui_palette()->text_disabled;
+        float line = retro_ui_font_size();
+        float y = (box_height - line * 2.0f) * 0.5f;
         const char* space = std::strchr(text, ' ');
         const char* second = space != nullptr ? std::strchr(space + 1, ' ') : nullptr;   // "NO SCREENSHOT" / "AVAILABLE"
         size_t first_size = second != nullptr ? static_cast<size_t>(second - text) : std::strlen(text);
-        ImVec2 first_extent = ImGui::CalcTextSize(text, text + first_size);
-        draw_list->AddText(ImVec2(std::floor(corner.x + (box.x - first_extent.x) * 0.5f), std::floor(y)),
-                           ImGui::GetColorU32(ImGuiCol_TextDisabled), text, text + first_size);
+        char first[128] = {};
+        std::snprintf(first, sizeof(first), "%.*s", static_cast<int>(first_size), text);
+        retro_ui_canvas_text(std::floor((box_width - retro_ui_text_width(first)) * 0.5f), std::floor(y), first, dim);
         if (second != nullptr)
         {
-            ImVec2 second_extent = ImGui::CalcTextSize(second + 1);
-            draw_list->AddText(ImVec2(std::floor(corner.x + (box.x - second_extent.x) * 0.5f), std::floor(y + line)),
-                               ImGui::GetColorU32(ImGuiCol_TextDisabled), second + 1);
+            retro_ui_canvas_text(std::floor((box_width - retro_ui_text_width(second + 1)) * 0.5f), std::floor(y + line),
+                                 second + 1, dim);
         }
     }
-    ImGui::Dummy(box);
 }
 
 static void wrapped(const char* text, bool dim)
 {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
+    float wrap_x = retro_ui_font_size() * 34.0f;
     if (dim)
     {
-        ImGui::TextDisabled("%s", text);
+        retro_ui_dim_text_wrapped_at(text, wrap_x);
     }
     else
     {
-        ImGui::TextUnformatted(text);
+        retro_ui_text_wrapped_at(text, wrap_x);
     }
-    ImGui::PopTextWrapPos();
 }
 
 // SEATS and ACCESS: before the link they're kept for MAKE LINK; with it they
 // apply at once (fewer seats never drop anyone).
 static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const Localization* strings, bool one_row)
 {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::guests_seats));
-    ImGui::SameLine(one_row ? 0.0f : ImGui::GetFontSize() * 12.0f);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
-    retro_ui_push_field_text();
-    bool seats_changed = ImGui::InputInt("##guest_seats", &window->seats, 1, 1);
-    retro_ui_pop_field_text();
+    float column = retro_ui_font_size() * 12.0f;
+    retro_ui_label(piccolo_text(strings, Str::guests_seats));
+    if (one_row)
+    {
+        retro_ui_same_line();
+    }
+    else
+    {
+        retro_ui_same_line_at(column);
+    }
+    retro_ui_next_width(retro_ui_font_size() * 7.0f);
+    bool seats_changed = retro_ui_number_field("guest_seats", &window->seats, 1);
     if (window->seats < 1)
     {
         window->seats = 1;
@@ -178,11 +177,17 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
     }
     if (one_row)
     {
-        ImGui::SameLine(0.0f, ImGui::GetFontSize() * 2.0f);
+        retro_ui_same_line_gap(retro_ui_font_size() * 2.0f);
     }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::guests_access));
-    ImGui::SameLine(one_row ? 0.0f : ImGui::GetFontSize() * 12.0f);
+    retro_ui_label(piccolo_text(strings, Str::guests_access));
+    if (one_row)
+    {
+        retro_ui_same_line();
+    }
+    else
+    {
+        retro_ui_same_line_at(column);
+    }
     const char* labels[2] = {piccolo_text(strings, Str::guests_watch), piccolo_text(strings, Str::guests_play)};
     uint32_t level = window->level;
     retro_ui_choice_buttons("##guest_access", labels, 2, &window->level);
@@ -194,23 +199,21 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
 
 static void draw_setup(GuestWindow* window, bool game, bool internet, const Localization* strings)
 {
-    draw_preview(window, ImGui::GetFontSize() * 12.0f, strings);
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::guests_game));
-    ImGui::SameLine(ImGui::GetFontSize() * 12.0f);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 22.0f);
-    retro_ui_push_field_text();
-    ImGui::InputText("##guest_title", window->title, sizeof(window->title));
-    retro_ui_pop_field_text();
+    draw_preview(window, retro_ui_font_size() * 12.0f, strings);
+    retro_ui_same_line();
+    retro_ui_begin_group();
+    retro_ui_label(piccolo_text(strings, Str::guests_game));
+    retro_ui_same_line_at(retro_ui_font_size() * 12.0f);
+    retro_ui_next_width(retro_ui_font_size() * 22.0f);
+    RetroUiEditField title_field = {};
+    retro_ui_edit_field("guest_title", window->title, sizeof(window->title), &title_field);
     draw_seats_and_access(window, nullptr, strings, false);
     if (window->level == static_cast<uint32_t>(NetGuestLevel::play))
     {
         wrapped(piccolo_text(strings, Str::guests_play_hint), true);
     }
-    ImGui::EndGroup();
-    ImGui::Spacing();
+    retro_ui_end_group();
+    retro_ui_spacing();
     wrapped(piccolo_text(strings, Str::guests_text), false);
     if (window->png.empty() && game)
     {
@@ -224,15 +227,15 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
     {
         wrapped(piccolo_text(strings, Str::guests_no_internet), true);
     }
-    ImGui::Spacing();
+    retro_ui_spacing();
     bool ready = game && internet && window->title[0] != '\0';
-    ImGui::BeginDisabled(!ready);
+    retro_ui_begin_disabled(!ready);
     if (retro_ui_button(piccolo_text(strings, Str::guests_make)))
     {
         window->action = GuestWindowAction::make_link;
     }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
+    retro_ui_end_disabled();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
     {
         window->open = false;
@@ -242,9 +245,8 @@ static void draw_setup(GuestWindow* window, bool game, bool internet, const Loca
 static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
                         const Localization* strings)
 {
-    float line = ImGui::GetFrameHeightWithSpacing();
-    float height = line * static_cast<float>(window->seats > 3 ? window->seats : 3) + ImGui::GetStyle().WindowPadding.y * 2.0f;
-    if (!retro_ui_begin_list("##guests", ImGui::GetFontSize() * 34.0f, height))
+    uint32_t rows = window->seats > 3 ? static_cast<uint32_t>(window->seats) : 3u;
+    if (!retro_ui_begin_list("##guests", retro_ui_font_size() * 34.0f, retro_ui_list_height(rows)))
     {
         retro_ui_end_list();
         return;
@@ -258,10 +260,9 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
             continue;
         }
         shown++;
-        ImGui::PushID(static_cast<int>(peer));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(guest->guest_name[0] != '\0' ? guest->guest_name : "?");
-        ImGui::SameLine(ImGui::GetFontSize() * 10.0f);
+        retro_ui_push_index(peer);
+        retro_ui_label(guest->guest_name[0] != '\0' ? guest->guest_name : "?");
+        retro_ui_same_line_at(retro_ui_font_size() * 10.0f);
         int32_t port = input_net_peer_port(input_net, input, peer);
         char what[64];
         if (window->level == static_cast<uint32_t>(NetGuestLevel::watch))
@@ -278,36 +279,32 @@ static void draw_guests(GuestWindow* window, NetAccess* access, const InputNet* 
         }
         if (port == INPUT_NO_PORT)
         {
-            ImGui::TextDisabled("%s", what);
+            retro_ui_dim_text(what, nullptr);
         }
         else
         {
-            ImGui::TextUnformatted(what);
+            retro_ui_text(what);
         }
         // Ping bars, then KICK, at the right.
-        float block = std::floor(ImGui::GetTextLineHeight() / 7.0f);
+        float block = std::floor(retro_ui_font_size() / 7.0f);
         block = block < 1.0f ? 1.0f : block;
-        float kick_width = ImGui::CalcTextSize(piccolo_text(strings, Str::guests_kick)).x +
-                           ImGui::GetStyle().FramePadding.x * 2.0f;
-        float right = ImGui::GetWindowContentRegionMax().x;
-        ImGui::SameLine(right - kick_width - port_indicators_ping_width(block) - ImGui::GetFontSize());
+        float kick_width = retro_ui_button_width(piccolo_text(strings, Str::guests_kick));
+        float right = retro_ui_right_edge();
+        retro_ui_same_line_at(right - kick_width - port_indicators_ping_width(block) - retro_ui_font_size());
         NetLinkStats stats;
         bool known = net_access_peer_stats(access, peer, &stats);
-        ImVec2 at = ImGui::GetCursorScreenPos();
-        port_indicators_draw_ping(at.x, at.y + ImGui::GetFrameHeight() - block * 2.0f, block, known,
-                                  known ? stats.round_trip_ms : 0, retro_ui_palette()->panel_dark);
-        ImGui::Dummy(ImVec2(port_indicators_ping_width(block), ImGui::GetFrameHeight()));
-        ImGui::SameLine(right - kick_width);
+        retro_ui_ping_bars(known, known ? stats.round_trip_ms : 0, block);
+        retro_ui_same_line_at(right - kick_width);
         if (retro_ui_button(piccolo_text(strings, Str::guests_kick)))
         {
             net_access_guest_kick(access, peer);
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::guests_kick_tip));
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
     if (shown == 0)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::guests_none));
+        retro_ui_dim_text(piccolo_text(strings, Str::guests_none), nullptr);
     }
     retro_ui_end_list();
 }
@@ -319,28 +316,27 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
     {
         // Not shown until it works and has its card (main.cpp guest_update_locked).
         net_window_waiting_leds(piccolo_text(strings, Str::guests_preparing));
-        ImGui::Spacing();
+        retro_ui_spacing();
         if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
         {
             window->action = GuestWindowAction::end;
         }
         return;
     }
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::guests_link));
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24.0f);
-    retro_ui_push_field_text();
-    ImGui::InputText("##guest_link", window->link_text, sizeof(window->link_text), ImGuiInputTextFlags_ReadOnly);
-    retro_ui_pop_field_text();
-    ImGui::SameLine();
-    bool copied = window->copied_at >= 0.0 && ImGui::GetTime() - window->copied_at < 2.0;
+    retro_ui_label(piccolo_text(strings, Str::guests_link));
+    retro_ui_same_line();
+    retro_ui_next_width(retro_ui_font_size() * 24.0f);
+    RetroUiEditField link_field = {};
+    link_field.read_only = true;
+    retro_ui_edit_field("guest_link", window->link_text, sizeof(window->link_text), &link_field);
+    retro_ui_same_line();
+    bool copied = window->copied_at >= 0.0 && retro_ui_seconds() - window->copied_at < 2.0;
     if (retro_ui_button(piccolo_text(strings, copied ? Str::guests_copied : Str::guests_copy)))
     {
         clipboard_set_text(window->link_text);
-        window->copied_at = ImGui::GetTime();
+        window->copied_at = retro_ui_seconds();
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::guests_new)))
     {
         window->action = GuestWindowAction::new_link;
@@ -350,22 +346,21 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
     draw_seats_and_access(window, access, strings, true);
     draw_guests(window, access, input_net, input, strings);
 
-    draw_preview(window, ImGui::GetFontSize() * 8.0f, strings);
-    ImGui::SameLine();
-    ImGui::BeginGroup();
+    draw_preview(window, retro_ui_font_size() * 8.0f, strings);
+    retro_ui_same_line();
+    retro_ui_begin_group();
     uint32_t taken = net_access_guest_count(access);
     char line[128];
     std::snprintf(line, sizeof(line), "%s %u / %d%s%s", piccolo_text(strings, Str::guests_taken),
                   static_cast<unsigned>(taken), window->seats,
                   taken >= static_cast<uint32_t>(window->seats) ? "  " : "",
                   taken >= static_cast<uint32_t>(window->seats) ? piccolo_text(strings, Str::guests_full) : "");
-    ImGui::TextUnformatted(line);
+    retro_ui_text(line);
     if (access->guest_failures > 0)
     {
         std::snprintf(line, sizeof(line), "%s %u", piccolo_text(strings, Str::guests_failures),
                       static_cast<unsigned>(access->guest_failures));
-        ImGui::TextDisabled("%s", line);
-        retro_ui_item_tooltip(piccolo_text(strings, Str::guests_failures_tip));
+        retro_ui_dim_text(line, piccolo_text(strings, Str::guests_failures_tip));
     }
     Str card = Str::guests_card_none;
     switch (guest_card_state(&window->card))
@@ -382,21 +377,19 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
         default:
             break;
     }
-    ImGui::TextDisabled("%s", piccolo_text(strings, card));
+    retro_ui_dim_text(piccolo_text(strings, card), nullptr);
     if (card == Str::guests_card_failed && window->card.error[0] != '\0')
     {
         // Why, as net_http said it (there's no console on Windows to read it from).
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetFontSize() * 22.0f);
-        ImGui::TextDisabled("%s", window->card.error);
-        ImGui::PopTextWrapPos();
+        retro_ui_dim_text_wrapped_at(window->card.error, retro_ui_cursor_x() + retro_ui_font_size() * 22.0f);
     }
-    ImGui::EndGroup();
-    ImGui::Spacing();
+    retro_ui_end_group();
+    retro_ui_spacing();
     if (retro_ui_button(piccolo_text(strings, Str::guests_end)))
     {
         window->action = GuestWindowAction::end;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::guests_close)))
     {
         window->open = false;   // the link stays
@@ -410,42 +403,31 @@ void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* i
     {
         return;
     }
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    char title[96];
-    std::snprintf(title, sizeof(title), "%s###guests", piccolo_text(strings, Str::guests_title));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
-                             ImGuiWindowFlags_NoSavedSettings;
-    bool keep = true;
+    RetroUiWindow frame = {};
+    frame.id = "guests";
+    frame.title = piccolo_text(strings, Str::guests_title);
+    frame.centered_on_open = true;
+    bool closed = false;
     // Themed like every other window; the close button is the pixel font's X.
     retro_ui_push_theme(pixel_font, scale);
-    if (!ImGui::Begin(title, nullptr, flags))
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        ImGui::End();
-        retro_ui_pop_theme();
-        return;
+        if (access == nullptr)
+        {
+            retro_ui_dim_text(piccolo_text(strings, Str::net_off), nullptr);
+        }
+        else if (window->live)
+        {
+            draw_live(window, access, input_net, input, strings);
+        }
+        else
+        {
+            draw_setup(window, game, internet, strings);
+        }
     }
-    retro_ui_begin_window(scale);
-    if (retro_ui_close_button())
-    {
-        keep = false;
-    }
-    if (access == nullptr)
-    {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::net_off));
-    }
-    else if (window->live)
-    {
-        draw_live(window, access, input_net, input, strings);
-    }
-    else
-    {
-        draw_setup(window, game, internet, strings);
-    }
-    retro_ui_end_window();
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
-    if (!keep)
+    if (closed)
     {
         window->open = false;   // closing keeps a link (END ends it)
     }
