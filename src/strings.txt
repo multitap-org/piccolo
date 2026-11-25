@@ -1023,6 +1023,7 @@ touch_pad_style_missing = (GONE)
 setting_touch_pad_vibrate = VIBRATE ON PRESS
 setting_touch_pad_vibrate_help = A short buzz each time a button of the touch gamepad is pressed (phones with a vibrator).
 input_section_touch_pad = ON-SCREEN GAMEPAD
+input_section_general = GENERAL
 input_touch_pad_edit = EDIT LAYOUT
 input_touch_pad_edit_help = Move and resize the touch gamepad's buttons (drag a group, pinch or SIZE, RESET, DONE). Upright and sideways have their own layouts.
 touch_pad_menu = HOME

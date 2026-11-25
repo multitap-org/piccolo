@@ -400,11 +400,10 @@ static void name_field(const InputWindowState* state, uint32_t controller, float
 
 // SETTINGS
 
-// The SCOPE and one or more settings rows (the settings of SETTINGS and of
-// HOTKEYS share the window's scope). The rows hand their edit out
-// (input_window_apply).
-static void draw_scoped_settings(InputWindow* window, const InputWindowState* state, const char* const* keys,
-                                 uint32_t count, InputWindowAction* action)
+// SETTINGS: one SCOPE for the whole tab (it was drawn once per group, two
+// controls with one id), then GENERAL and ON-SCREEN GAMEPAD, each a group of
+// rows that folds away. The rows hand their edit out (input_window_apply).
+static void draw_settings(InputWindow* window, const InputWindowState* state, InputWindowAction* action)
 {
     settings_ui_scope(state->settings, state->strings, state->core_name, state->game_name, &window->scope,
                       &window->choose_scope);
@@ -414,22 +413,35 @@ static void draw_scoped_settings(InputWindow* window, const InputWindowState* st
     ui.scope = window->scope;
     ui.label_width = settings_ui_label_width(state->settings, state->strings);
     ui.edit = &action->setting;
-    for (uint32_t k = 0; k < count; k++)
-    {
-        settings_ui_row(&ui, keys[k], nullptr);
-    }
-}
 
-static void draw_settings(InputWindow* window, const InputWindowState* state, InputWindowAction* action)
-{
-    static const char* const KEYS[] = {PICCOLO_INPUT_SHARE_PORT1, PICCOLO_INPUT_PORTS, PICCOLO_INPUT_PRESS_TIME,
-                                       PICCOLO_INPUT_HOLD_TIME, PICCOLO_INPUT_OSK};
-    draw_scoped_settings(window, state, KEYS, sizeof(KEYS) / sizeof(KEYS[0]), action);
-    // The on-screen gamepad (onscreen_pad.h): its settings and EDIT LAYOUT.
-    retro_ui_spacing();
-    retro_ui_separator_text(piccolo_text(state->strings, Str::input_section_touch_pad));
+    // GENERAL: open at first (what most come here for).
+    if (settings_ui_section("general", piccolo_text(state->strings, Str::input_section_general), nullptr, true))
+    {
+        static const char* const KEYS[] = {PICCOLO_INPUT_SHARE_PORT1, PICCOLO_INPUT_PORTS, PICCOLO_INPUT_PRESS_TIME,
+                                           PICCOLO_INPUT_HOLD_TIME, PICCOLO_INPUT_OSK};
+        for (uint32_t k = 0; k < sizeof(KEYS) / sizeof(KEYS[0]); k++)
+        {
+            settings_ui_row(&ui, KEYS[k], nullptr);
+        }
+    }
+
+    // ON-SCREEN GAMEPAD (onscreen_pad.h): its settings and EDIT LAYOUT. Open
+    // at first only where there's a touch screen to use it on.
+#if defined(SDL_PLATFORM_ANDROID)
+    bool touch_open = true;
+#else
+    bool touch_open = false;
+#endif
+    if (!settings_ui_section("touch_pad", piccolo_text(state->strings, Str::input_section_touch_pad), nullptr,
+                             touch_open))
+    {
+        return;
+    }
     static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
-    draw_scoped_settings(window, state, TOUCH_KEYS, sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]), action);
+    for (uint32_t k = 0; k < sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]); k++)
+    {
+        settings_ui_row(&ui, TOUCH_KEYS[k], nullptr);
+    }
     // STYLE: the controller layouts (layouts/), by name; "" = RETROPAD.
     if (state->layouts != nullptr)
     {
@@ -441,12 +453,6 @@ static void draw_settings(InputWindow* window, const InputWindowState* state, In
             names[name_count] = state->layouts->layouts[i].name.c_str();
             name_count++;
         }
-        SettingsUiContext ui = {};
-        ui.settings = state->settings;
-        ui.strings = state->strings;
-        ui.scope = window->scope;
-        ui.label_width = settings_ui_label_width(state->settings, state->strings);
-        ui.edit = &action->setting;
         settings_ui_text_choice_row(&ui, PICCOLO_TOUCH_PAD_STYLE, names, name_count,
                                     piccolo_text(state->strings, Str::touch_pad_style_retropad),
                                     piccolo_text(state->strings, Str::touch_pad_style_missing));

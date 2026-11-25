@@ -3578,6 +3578,10 @@ msgctxt "input_section_touch_pad"
 msgid "ON-SCREEN GAMEPAD"
 msgstr "CONTROL EN PANTALLA"
 
+msgctxt "input_section_general"
+msgid "GENERAL"
+msgstr "GENERAL"
+
 msgctxt "input_touch_pad_edit"
 msgid "EDIT LAYOUT"
 msgstr "EDITAR LAYOUT"
