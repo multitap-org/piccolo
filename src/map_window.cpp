@@ -6,12 +6,12 @@
 #include <cstring>
 #include <vector>
 
-#include "imgui.h"
 #include "input_sdl.h"
 #include "pad_picture.h"
-#include "pixel_font_imgui.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
 constexpr uint64_t OFFER_MS = 15000;      // NOT NOW by itself after this long
 constexpr uint64_t START_MS = 10000;      // a step's first page STARTs by itself after this long (untouched)
@@ -63,7 +63,7 @@ static_assert(ROLE_COUNT <= MAP_WINDOW_ROLES_MAX, "MAP_WINDOW_ROLES_MAX too smal
 static const Str MODE_NAMES[] = {Str::hotkey_mode_hold, Str::hotkey_mode_one, Str::hotkey_mode_stays};
 static const InputHotkeyMode MODES[] = {InputHotkeyMode::hold, InputHotkeyMode::one_hotkey, InputHotkeyMode::stays_on};
 
-static const ImVec4 YELLOW = ImVec4(1.0f, 220.0f / 255.0f, 80.0f / 255.0f, 1.0f);   // like the lit pad
+constexpr uint32_t YELLOW = 0xFFFFDC50u;   // like the lit pad
 
 static const InputLayout* picked_layout(const MapWindow* window, const MapWindowContext* context)
 {
@@ -309,15 +309,13 @@ static void go(MapWindow* window, const MapWindowContext* context, MapStage stag
 
 static void wrapped(const char* text)
 {
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(text);
-    ImGui::PopTextWrapPos();
+    retro_ui_text_wrapped(text);
 }
 
 static void section(const char* text)
 {
     retro_ui_push_section_text();
-    ImGui::TextUnformatted(text);
+    retro_ui_text(text);
     retro_ui_pop_section_text();
 }
 
@@ -335,22 +333,14 @@ static void header(const MapWindow* window, const Localization* strings, Str tit
 // The controller drawing, always in the same place.
 static void pad_area(const InputLayout* layout, PadView view, InputMapControl lit, bool minus, float block)
 {
-    float y = PAD_TOP * block;
-    if (ImGui::GetCursorPosY() < y)
-    {
-        ImGui::SetCursorPosY(y);
-    }
+    retro_ui_down_to(PAD_TOP * block);
     pad_picture_draw_view(layout, view, lit, minus, PAD_UNIT * block);
 }
 
 // The wizard's buttons: at the bottom of the window, always.
 static void footer()
 {
-    float y = ImGui::GetWindowHeight() - ImGui::GetStyle().WindowPadding.y - ImGui::GetFrameHeight();
-    if (ImGui::GetCursorPosY() < y)
-    {
-        ImGui::SetCursorPosY(y);
-    }
+    retro_ui_down_to(retro_ui_bottom_line_y());
 }
 
 // A press of any button on the controller being mapped, for pages it can
@@ -371,13 +361,7 @@ static bool raw_press(MapWindow* window)
 static void prompt(MapWindow* window, const MapWindowContext* context, const char* text, Str hint)
 {
     section(text);
-    char spinner[4] = {};
-    pixel_font_imgui_spinner(input_sdl_mapper_hold_progress(&window->mapper, context->now_ms), spinner);
-    if (spinner[0] != '\0')
-    {
-        ImGui::SameLine();
-        ImGui::TextColored(YELLOW, "%s", spinner);
-    }
+    retro_ui_hold_ring(input_sdl_mapper_hold_progress(&window->mapper, context->now_ms), YELLOW);
     wrapped(piccolo_text(context->strings, hint));
 }
 
@@ -388,18 +372,18 @@ static void step_buttons(MapWindow* window, const MapWindowContext* context)
 {
     const Localization* strings = context->strings;
     footer();
-    ImGui::BeginDisabled(input_sdl_mapper_at_phase_start(&window->mapper));
+    retro_ui_begin_disabled(input_sdl_mapper_at_phase_start(&window->mapper));
     if (retro_ui_button(piccolo_text(strings, Str::map_back)))
     {
         input_sdl_mapper_back(&window->mapper, context->now_ms);
     }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
+    retro_ui_end_disabled();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_reset)))
     {
         input_sdl_mapper_restart_phase(&window->mapper, context->now_ms);
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     uint32_t left = input_sdl_mapper_seconds_left(&window->mapper, context->now_ms);
     bool skip = left > 0 ? retro_ui_countdown_button(piccolo_text(strings, Str::map_skip_n), static_cast<int>(left), "skip")
                          : retro_ui_button(piccolo_text(strings, Str::map_skip));
@@ -407,7 +391,7 @@ static void step_buttons(MapWindow* window, const MapWindowContext* context)
     {
         input_sdl_mapper_skip(&window->mapper, context->now_ms);
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);   // nothing kept: SDL's mapping as it was
@@ -590,10 +574,10 @@ static void draw_offer(MapWindow* window, const MapWindowContext* context)
     wrapped(piccolo_text(strings, Str::map_offer_text));
     if (window->needed)
     {
-        ImGui::Spacing();
+        retro_ui_spacing();
         wrapped(piccolo_text(strings, Str::map_offer_needed));
     }
-    ImGui::Spacing();
+    retro_ui_spacing();
     wrapped(piccolo_text(strings, Str::map_offer_any_button));
     footer();
     // Any button on the new controller is MAP, whether SDL knows it or not.
@@ -603,7 +587,7 @@ static void draw_offer(MapWindow* window, const MapWindowContext* context)
         go(window, context, MapStage::type);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_countdown_button(piccolo_text(strings, Str::map_not_now),
                                   retro_ui_seconds_left(context->now_ms, window->offer_started_ms, OFFER_MS), "not_now") ||
         context->now_ms - window->offer_started_ms >= OFFER_MS)
@@ -623,16 +607,14 @@ static void draw_type(MapWindow* window, const MapWindowContext* context, float 
     std::vector<std::string> makers;
     input_layouts_makers(context->layouts, &makers);
     float label_width = 80.0f * block;
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::map_maker));
-    ImGui::SameLine(label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (retro_ui_begin_combo("##maker", maker.c_str()))
+    retro_ui_label(piccolo_text(strings, Str::map_maker));
+    retro_ui_same_line_at(label_width);
+    // Picking the folder already picked goes back to its first layout too.
+    if (retro_ui_begin_choice("maker", maker.c_str()))
     {
         for (size_t m = 0; m < makers.size(); m++)
         {
-            ImGui::PushID(static_cast<int>(m));
-            if (ImGui::Selectable(makers[m].c_str(), makers[m] == maker))
+            if (retro_ui_choice_item_repick(static_cast<uint32_t>(m), makers[m].c_str(), makers[m] == maker))
             {
                 // The folder's first layout.
                 for (size_t l = 0; l < context->layouts->layouts.size(); l++)
@@ -644,16 +626,13 @@ static void draw_type(MapWindow* window, const MapWindowContext* context, float 
                     }
                 }
             }
-            ImGui::PopID();
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
     layout = picked_layout(window, context);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::map_model));
-    ImGui::SameLine(label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (retro_ui_begin_combo("##model", layout != nullptr ? layout->name.c_str() : ""))
+    retro_ui_label(piccolo_text(strings, Str::map_model));
+    retro_ui_same_line_at(label_width);
+    if (retro_ui_begin_choice("model", layout != nullptr ? layout->name.c_str() : ""))
     {
         for (size_t l = 0; layout != nullptr && l < context->layouts->layouts.size(); l++)
         {
@@ -662,40 +641,36 @@ static void draw_type(MapWindow* window, const MapWindowContext* context, float 
             {
                 continue;
             }
-            ImGui::PushID(static_cast<int>(l));
-            if (ImGui::Selectable(candidate->name.c_str(), candidate->id == window->layout))
+            if (retro_ui_choice_item(static_cast<uint32_t>(l), candidate->name.c_str(), candidate->id == window->layout))
             {
                 window->layout = candidate->id;
             }
-            ImGui::PopID();
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
     layout = picked_layout(window, context);
     // HOTKEY MODE: how its HOTKEY ENABLE (asked in STEP 3) turns hotkeys on.
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::input_hotkey_mode));
+    retro_ui_label(piccolo_text(strings, Str::input_hotkey_mode));
     retro_ui_item_tooltip(piccolo_text(strings, Str::input_hotkey_mode_help));
-    ImGui::SameLine(label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (retro_ui_begin_combo("##hotkey_mode", piccolo_text(strings, MODE_NAMES[static_cast<int>(window->hotkey_mode)])))
+    retro_ui_same_line_at(label_width);
+    if (retro_ui_begin_choice("hotkey_mode", piccolo_text(strings, MODE_NAMES[static_cast<int>(window->hotkey_mode)])))
     {
-        for (int m = 0; m < 3; m++)
+        for (uint32_t m = 0; m < 3; m++)
         {
-            if (ImGui::Selectable(piccolo_text(strings, MODE_NAMES[m]), window->hotkey_mode == MODES[m]))
+            if (retro_ui_choice_item(m, piccolo_text(strings, MODE_NAMES[m]), window->hotkey_mode == MODES[m]))
             {
                 window->hotkey_mode = MODES[m];
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    ImGui::Spacing();
+    retro_ui_spacing();
     wrapped(piccolo_text(strings, window->needed ? Str::map_type_goes_on_any : Str::map_type_goes_on));
     pad_area(layout, PadView::front, InputMapControl::count, false, block);
     footer();
     // Choosing in a list (or opening one) starts the countdown again; the
     // buttons below don't (their press is a choice, not a touch).
-    if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+    if (ui_toolkit_has_popup())
     {
         window->page_started_ms = context->now_ms;
     }
@@ -710,10 +685,10 @@ static void draw_type(MapWindow* window, const MapWindowContext* context, float 
         return;
     }
     // SKIP: keep its type (only for a controller already mapped).
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!SDL_IsGamepad(static_cast<SDL_JoystickID>(window->joystick_id)));
+    retro_ui_same_line();
+    retro_ui_begin_disabled(!SDL_IsGamepad(static_cast<SDL_JoystickID>(window->joystick_id)));
     bool skip = retro_ui_button(piccolo_text(strings, Str::map_skip));
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     if (skip)
     {
         window->skip_type = true;
@@ -722,7 +697,7 @@ static void draw_type(MapWindow* window, const MapWindowContext* context, float 
         go(window, context, MapStage::intro_buttons);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);
@@ -742,7 +717,7 @@ static void draw_intro_buttons(MapWindow* window, const MapWindowContext* contex
         go(window, context, MapStage::type);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_countdown_button(piccolo_text(strings, Str::map_start),
                                   retro_ui_seconds_left(context->now_ms, window->page_started_ms, START_MS), "start") ||
         raw_press(window) || context->now_ms - window->page_started_ms >= START_MS)
@@ -752,17 +727,17 @@ static void draw_intro_buttons(MapWindow* window, const MapWindowContext* contex
         return;
     }
     // SKIP: keep SDL's mapping (only one SDL knows: STEP 3 needs its buttons mapped).
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!SDL_IsGamepad(static_cast<SDL_JoystickID>(window->joystick_id)));
+    retro_ui_same_line();
+    retro_ui_begin_disabled(!SDL_IsGamepad(static_cast<SDL_JoystickID>(window->joystick_id)));
     bool skip = retro_ui_button(piccolo_text(strings, Str::map_skip));
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     if (skip)
     {
         window->skip_buttons = true;
         start_mapper(window, context, false);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);
@@ -782,7 +757,7 @@ static void draw_intro_interface(MapWindow* window, const MapWindowContext* cont
         back_to_buttons(window, context);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_countdown_button(piccolo_text(strings, Str::map_start),
                                   retro_ui_seconds_left(context->now_ms, window->page_started_ms, START_MS), "start") ||
         raw_press(window) || context->now_ms - window->page_started_ms >= START_MS)
@@ -793,14 +768,14 @@ static void draw_intro_interface(MapWindow* window, const MapWindowContext* cont
         return;
     }
     // SKIP: keep its interface buttons.
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_skip)))
     {
         window->roles_done = false;
         after_interface(window, context);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);
@@ -885,13 +860,13 @@ static void draw_question(MapWindow* window, const MapWindowContext* context, fl
         }
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_yes)))
     {
         start_extras(window, context, part);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_countdown_button(piccolo_text(strings, Str::map_no),
                                   retro_ui_seconds_left(context->now_ms, window->page_started_ms, QUESTION_MS), "no") ||
         context->now_ms - window->page_started_ms >= QUESTION_MS)
@@ -899,7 +874,7 @@ static void draw_question(MapWindow* window, const MapWindowContext* context, fl
         go(window, context, next_part(part));
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);
@@ -910,19 +885,20 @@ static void draw_question(MapWindow* window, const MapWindowContext* context, fl
 // current one lit), like the page indicator.
 static void draw_other_squares(uint32_t current, uint32_t total)
 {
-    float size = static_cast<float>(static_cast<int>(ImGui::GetFontSize() * 0.5f));
+    float size = static_cast<float>(static_cast<int>(retro_ui_font_size() * 0.5f));
     float gap = size;
     float width = static_cast<float>(total) * size + static_cast<float>(total - 1) * gap;
-    ImVec2 at = ImGui::GetCursorScreenPos();
-    at.x += static_cast<float>(static_cast<int>((ImGui::GetContentRegionAvail().x - width) * 0.5f));
-    ImDrawList* draw = ImGui::GetWindowDrawList();
+    float left = static_cast<float>(static_cast<int>((retro_ui_width_left() - width) * 0.5f));
+    float spacing_below = retro_ui_line_step() - retro_ui_line_height();
+    // The canvas takes the room at the line's start; the squares are drawn
+    // centered on the line.
+    retro_ui_canvas(width, size + spacing_below);
     for (uint32_t s = 0; s < total; s++)
     {
-        float x = at.x + static_cast<float>(s) * (size + gap);
-        ImU32 color = s == current ? IM_COL32(255, 220, 80, 255) : ImGui::GetColorU32(ImGuiCol_TextDisabled);
-        draw->AddRectFilled(ImVec2(x, at.y), ImVec2(x + size, at.y + size), color);
+        float x = left + static_cast<float>(s) * (size + gap);
+        uint32_t color = s == current ? YELLOW : retro_ui_palette()->text_disabled;
+        retro_ui_canvas_rect(x, 0.0f, size, size, color);
     }
-    ImGui::Dummy(ImVec2(width, size + ImGui::GetStyle().ItemSpacing.y));
 }
 
 // A STEP 4 part's inputs.
@@ -979,24 +955,24 @@ static void draw_summary(MapWindow* window, const MapWindowContext* context, flo
     const char* unchanged = piccolo_text(strings, Str::map_summary_unchanged);
     const InputLayout* layout = picked_layout(window, context);
 
-    ImGui::TextUnformatted(piccolo_text(strings, Str::map_summary_type));
-    ImGui::SameLine(label_width);
-    ImGui::TextUnformatted(window->skip_type || layout == nullptr ? unchanged : layout->name.c_str());
-    ImGui::TextUnformatted(piccolo_text(strings, Str::map_summary_buttons));
-    ImGui::SameLine(label_width);
-    ImGui::TextUnformatted(window->skip_buttons ? unchanged : changed);
-    ImGui::TextUnformatted(piccolo_text(strings, Str::map_summary_interface));
-    ImGui::SameLine(label_width);
-    ImGui::TextUnformatted(window->roles_done ? changed : unchanged);
+    retro_ui_text(piccolo_text(strings, Str::map_summary_type));
+    retro_ui_same_line_at(label_width);
+    retro_ui_text(window->skip_type || layout == nullptr ? unchanged : layout->name.c_str());
+    retro_ui_text(piccolo_text(strings, Str::map_summary_buttons));
+    retro_ui_same_line_at(label_width);
+    retro_ui_text(window->skip_buttons ? unchanged : changed);
+    retro_ui_text(piccolo_text(strings, Str::map_summary_interface));
+    retro_ui_same_line_at(label_width);
+    retro_ui_text(window->roles_done ? changed : unchanged);
     if (!window->offered)
     {
         char text[64] = {};
         std::snprintf(text, sizeof(text), piccolo_text(strings, Str::map_summary_added), static_cast<int>(window->extras_mapped));
-        ImGui::TextUnformatted(piccolo_text(strings, Str::map_summary_extras));
-        ImGui::SameLine(label_width);
-        ImGui::TextUnformatted(window->extras_mapped > 0 ? text : unchanged);
+        retro_ui_text(piccolo_text(strings, Str::map_summary_extras));
+        retro_ui_same_line_at(label_width);
+        retro_ui_text(window->extras_mapped > 0 ? text : unchanged);
     }
-    ImGui::Spacing();
+    retro_ui_spacing();
     wrapped(piccolo_text(strings, Str::map_summary_text));
     footer();
     if (retro_ui_button(piccolo_text(strings, Str::map_restart)))
@@ -1006,13 +982,13 @@ static void draw_summary(MapWindow* window, const MapWindowContext* context, flo
         go(window, context, MapStage::type);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
     {
         map_window_close(window, context->input);
         return;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::map_finish)))
     {
         finish(window, context);
@@ -1043,21 +1019,21 @@ static void draw_page_indicator(const MapWindow* window)
         return;
     }
     const int32_t PAGES = window->offered ? 4 : 5;   // STEP 4 only from SETTINGS
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float size = static_cast<float>(static_cast<int>(ImGui::GetFontSize() * 0.75f));
+    float size = static_cast<float>(static_cast<int>(retro_ui_font_size() * 0.75f));
     float gap = size;
     float width = static_cast<float>(PAGES) * size + static_cast<float>(PAGES - 1) * gap;
-    ImVec2 window_pos = ImGui::GetWindowPos();
-    ImVec2 window_size = ImGui::GetWindowSize();
-    float x = window_pos.x + static_cast<float>(static_cast<int>((window_size.x - width) * 0.5f));
+    float window_width = 0.0f;
+    float window_height = 0.0f;
+    retro_ui_window_size(&window_width, &window_height);
+    float x = static_cast<float>(static_cast<int>((window_width - width) * 0.5f));
     // A gap between it and the buttons.
-    float y = window_pos.y + window_size.y - style.WindowPadding.y - ImGui::GetFrameHeight() - style.ItemSpacing.y - size * 2.0f;
-    ImDrawList* draw = ImGui::GetWindowDrawList();
+    float spacing_below = retro_ui_line_step() - retro_ui_line_height();
+    float y = retro_ui_bottom_line_y() - spacing_below - size * 2.0f;
     for (int32_t p = 0; p < PAGES; p++)
     {
         float px = x + static_cast<float>(p) * (size + gap);
-        ImU32 color = p == page ? IM_COL32(255, 220, 80, 255) : ImGui::GetColorU32(ImGuiCol_TextDisabled);
-        draw->AddRectFilled(ImVec2(px, y), ImVec2(px + size, y + size), color);
+        uint32_t color = p == page ? YELLOW : retro_ui_palette()->text_disabled;
+        retro_ui_window_rect(px, y, size, size, color);
     }
 }
 
@@ -1068,26 +1044,28 @@ void map_window_draw(MapWindow* window, const MapWindowContext* context, ImFont*
         return;
     }
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
-    ImVec2 size(WINDOW_WIDTH * block, WINDOW_HEIGHT * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    if (window->take_focus)
+    float width = WINDOW_WIDTH * block;
+    float height = WINDOW_HEIGHT * block;
+    width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    // A modal of its own: always in the middle, no X (CANCEL closes it), its
+    // pages laid out to fit (it never scrolls).
+    RetroUiWindow frame = {};
+    frame.id = "map_controller";
+    frame.title = piccolo_text(context->strings, window->offered ? Str::map_detected : Str::map_title);
+    frame.width = width;
+    frame.height = height;
+    frame.centered = true;
+    frame.closable = false;
+    frame.scrolls = false;
+    frame.focus = window->take_focus;   // on top of the others when it opens
+    window->take_focus = false;
+    if (retro_ui_window_begin(&frame, scale, nullptr))
     {
-        ImGui::SetNextWindowFocus();   // on top of the others when it opens
-        window->take_focus = false;
-    }
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-    char title[200] = {};
-    std::snprintf(title, sizeof(title), "%s###map_controller",
-                  piccolo_text(context->strings, window->offered ? Str::map_detected : Str::map_title));
-    if (ImGui::Begin(title, nullptr, flags))
-    {
-        retro_ui_begin_window(scale);
         if (window->stage != window->drawn_stage)
         {
             if (window->drawn_stage == MapStage::closed || window->drawn_stage == MapStage::offer)
@@ -1139,8 +1117,7 @@ void map_window_draw(MapWindow* window, const MapWindowContext* context, ImFont*
         case MapStage::closed:
             break;
         }
-        retro_ui_end_window();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
 }
