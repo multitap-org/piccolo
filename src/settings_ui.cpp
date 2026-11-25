@@ -201,7 +201,38 @@ static void draw_row(const SettingsUiContext* context, const SettingRowState* st
 
 // ---------------------------------------------------------------------------
 // The rows the windows use: state from settings_view, drawing above, the
-// action applied by settings_view.
+// action handed to the window (context->edit) or, for a window not split
+// yet, applied by settings_view right away.
+
+// What a row does with its action. True when something changed (or, with an
+// edit out, when the user changed something).
+static bool finish_row(const SettingsUiContext* context, const char* key, const SettingRowAction* action)
+{
+    if (context->edit == nullptr)
+    {
+        return context->apply_to != nullptr && settings_view_apply(context->apply_to, context->scope, key, action);
+    }
+    if (action->edit == SettingRowEdit::none)
+    {
+        return false;
+    }
+    SettingsUiEdit* edit = context->edit;
+    edit->pending = true;
+    edit->scope = context->scope;
+    std::snprintf(edit->key, sizeof(edit->key), "%s", key);
+    edit->action = *action;
+    return true;
+}
+
+bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit)
+{
+    if (!edit->pending)
+    {
+        return false;
+    }
+    edit->pending = false;
+    return settings_view_apply(settings, edit->scope, edit->key, &edit->action);
+}
 
 bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint)
 {
@@ -212,7 +243,7 @@ bool settings_ui_row(const SettingsUiContext* context, const char* key, const ch
     }
     SettingRowAction action = {};
     draw_row(context, &state, hint, &action);
-    return settings_view_apply(context->settings, context->scope, key, &action);
+    return finish_row(context, key, &action);
 }
 
 bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, const char* hint)
@@ -233,7 +264,7 @@ bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, c
     {
         action.edit = SettingRowEdit::reset;
     }
-    settings_view_apply(context->settings, context->scope, key, &action);
+    finish_row(context, key, &action);
     return clicked;
 }
 
@@ -257,7 +288,7 @@ bool settings_ui_path_row_with_button(const SettingsUiContext* context, const ch
     {
         action.edit = SettingRowEdit::reset;
     }
-    return settings_view_apply(context->settings, context->scope, key, &action);
+    return finish_row(context, key, &action);
 }
 
 bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* key, const char* const* choices,
@@ -311,10 +342,10 @@ bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* k
     {
         action.edit = SettingRowEdit::reset;
     }
-    return settings_view_apply(context->settings, context->scope, key, &action);
+    return finish_row(context, key, &action);
 }
 
-void settings_ui_scope(Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
+void settings_ui_scope(const Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
                        SettingLayer* scope, bool* choose_scope)
 {
     bool has_core = core_name[0] != '\0';

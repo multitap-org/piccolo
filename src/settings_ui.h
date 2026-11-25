@@ -22,18 +22,41 @@
 
 #include "localization.h"
 #include "settings.h"
+#include "settings_view.h"
+
+constexpr uint32_t SETTINGS_UI_KEY_MAX = 128;
+
+// A setting the user changed this frame, for the window's apply step
+// (settings_ui_apply_edit), so the drawing never changes the settings. One per
+// frame: only one control is used at a time.
+struct SettingsUiEdit
+{
+    bool             pending = false;
+    SettingLayer     scope   = SettingLayer::global;
+    char             key[SETTINGS_UI_KEY_MAX] = {};
+    SettingRowAction action  = {};
+};
 
 // Which layer edits go to: SettingLayer::global, ::core or ::game.
 struct SettingsUiContext
 {
-    Settings*           settings    = nullptr;
+    const Settings*     settings    = nullptr;
     const Localization* strings     = nullptr;   // UI text (piccolo_text.h)
     SettingLayer scope       = SettingLayer::global;
     float        label_width = 0.0f;   // width of the label column
+    // Where a change goes. While a window isn't split yet (it passes
+    // nullptr), `apply_to` gets it right away instead.
+    SettingsUiEdit* edit     = nullptr;
+    Settings*       apply_to = nullptr;
 };
 
+// Applies a pending edit to the settings and clears it. True when a value
+// changed (as settings_view_apply).
+bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit);
+
 // One setting's row. `hint` is shown in an empty path field (e.g. the
-// default folder); may be nullptr. Returns true if the value changed.
+// default folder); may be nullptr. Returns true if the value changed (with
+// an edit out: if the user changed it, to be applied after drawing).
 bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint);
 
 // A folder setting changed with CHOOSE FOLDER: the row of settings_ui_row,
@@ -63,5 +86,5 @@ float settings_ui_label_width(const Settings* settings, const Localization* stri
 // The SCOPE selector: GLOBAL / THIS CORE (name) / THIS GAME (name), only the
 // ones that exist now. With *choose_scope set (just opened) it picks the most
 // specific layer already in use, so changes keep going there, and clears it.
-void settings_ui_scope(Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
+void settings_ui_scope(const Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
                        SettingLayer* scope, bool* choose_scope);

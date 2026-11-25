@@ -326,6 +326,7 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width)
     const Localization* strings = context->strings;
     SettingsUiContext rows;
     rows.settings = context->settings;
+    rows.apply_to = context->settings;
     rows.strings = strings;
     rows.scope = SettingLayer::global;
     rows.label_width = label_width;

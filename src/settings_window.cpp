@@ -94,7 +94,7 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     }
     if (remove >= 0)
     {
-        piccolo_settings_remove_game_folder(ui->settings, static_cast<uint32_t>(remove));
+        piccolo_settings_remove_game_folder(ui->apply_to, static_cast<uint32_t>(remove));
     }
     // "+" in the label column, after the marker's room.
     RetroUiRow add = {};
@@ -245,7 +245,7 @@ static void draw_latency_preset(const SettingsUiContext* ui)
             if (retro_ui_choice_item_repick(i, piccolo_text(ui->strings, piccolo_settings_latency_preset_name(i)),
                                             i == current))
             {
-                piccolo_settings_apply_latency_preset(ui->settings, ui->scope, i);
+                piccolo_settings_apply_latency_preset(ui->apply_to, ui->scope, i);
             }
         }
         retro_ui_end_choice();
@@ -430,7 +430,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), shipped[i].label.c_str(),
                                             !on_custom && static_cast<int32_t>(i) == shipped_current))
             {
-                piccolo_settings_apply_ui_palette(ui->settings, shipped[i].palette);
+                piccolo_settings_apply_ui_palette(ui->apply_to, shipped[i].palette);
                 window->theme_choice = shipped[i].label;
                 window->theme_custom = false;
             }
@@ -460,7 +460,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), custom[i].label.c_str(),
                                             static_cast<int32_t>(i) == custom_current))
             {
-                piccolo_settings_apply_ui_palette(ui->settings, custom[i].palette);
+                piccolo_settings_apply_ui_palette(ui->apply_to, custom[i].palette);
                 window->theme_choice = custom[i].label;
                 window->theme_custom = true;
             }
@@ -790,6 +790,7 @@ void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* c
 
             SettingsUiContext ui = {};
             ui.settings = context->settings;
+            ui.apply_to = context->settings;
             ui.strings = context->strings;
             ui.scope = window->scope;
             ui.label_width = settings_ui_label_width(context->settings, context->strings);
@@ -803,6 +804,7 @@ void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* c
     {
         SettingsUiContext ui = {};
         ui.settings = context->settings;
+        ui.apply_to = context->settings;
         ui.strings = context->strings;
         ui.scope = window->scope;
         retro_ui_push_theme(pixel_font, scale);

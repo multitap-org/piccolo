@@ -66,6 +66,7 @@ static void draw_shader_tab(CoreConfigWindow* config, const CoreConfigContext* c
     retro_ui_spacing();
     SettingsUiContext ui = {};
     ui.settings = context->settings;
+    ui.apply_to = context->settings;
     ui.strings = context->strings;
     ui.scope = config->shader_scope;
     ui.label_width = settings_ui_label_width(context->settings, context->strings);

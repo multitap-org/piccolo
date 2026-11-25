@@ -324,6 +324,7 @@ static void draw_scoped_settings(InputWindow* window, const InputWindowContext* 
                       &window->choose_scope);
     SettingsUiContext ui = {};
     ui.settings = context->settings;
+    ui.apply_to = context->settings;
     ui.strings = context->strings;
     ui.scope = window->scope;
     ui.label_width = settings_ui_label_width(context->settings, context->strings);
@@ -356,6 +357,7 @@ static void draw_settings(InputWindow* window, const InputWindowContext* context
         }
         SettingsUiContext ui = {};
         ui.settings = context->settings;
+        ui.apply_to = context->settings;
         ui.strings = context->strings;
         ui.scope = window->scope;
         ui.label_width = settings_ui_label_width(context->settings, context->strings);
