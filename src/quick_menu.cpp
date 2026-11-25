@@ -1,5 +1,6 @@
 #include "quick_menu.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -20,6 +21,7 @@ constexpr uint32_t PREVIEW_CAPACITY = 4096;
 constexpr uint32_t SLOT_COLUMNS = 5;
 constexpr uint32_t ACTION_COLUMNS = 4;
 constexpr uint32_t STATE_COLUMNS = 3;
+constexpr uint32_t SLOT_COUNT = LIBRETRO_STATE_SLOT_LAST - LIBRETRO_STATE_SLOT_FIRST + 1;
 // A slot at least this many retro pixels wide (the actions' labels usually
 // make the grid wider).
 constexpr float SLOT_MIN_WIDTH = 52.0f;
@@ -118,15 +120,30 @@ static void fit_picture(float width, float room_height, float aspect, float* out
     *out_height = static_cast<float>(static_cast<int>(picture_height));
 }
 
+// A slot's tile: its picture area (4:3 inside the button's padding), and
+// the whole tile with its label.
+static float slot_picture_height(float block, float slot_width)
+{
+    float pad = 2.0f * block;   // a button's padding (retro_ui_tile puts its picture inside it)
+    return static_cast<float>(static_cast<int>((slot_width - 2.0f * pad) * 3.0f / 4.0f));
+}
+
+static float slot_tile_height(float block, float slot_width)
+{
+    return slot_picture_height(block, slot_width) + retro_ui_font_size() + 6.0f * block;
+}
+
 // The selected slot's picture, as wide as the grid: the one scaled up by a
 // whole number (sharp bilinear), or its thumbnail for the frame before that
-// one is up.
-static void draw_preview(QuickMenu* menu, const QuickMenuState* state, float grid)
+// one is up. No taller than `room_height` (narrower then, centered).
+static void draw_preview(QuickMenu* menu, const QuickMenuState* state, float grid, float room_height)
 {
     float aspect = picture_aspect(menu);
     float box_width = 0.0f;
     float box_height = 0.0f;
-    fit_picture(grid, grid * 3.0f / 4.0f, aspect, &box_width, &box_height);
+    float tallest = grid * 3.0f / 4.0f;
+    tallest = room_height < tallest ? room_height : tallest;
+    fit_picture(grid, tallest, aspect, &box_width, &box_height);
     retro_ui_canvas(grid, box_height);
     retro_ui_canvas_rect(0.0f, 0.0f, grid, box_height, 0xFF000000u);
     float x = static_cast<float>(static_cast<int>((grid - box_width) * 0.5f));
@@ -159,11 +176,25 @@ static void draw_preview(QuickMenu* menu, const QuickMenuState* state, float gri
 
 // The slots, five a row, each its thumbnail and label; the focused one
 // (arrows) or the clicked one is the selection.
-static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block, float slot_width, bool focus_selected)
+static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block, float slot_width)
 {
-    float pad = 2.0f * block;   // a button's padding (retro_ui_tile puts its picture inside it)
+    float pad = 2.0f * block;
     float area_width = slot_width - 2.0f * pad;
-    float area_height = static_cast<float>(static_cast<int>(area_width * 3.0f / 4.0f));
+    float area_height = slot_picture_height(block, slot_width);
+    // A slot picked otherwise (opening, 1-9) takes the focus, which moves
+    // only a frame later: meanwhile the tile focused before still says it's
+    // chosen, and must not take the selection back.
+    bool focus_now = menu->focus_slot;
+    menu->focus_slot = false;
+    if (focus_now)
+    {
+        menu->focus_wait = 3;
+    }
+    bool waiting = menu->focus_wait > 0;
+    if (waiting)
+    {
+        menu->focus_wait--;
+    }
     float aspect = picture_aspect(menu);
     const char* empty = piccolo_text(state->strings, Str::quick_menu_empty);
     for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
@@ -177,7 +208,7 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
         RetroUiTile tile = {};
         tile.width = slot_width;
         tile.picture_height = area_height;
-        tile.height = area_height + retro_ui_font_size() + 3.0f * pad;
+        tile.height = slot_tile_height(block, slot_width);
         tile.chosen = selected;
         tile.edge = block;
         if (thumb->shown)
@@ -190,17 +221,19 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
         {
             tile.empty = empty;
         }
-        // The focused slot is the selection (arrows move it), so a slot
-        // picked otherwise (opening, 1-9) takes the focus too.
-        if (focus_selected && selected)
-        {
-            tile.focus = true;
-            menu->focus_slot = false;
-        }
+        // The focused slot is the selection (arrows move it).
+        tile.focus = focus_now && selected;
         retro_ui_push_index(slot);
         if (retro_ui_tile("slot", state->labels[slot], &tile))
         {
-            menu->slot = slot;
+            if (!waiting)
+            {
+                menu->slot = slot;
+            }
+            else if (selected)
+            {
+                menu->focus_wait = 0;   // the focus is on it now
+            }
         }
         retro_ui_pop_id();
     }
@@ -208,12 +241,29 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
 
 // SAVE STATES, below the actions: the big picture, the slots, SAVE / LOAD /
 // GAME DVR, the keys.
+// `screen_room`: how tall the window may be (from its top, its bottom
+// padding taken off).
 static void draw_states(QuickMenu* menu, const QuickMenuState* state, float block, float grid, float slot_width,
-                        bool appearing, QuickMenuAction* action)
+                        float screen_room, bool appearing, QuickMenuAction* action)
 {
     const Localization* strings = state->strings;
-    draw_preview(menu, state, grid);
-    draw_slots(menu, state, block, slot_width, appearing || menu->focus_slot);
+    // The whole window fits the screen (640 x 360 retro pixels at least)
+    // with SAVE / LOAD / GAME DVR in view: the big picture takes the height
+    // the rest leaves.
+    const char* keys = piccolo_text(strings, Str::quick_menu_keys);
+    float row_gap = retro_ui_line_step() - retro_ui_line_height();
+    uint32_t slot_rows = (SLOT_COUNT + SLOT_COLUMNS - 1) / SLOT_COLUMNS;
+    float key_lines = std::ceil(retro_ui_text_width(keys) / (grid > 1.0f ? grid : 1.0f));
+    float below = (slot_tile_height(block, slot_width) + row_gap) * static_cast<float>(slot_rows) +
+                  retro_ui_line_step() + retro_ui_text_line_step() * key_lines;
+    float room = screen_room - retro_ui_cursor_y() - row_gap - below;
+    float least = retro_ui_font_size() * 3.0f;
+    draw_preview(menu, state, grid, room > least ? room : least);
+    if (appearing)
+    {
+        menu->focus_slot = true;
+    }
+    draw_slots(menu, state, block, slot_width);
     const StateSlotInfo* info = &menu->slots[menu->slot];
     RetroUiRowButton buttons[STATE_COLUMNS] = {};
     buttons[0].id = "save";
@@ -236,7 +286,7 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     {
         action->press = QuickMenuPress::dvr;   // a window widget: it replaces QUICK MENU
     }
-    retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::quick_menu_keys), 0.0f);
+    retro_ui_dim_text_wrapped_at(keys, 0.0f);
 }
 
 // The keys that act without the section open: 1-9 pick a slot, S saves, L
@@ -253,7 +303,7 @@ static void handle_keys(QuickMenu* menu, QuickMenuAction* action)
         if (retro_ui_key_pressed(key, false))
         {
             menu->slot = slot;
-            menu->focus_slot = true;
+            menu->focus_slot = true;   // and the focus follows (draw_slots: the key wins this frame)
         }
     }
     if (retro_ui_key_pressed(RetroUiKey::s, false))
@@ -290,6 +340,7 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
     actions[1].label = piccolo_text(strings, Str::quick_menu_quick_save);
     actions[2].id = "quick_load";
     actions[2].label = piccolo_text(strings, Str::quick_menu_quick_load);
+    actions[2].enabled = menu->slots[QUICK_SLOT].used;   // as LOAD: nothing to load from an empty slot
     actions[3].id = "screenshot";
     actions[3].label = piccolo_text(strings, Str::quick_menu_screenshot);
     actions[4].id = "soft_reset";
@@ -337,6 +388,17 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
             action->closed = true;
         }
         bool appearing = retro_ui_window_appearing();
+        // The rows as wide as the room actually there (a narrow screen, or a
+        // scroll bar), never the grid's width over it.
+        float room_width = retro_ui_width_left();
+        if (room_width < grid)
+        {
+            slot_width = std::floor((room_width - spacing * static_cast<float>(SLOT_COLUMNS - 1)) /
+                                    static_cast<float>(SLOT_COLUMNS));
+            grid = slot_width * static_cast<float>(SLOT_COLUMNS) + spacing * static_cast<float>(SLOT_COLUMNS - 1);
+        }
+        float bottom_padding = (chrome_height - retro_ui_line_height()) * 0.5f;
+        float screen_room = screen_height - 8.0f * block - bottom_padding;
 
         // What runs (the pixel font draws it in capitals).
         char running[600] = {};
@@ -361,7 +423,7 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
         // Collapsed at first (Andrés): the actions are what's used most.
         if (retro_ui_section_header("states", piccolo_text(strings, Str::quick_menu_tab_states), false))
         {
-            draw_states(menu, state, block, grid, slot_width, appearing, action);
+            draw_states(menu, state, block, grid, slot_width, screen_room, appearing, action);
         }
     }
     retro_ui_window_end();

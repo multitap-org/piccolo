@@ -174,6 +174,9 @@ struct App
     bool       android_background = false;    // the app is in the background (BACKGROUND cause)
     bool       menus_built_paused = false;    // GAME > PAUSE read RESUME when the menus were built
     bool       menus_built_running = false;   // a game ran when the menus were built (GAME's items, GAME DVR)
+    bool       menus_built_quick_used = false;   // the quick slot held a state then (QUICK LOAD greyed out if not)
+    bool       quick_slot_used = false;       // the quick slot holds a state for the running game...
+    bool       quick_slot_stale = true;       // ...read again at the top of the next loop (a save, a start)
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -535,6 +538,7 @@ static void build_menus(App* app)
     app->menus_built_paused = app->ui.user_paused;
     bool running = game_running(app);
     app->menus_built_running = running;
+    app->menus_built_quick_used = app->quick_slot_used;
     // The labels first: the items point into them (push_back may move them).
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
@@ -580,6 +584,10 @@ static void build_menus(App* app)
             MenuAction action = menus_item_action(menu, item);
             int32_t id = action == MenuAction::separator ? RETRO_UI_MENU_SEPARATOR : static_cast<int32_t>(action);
             bool enabled = running || menus_item_shown(menu, item) != MenuShown::greyed_no_game;
+            if (action == MenuAction::quick_load && !app->quick_slot_used)
+            {
+                enabled = false;   // as QUICK MENU's QUICK LOAD and LOAD: an empty slot has nothing to load
+            }
             app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id, enabled});
             text++;
             count++;
@@ -1223,6 +1231,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     save_learned_latency(app);   // what the previous game learned
     app->game_starts++;
     auto_frame_delay_reset(&app->auto_delay);   // each game finds its own
+    app->quick_slot_stale = true;   // the new game's own quick slot
     app->marker_core_path = choice->core_path;
     app->marker_content_path = choice->content_path;
     write_running_marker(app);
@@ -1295,6 +1304,7 @@ static bool save_state_with_thumbnail(App* app)
     }
     bool saved = core_session_save_state(&app->session, &thumbnail);
     quick_menu_refresh(&app->quick_menu);
+    app->quick_slot_stale = true;
     return saved;
 }
 
@@ -5892,7 +5902,15 @@ static bool app_frame(App* app)
         }
     }
     update_pause(app);
-    if (app->menus_built_paused != app->ui.user_paused || app->menus_built_running != game_running(app))
+    if (app->quick_slot_stale)
+    {
+        // Read only after a save or a start, never every frame (a file check).
+        app->quick_slot_stale = false;
+        StateSlotInfo info = {};
+        app->quick_slot_used = game_running(app) && core_session_slot_info(&app->session, QUICK_SLOT, &info) && info.used;
+    }
+    if (app->menus_built_paused != app->ui.user_paused || app->menus_built_running != game_running(app) ||
+        app->menus_built_quick_used != app->quick_slot_used)
     {
         build_menus(app);   // GAME > PAUSE / RESUME, what shows with a game
     }
