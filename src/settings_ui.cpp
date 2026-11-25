@@ -175,8 +175,9 @@ static void draw_integer(const SettingRowState* state, SettingRowAction* action)
 static void draw_real(const SettingRowState* state, SettingRowAction* action)
 {
     float number = state->real;
+    const char* format = state->descriptor->real_format != nullptr ? state->descriptor->real_format : "%.1f%%";
     if (retro_ui_slider("value", &number, static_cast<float>(state->descriptor->min_real),
-                        static_cast<float>(state->descriptor->max_real), "%.1f%%"))
+                        static_cast<float>(state->descriptor->max_real), format))
     {
         action->edit = SettingRowEdit::set_real;
         action->real = static_cast<double>(number);

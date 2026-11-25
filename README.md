@@ -42,7 +42,7 @@ macOS builds but isn't tested.
 - **Core options** per core, per folder or per game, with a safe start after a
   crash (see [Core options](#core-options)).
 - A core's text request gets piccolo's text box (a libretro extension of
-  Multitap's). **ON-SCREEN KEYBOARD** (INPUT > SETTINGS) brings up the
+  Multitap's). **ON-SCREEN KEYBOARD** (INPUT > GENERAL) brings up the
   system's keyboard for text fields and for cores that ask for one (AUTO: on
   for phones, TVs and handhelds such as the Steam Deck, off on a PC).
 

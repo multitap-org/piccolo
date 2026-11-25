@@ -398,11 +398,13 @@ static void name_field(const InputWindowState* state, uint32_t controller, float
     }
 }
 
-// SETTINGS
+// GENERAL
 
-// SETTINGS: one SCOPE for the whole tab (it was drawn once per group, two
-// controls with one id), then GENERAL and ON-SCREEN GAMEPAD, each a group of
-// rows that folds away. The rows hand their edit out (input_window_apply).
+// GENERAL (the tab was SETTINGS): one SCOPE for the whole tab (it was drawn
+// once per group, two controls with one id), then the general rows, always
+// shown (Andrés, testing round 2: no section of their own), and ON-SCREEN
+// GAMEPAD, which folds away. The rows hand their edit out
+// (input_window_apply).
 static void draw_settings(InputWindow* window, const InputWindowState* state, InputWindowAction* action)
 {
     settings_ui_scope(state->settings, state->strings, state->core_name, state->game_name, &window->scope,
@@ -414,15 +416,11 @@ static void draw_settings(InputWindow* window, const InputWindowState* state, In
     ui.label_width = settings_ui_label_width(state->settings, state->strings);
     ui.edit = &action->setting;
 
-    // GENERAL: open at first (what most come here for).
-    if (settings_ui_section("general", piccolo_text(state->strings, Str::input_section_general), nullptr, true))
+    static const char* const KEYS[] = {PICCOLO_INPUT_SHARE_PORT1, PICCOLO_INPUT_PORTS, PICCOLO_INPUT_PRESS_TIME,
+                                       PICCOLO_INPUT_HOLD_TIME, PICCOLO_INPUT_OSK};
+    for (uint32_t k = 0; k < sizeof(KEYS) / sizeof(KEYS[0]); k++)
     {
-        static const char* const KEYS[] = {PICCOLO_INPUT_SHARE_PORT1, PICCOLO_INPUT_PORTS, PICCOLO_INPUT_PRESS_TIME,
-                                           PICCOLO_INPUT_HOLD_TIME, PICCOLO_INPUT_OSK};
-        for (uint32_t k = 0; k < sizeof(KEYS) / sizeof(KEYS[0]); k++)
-        {
-            settings_ui_row(&ui, KEYS[k], nullptr);
-        }
+        settings_ui_row(&ui, KEYS[k], nullptr);
     }
 
     // ON-SCREEN GAMEPAD (onscreen_pad.h): its settings and EDIT LAYOUT. Open
@@ -861,8 +859,8 @@ static void draw_devices(const InputWindowState* state, float label_width, Input
             retro_ui_pop_id();
         }
     }
-    // ENABLED (connected and used) open; DETECTED (ignored, or not
-    // connected now) folded.
+    // ENABLED (connected and used), then DETECTED (ignored, or not
+    // connected now); each controller folded at first (testing round 2).
     for (int section = 0; section < 2; section++)
     {
         retro_ui_separator_text(piccolo_text(strings, section == 0 ? Str::input_section_enabled : Str::input_section_detected));
@@ -874,7 +872,7 @@ static void draw_devices(const InputWindowState* state, float label_width, Input
             {
                 continue;
             }
-            draw_device(state, candidate, label_width, enabled, action);
+            draw_device(state, candidate, label_width, false, action);
         }
     }
 }
@@ -1108,6 +1106,22 @@ static void draw_device(const InputWindowState* state, const InputDevice* device
     {
         int32_t first = input_first_controller(input, device->id);
         retro_ui_push_index(static_cast<uint32_t>(device->id));
+        // A mouse has nothing to set here: a line with its name (and why
+        // it's unused), not a section that opens on nothing (Andrés, testing
+        // round 2).
+        if (device->kind == InputDeviceKind::mouse)
+        {
+            retro_ui_label(device->name.c_str());
+            if (!device->connected || input_devices_ignored(device))
+            {
+                retro_ui_same_line();
+                retro_ui_dim_label(piccolo_text(strings, !device->connected ? Str::input_device_disconnected
+                                                                            : Str::input_device_ignored),
+                                   nullptr);
+            }
+            retro_ui_pop_id();
+            return;
+        }
         if (!retro_ui_section_header("device", device->name.c_str(), open_by_default))
         {
             retro_ui_pop_id();
@@ -1262,7 +1276,7 @@ void input_window_draw(InputWindow* window, const InputWindowState* state, Retro
         if (retro_ui_begin_tabs("input_tabs"))
         {
             int target = window->capturing ? -1 : retro_ui_tab_switch(window->tab, 4);
-            if (retro_ui_begin_tab("settings", piccolo_text(strings, Str::input_tab_settings), target == 0))
+            if (retro_ui_begin_tab("general", piccolo_text(strings, Str::input_tab_general), target == 0))
             {
                 window->tab = 0;
                 begin_content();
