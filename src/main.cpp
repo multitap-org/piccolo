@@ -1894,6 +1894,7 @@ static void update_language(App* app)
     uint32_t language = piccolo_settings_language(&app->settings);
     app->session.language = piccolo_language_retro(language);
     piccolo_text_load_language(&app->strings, language, app->paths.root.c_str());
+    web_page_set_language(piccolo_language_code(language));
     refresh_recent_labels(app);
 }
 

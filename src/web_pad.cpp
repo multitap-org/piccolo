@@ -32,3 +32,8 @@ void web_pad_set_vibrate(bool on)
 {
     (void)on;
 }
+
+void web_page_set_language(const char* code)
+{
+    (void)code;
+}

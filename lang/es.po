@@ -4202,3 +4202,196 @@ msgstr "SIN CAPTURA DISPONIBLE"
 msgctxt "guests_preparing"
 msgid "PREPARING THE LINK..."
 msgstr "PREPARANDO EL ENLACE..."
+
+# Browser frontend (machine-translated draft)
+msgctxt "web_page_title"
+msgid "piccolo: play"
+msgstr "piccolo: jugar"
+
+msgctxt "web_play_title"
+msgid "Play in the browser"
+msgstr "Juega en el navegador"
+
+msgctxt "web_play_intro"
+msgid "Choose the emulator, then open a game file (or drop it on the page). Saves, states and settings stay in this browser. No games are included."
+msgstr "Elige un emulador y abre un archivo de juego o arrástralo a la página. Las partidas, los estados y los ajustes se guardan en este navegador. No se incluyen juegos."
+
+msgctxt "web_emulators"
+msgid "Emulators"
+msgstr "Emuladores"
+
+msgctxt "web_play"
+msgid "Play"
+msgstr "Jugar"
+
+msgctxt "web_demo_description"
+msgid "Multitap's demo game, up to four players, no game file needed"
+msgstr "Juego de demostración de Multitap, para hasta cuatro jugadores y sin necesidad de un archivo de juego"
+
+msgctxt "web_companion_title"
+msgid "Companion app"
+msgstr "Aplicación complementaria"
+
+msgctxt "web_companion_intro"
+msgid "piccoletto pairs this browser with a piccolo on your computer or TV."
+msgstr "piccoletto vincula este navegador con piccolo en tu computadora o TV."
+
+msgctxt "web_companion_description"
+msgid "This device as a gamepad for a piccolo, remote play, devices"
+msgstr "Usa este dispositivo como mando para piccolo, juega a distancia y administra tus dispositivos"
+
+msgctxt "web_open"
+msgid "Open"
+msgstr "Abrir"
+
+msgctxt "web_chooser_drop"
+msgid "Choose the emulator first, then drop the game on its page."
+msgstr "Primero elige el emulador y luego arrastra el juego a su página."
+
+msgctxt "web_play_controls"
+msgid "Keyboard and gamepads (press a button first) work. Sound starts after a click or a key."
+msgstr "Puedes usar el teclado o un mando. Presiona un botón del mando para activarlo. El sonido empieza al hacer clic o pulsar una tecla."
+
+msgctxt "web_licenses"
+msgid "piccolo uses the MIT license, and each core has its own license"
+msgstr "piccolo usa la licencia MIT y cada núcleo tiene su propia licencia"
+
+msgctxt "web_choose_emulator"
+msgid "Choose another emulator"
+msgstr "Elegir otro emulador"
+
+msgctxt "web_open_game"
+msgid "Open game"
+msgstr "Abrir juego"
+
+msgctxt "web_open_game_title"
+msgid "Open a game file (or drop it on the page)"
+msgstr "Abre un archivo de juego o arrástralo a la página"
+
+msgctxt "web_files"
+msgid "Files"
+msgstr "Archivos"
+
+msgctxt "web_files_title"
+msgid "This session's files: saves, states, settings, games"
+msgstr "Archivos de esta sesión: partidas, estados, ajustes y juegos"
+
+msgctxt "web_pad"
+msgid "Pad"
+msgstr "Mando"
+
+msgctxt "web_pad_title"
+msgid "Buttons on the screen, beside or under the game"
+msgstr "Botones en pantalla, al lado o debajo del juego"
+
+msgctxt "web_fullscreen"
+msgid "Full screen"
+msgstr "Pantalla completa"
+
+msgctxt "web_fullscreen_short"
+msgid "Full"
+msgstr "Completa"
+
+msgctxt "web_fullscreen_title"
+msgid "Show the game in full screen (Esc to exit)"
+msgstr "Juega en pantalla completa. Pulsa Esc para salir"
+
+msgctxt "web_drop_hint"
+msgid "Drop a game here, or drop a file on the Files panel to add it to that folder."
+msgstr "Arrastra un juego aquí o suelta un archivo en el panel Archivos para agregarlo a esa carpeta."
+
+msgctxt "web_home"
+msgid "Home"
+msgstr "Inicio"
+
+msgctxt "web_home_title"
+msgid "piccolo's folder"
+msgstr "Carpeta de piccolo"
+
+msgctxt "web_files_add"
+msgid "Add"
+msgstr "Agregar"
+
+msgctxt "web_files_add_title"
+msgid "Add files to this folder or drop them on this panel"
+msgstr "Agrega archivos a esta carpeta o arrástralos a este panel"
+
+msgctxt "web_files_reload"
+msgid "Reload"
+msgstr "Recargar"
+
+msgctxt "web_files_reload_title"
+msgid "Read the folder again"
+msgstr "Volver a leer la carpeta"
+
+msgctxt "web_files_close"
+msgid "Hide the panel"
+msgstr "Ocultar el panel"
+
+msgctxt "web_loading"
+msgid "Loading piccolo"
+msgstr "Cargando piccolo"
+
+msgctxt "web_files_delete_question"
+msgid "Delete {name}?"
+msgstr "¿Eliminar {name}?"
+
+msgctxt "web_files_delete_tree_question"
+msgid "Delete {name} and everything in it?"
+msgstr "¿Eliminar {name} y todo su contenido?"
+
+msgctxt "web_files_delete_error"
+msgid "Can't delete: {error}"
+msgstr "No se pudo eliminar: {error}"
+
+msgctxt "web_files_overwrite"
+msgid "The files uploaded already exist.\n\n{path}\n\nOverwrite?"
+msgstr "Los archivos que intentas subir ya existen.\n\n{path}\n\n¿Sobrescribir?"
+
+msgctxt "web_files_folder_conflict"
+msgid "Cannot overwrite a folder with a file"
+msgstr "No se puede sobrescribir una carpeta con un archivo"
+
+msgctxt "web_files_write_error"
+msgid "Can't write {name}: {error}"
+msgstr "No se pudo escribir {name}: {error}"
+
+msgctxt "web_files_root"
+msgid "The top of the filesystem"
+msgstr "Raíz del sistema de archivos"
+
+msgctxt "web_files_open_title"
+msgid "Open in piccolo"
+msgstr "Abrir en piccolo"
+
+msgctxt "web_files_download_short"
+msgid "Get"
+msgstr "Bajar"
+
+msgctxt "web_files_download"
+msgid "Download"
+msgstr "Descargar"
+
+msgctxt "web_files_delete_short"
+msgid "Del"
+msgstr "Borrar"
+
+msgctxt "web_files_delete"
+msgid "Delete"
+msgstr "Eliminar"
+
+msgctxt "web_files_empty"
+msgid "Empty"
+msgstr "Vacía"
+
+msgctxt "web_files_not_kept"
+msgid "Files aren't saved: this browser has no OPFS"
+msgstr "Los archivos no se guardan: este navegador no admite OPFS"
+
+msgctxt "web_files_kept"
+msgid "Kept in this browser (OPFS)"
+msgstr "Guardados en este navegador (OPFS)"
+
+msgctxt "web_files_storage_usage"
+msgid "{storage} ({size} used)"
+msgstr "{storage} ({size} en uso)"

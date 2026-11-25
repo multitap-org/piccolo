@@ -47,7 +47,7 @@
   #overlay.gone { display: none; }
   #overlay .box { max-width: 36em; }
   #overlay progress { width: 16em; height: 6px; margin-top: 12px; accent-color: var(--accent); }
-  body.dragging::after { content: "DROP A GAME (OR, ON THE FILES PANEL, A FILE FOR THAT FOLDER)"; position: fixed; inset: 12px;
+  body.dragging::after { content: attr(data-drop-hint); position: fixed; inset: 12px;
                          z-index: 6; border: 2px dashed var(--accent); display: flex; align-items: center; justify-content: center;
                          color: var(--text); background: rgba(16, 24, 40, 0.75); letter-spacing: 2px; pointer-events: none;
                          text-align: center; padding: 16px; }
@@ -157,16 +157,16 @@
   .face.two .a { right: 0; top: calc(var(--unit) * 0.35); }
 </style>
 </head>
-<body data-channel="@CHANNEL@" data-pad="@PAD@">
+<body data-channel="@CHANNEL@" data-pad="@PAD@" data-drop-hint="">
 <div id="app">
   <div id="strip">
-    <a class="home" href="../" title="Choose another emulator"><img src="../icon-32.png" alt="">piccolo <span>play / @CORE_NAME@</span></a>
+    <a class="home" href="../" data-i18n-title="web_choose_emulator"><img src="../icon-32.png" alt="">piccolo <span><span data-i18n="web_play"></span> / @CORE_NAME@</span></a>
     <span class="channel" id="channel" hidden>DEV @COMMIT@</span>
     <span class="space"></span>
-    <button id="open" hidden title="Open a game file (or drop it on the page)"><span class="long">Open game</span><span class="short">Open</span></button>
-    <button id="files-toggle" hidden title="This session's files: saves, states, settings, games">Files</button>
-    <button id="pad-toggle" title="Buttons on the screen, beside or under the game">Pad</button>
-    <button id="fullscreen" title="The game on the whole screen (Esc leaves)"><span class="long">Full screen</span><span class="short">Full</span></button>
+    <button id="open" hidden data-i18n-title="web_open_game_title"><span class="long" data-i18n="web_open_game"></span><span class="short" data-i18n="web_open"></span></button>
+    <button id="files-toggle" hidden data-i18n-title="web_files_title" data-i18n="web_files"></button>
+    <button id="pad-toggle" data-i18n-title="web_pad_title" data-i18n="web_pad"></button>
+    <button id="fullscreen" data-i18n-title="web_fullscreen_title"><span class="long" data-i18n="web_fullscreen"></span><span class="short" data-i18n="web_fullscreen_short"></span></button>
   </div>
   <div id="main">
     <div class="pad" id="pad-left"></div>
@@ -177,11 +177,11 @@
     <div class="pad" id="pad-meta"></div>
     <aside id="files" class="closed">
       <header>
-        <span class="title">Files</span>
-        <button id="files-home" title="piccolo's folder">Home</button>
-        <button id="files-upload" title="Add files to this folder (or drop them on this panel)">Add</button>
-        <button id="files-refresh" title="Read the folder again">Reload</button>
-        <button id="files-close" title="Hide the panel">&times;</button>
+        <span class="title" data-i18n="web_files"></span>
+        <button id="files-home" data-i18n-title="web_home_title" data-i18n="web_home"></button>
+        <button id="files-upload" data-i18n-title="web_files_add_title" data-i18n="web_files_add"></button>
+        <button id="files-refresh" data-i18n-title="web_files_reload_title" data-i18n="web_files_reload"></button>
+        <button id="files-close" data-i18n-title="web_files_close" aria-label="Hide the panel">&times;</button>
       </header>
       <div id="files-path"></div>
       <ul id="files-list"></ul>
@@ -190,8 +190,10 @@
     </aside>
   </div>
 </div>
-<div id="overlay"><div class="box"><div id="message">LOADING PICCOLO</div><progress id="progress" max="1" value="0"></progress></div></div>
+<div id="overlay"><div class="box"><div id="message" data-i18n="web_loading"></div><progress id="progress" max="1" value="0"></progress></div></div>
 <input id="file" type="file" hidden>
+<script src="../piccolo-web-strings.js"></script>
+<script src="../piccolo-text.js"></script>
 <script src="../piccolo-gl-state.js"></script>   <!-- before piccolo makes its WebGL context -->
 <script src="../multitap-storage.js"></script>
 <script src="../multitap-page.js"></script>

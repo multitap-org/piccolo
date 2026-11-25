@@ -5,6 +5,8 @@
 #   for core in sameboy snes9x piccobots; do web/build-core.sh $core && web/build.sh $core; done
 #   web/package.sh
 #
+# Python 3 generates the page's translation bundle from Piccolo's catalogs.
+#
 # The look is piccolo's websites' (web/site/README.txt): get-piccolo.app's
 # assets/v1 fetched into _site/v1 (SITE_ASSETS_URL to change where from;
 # web/site/v1 when the fetch fails), the start page's sites bar and footer
@@ -24,6 +26,7 @@
 #   piccoletto/                piccoletto (PICCOLETTO=...): index.html, piccoletto-page.js,
 #                              manifest.webmanifest, icons, piccoletto.js/.wasm
 #   piccolo-page.js            the page's scripts, with piccolo-files.js (the FILES panel)
+#   piccolo-text.js            page localization, with piccolo-web-strings.js from Piccolo's catalogs
 #   multitap-page.js multitap-storage.js   frontends-common's web/: the start, the folder on OPFS
 #   sw.js                      the service worker (frontends-common's: COOP/COEP where the server
 #                              can't send them, offline cache)
@@ -53,8 +56,10 @@ rm -rf "$dist" "$build/dist/$name.zip"
 mkdir -p "$dist/LICENSES"
 
 cp "$here/page/index.html" "$here/page/piccolo-page.js" "$here/page/piccolo-files.js" "$here/page/piccolo-gl-state.js" \
+   "$here/page/piccolo-text.js" \
    "$here/page/manifest.webmanifest" \
    "$here/page/.htaccess" "$here/page/_headers" "$here/page/nginx.conf.example" "$here/page/README.txt" "$dist/"
+python3 "$here/make-strings.py" > "$dist/piccolo-web-strings.js"
 # The page's shared half (frontends-common's web/: the start, the folder on
 # OPFS, the service worker), shared with piccoletto's page.
 cp "$root/deps/common/frontends-common/web/multitap-page.js" "$root/deps/common/frontends-common/web/multitap-storage.js" \

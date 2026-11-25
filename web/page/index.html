@@ -7,7 +7,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>piccolo: play</title>
+<title data-i18n="web_page_title">piccolo</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-32.png">
 <link rel="stylesheet" href="_site/v1/site.css">
@@ -36,28 +36,29 @@
 <!-- sites-header filled in by web/package.sh -->
 <!-- /sites-header -->
 <main class="wrap">
-  <h1>Play in the browser<span class="channel" id="channel" hidden>DEV @COMMIT@</span></h1>
-  <p class="intro">Choose the emulator, then open a game file (or drop it on the page). Saves, states and settings stay
-  in this browser. No games are included.</p>
-  <p class="label">Emulators</p>
+  <h1><span data-i18n="web_play_title"></span><span class="channel" id="channel" hidden>DEV @COMMIT@</span></h1>
+  <p class="intro" data-i18n="web_play_intro"></p>
+  <p class="label" data-i18n="web_emulators"></p>
   <div class="cores">
-    <a class="core panel" href="sameboy/"><div><b>SameBoy</b><span>Game Boy, Game Boy Color, Super Game Boy</span></div><span class="go">Play</span></a>
-    <a class="core panel" href="snes9x/"><div><b>Snes9x</b><span>Super Nintendo, Super Famicom</span></div><span class="go">Play</span></a>
-    <a class="core panel" href="piccobots/"><div><b>piccobots</b><span>Multitap's demo game, up to four players, no game file needed</span></div><span class="go">Play</span></a>
+    <a class="core panel" href="sameboy/"><div><b>SameBoy</b><span>Game Boy, Game Boy Color, Super Game Boy</span></div><span class="go" data-i18n="web_play"></span></a>
+    <a class="core panel" href="snes9x/"><div><b>Snes9x</b><span>Super Nintendo, Super Famicom</span></div><span class="go" data-i18n="web_play"></span></a>
+    <a class="core panel" href="piccobots/"><div><b>piccobots</b><span data-i18n="web_demo_description"></span></div><span class="go" data-i18n="web_play"></span></a>
   </div>
   <section class="companion" id="piccoletto" hidden>
-    <h2>Companion app</h2>
-    <p>Not an emulator: piccoletto pairs this browser with a piccolo on your computer or TV.</p>
-    <a class="core panel" href="piccoletto/"><div><b>piccoletto</b><span>This device as a gamepad for a piccolo, remote play, devices</span></div><span class="go">Open</span></a>
+    <h2 data-i18n="web_companion_title"></h2>
+    <p data-i18n="web_companion_intro"></p>
+    <a class="core panel" href="piccoletto/"><div><b>piccoletto</b><span data-i18n="web_companion_description"></span></div><span class="go" data-i18n="web_open"></span></a>
   </section>
-  <p id="drop-hint" hidden>Choose the emulator first, then drop the game on its page.</p>
+  <p id="drop-hint" data-i18n="web_chooser_drop" hidden></p>
   <div class="notes">
-    <p>Keyboard and gamepads (press a button first) work. Sound starts after a click or a key.</p>
-    <p>piccolo is MIT licensed; each core under its own license (<a href="LICENSES/">LICENSES/</a>).</p>
+    <p data-i18n="web_play_controls"></p>
+    <p><span data-i18n="web_licenses"></span> (<a href="LICENSES/">LICENSES/</a>).</p>
   </div>
 </main>
 <!-- sites-footer filled in by web/package.sh -->
 <!-- /sites-footer -->
+<script src="piccolo-web-strings.js"></script>
+<script src="piccolo-text.js"></script>
 <script>
   // The dev channel (every push to main) says so; a release says nothing.
   if (document.body.dataset.channel === 'dev') {

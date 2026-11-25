@@ -49,3 +49,6 @@ void web_pad_tell_page(bool playing, double aspect);
 // SETTINGS' touch pad VIBRATE: the page's pad buzzes on a press only with it
 // on, as piccolo's own touch pad does. Only a change reaches the page.
 void web_pad_set_vibrate(bool on);
+
+// Keep the browser page's text in the same language as piccolo.
+void web_page_set_language(const char* code);

@@ -124,14 +124,15 @@ function piccolo_files_remove_tree(path) {
 }
 
 function piccolo_files_delete(path, folder) {
-  const what = path.substring(path.lastIndexOf('/') + 1) + (folder ? ' AND EVERYTHING IN IT' : '');
-  if (!window.confirm('DELETE ' + what + '?')) {
+  const name = path.substring(path.lastIndexOf('/') + 1);
+  const question = folder ? 'web_files_delete_tree_question' : 'web_files_delete_question';
+  if (!window.confirm(piccolo_web_text(question, { name }))) {
     return;
   }
   try {
     piccolo_files_remove_tree(path);
   } catch (error) {
-    window.alert('CAN\'T DELETE: ' + error.message);
+    window.alert(piccolo_web_text('web_files_delete_error', { error: error.message }));
   }
   multitap_storage_sync();
   piccolo_files_refresh(true);
@@ -151,15 +152,15 @@ async function piccolo_files_upload(files) {
       const data = new Uint8Array(await file.arrayBuffer());
       if (Module.FS.readdir(folder).includes(name)) {
         if (multitap_storage_is_folder(Module.FS.stat(path).mode)) {
-          throw new Error('Cannot overwrite a folder with a file');
+          throw new Error(piccolo_web_text('web_files_folder_conflict'));
         }
-        if (!window.confirm('The files uploaded already exist.\n\n' + path + '\n\nOverwrite?')) {
+        if (!window.confirm(piccolo_web_text('web_files_overwrite', { path }))) {
           continue;
         }
       }
       Module.FS.writeFile(path, data);
     } catch (error) {
-      window.alert('CAN\'T WRITE ' + name + ': ' + error.message);
+      window.alert(piccolo_web_text('web_files_write_error', { name, error: error.message }));
     }
   }
   multitap_storage_sync();
@@ -176,7 +177,7 @@ function piccolo_files_draw_path() {
   path.textContent = '';
   const parts = piccolo_files.folder.split('/').filter(function (part) { return part !== ''; });
   let target = '';
-  const root = piccolo_files_button('/', 'The top of the filesystem', function () { piccolo_files_go('/'); });
+  const root = piccolo_files_button('/', piccolo_web_text('web_files_root'), function () { piccolo_files_go('/'); });
   path.appendChild(root);
   for (const part of parts) {
     target += '/' + part;
@@ -214,18 +215,21 @@ function piccolo_files_draw(entries) {
     if (entry.folder) {
       row.addEventListener('click', function () { piccolo_files_go(path); });
     } else {
-      actions.appendChild(piccolo_files_button('PLAY', 'Open in piccolo', function () { piccolo_files_open_in_piccolo(path); }));
-      actions.appendChild(piccolo_files_button('GET', 'Download', function () { piccolo_files_download(path); }));
+      actions.appendChild(piccolo_files_button(piccolo_web_text('web_play'), piccolo_web_text('web_files_open_title'),
+                                              function () { piccolo_files_open_in_piccolo(path); }));
+      actions.appendChild(piccolo_files_button(piccolo_web_text('web_files_download_short'), piccolo_web_text('web_files_download'),
+                                              function () { piccolo_files_download(path); }));
       row.addEventListener('dblclick', function () { piccolo_files_open_in_piccolo(path); });
     }
-    actions.appendChild(piccolo_files_button('DEL', 'Delete', function () { piccolo_files_delete(path, entry.folder); }));
+    actions.appendChild(piccolo_files_button(piccolo_web_text('web_files_delete_short'), piccolo_web_text('web_files_delete'),
+                                            function () { piccolo_files_delete(path, entry.folder); }));
     row.appendChild(actions);
     list.appendChild(row);
   }
   if (entries.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'empty';
-    empty.textContent = 'EMPTY';
+    empty.textContent = piccolo_web_text('web_files_empty');
     list.appendChild(empty);
   }
 }
@@ -233,19 +237,20 @@ function piccolo_files_draw(entries) {
 async function piccolo_files_draw_usage() {
   const usage = piccolo_files_element('files-usage');
   if (multitap_storage.root === null) {
-    usage.textContent = 'NOT KEPT: THIS BROWSER HAS NO OPFS';
+    usage.textContent = piccolo_web_text('web_files_not_kept');
     return;
   }
-  let text = 'KEPT IN THIS BROWSER (OPFS)';
+  let size;
   if (navigator.storage && navigator.storage.estimate) {
     try {
       const estimate = await navigator.storage.estimate();
-      text += ' · ' + piccolo_files_size(estimate.usage || 0) + ' USED';
+      size = piccolo_files_size(estimate.usage || 0);
     } catch (error) {
       // No estimate: the line without it.
     }
   }
-  usage.textContent = text;
+  const storage = piccolo_web_text('web_files_kept');
+  usage.textContent = size ? piccolo_web_text('web_files_storage_usage', { storage, size }) : storage;
 }
 
 // Redraws when what's in the folder changed (or always, after an action).
@@ -303,6 +308,7 @@ function piccolo_files_start() {
     input.value = '';
   });
   piccolo_files_set_open(piccolo_files_remembered_open());
+  window.addEventListener('piccolo-language-change', function () { piccolo_files_refresh(true); });
   // Turning the phone (or resizing across the line): that layout's own state.
   window.matchMedia(PICCOLO_FILES_PORTRAIT).addEventListener('change', function () {
     const open = piccolo_files_remembered_open();

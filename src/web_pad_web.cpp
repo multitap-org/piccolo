@@ -42,6 +42,12 @@ EM_JS(void, page_vibrate, (int32_t on), {
     }
 });
 
+EM_JS(void, page_language, (const char* code), {
+    if (typeof piccolo_web_set_language === 'function') {
+        piccolo_web_set_language(UTF8ToString(code));
+    }
+});
+
 void web_pad_attach(InputSystem* input)
 {
     g_pad.input = input;
@@ -140,4 +146,9 @@ void web_pad_set_vibrate(bool on)
     }
     g_pad.told_vibrate = value;
     page_vibrate(value);
+}
+
+void web_page_set_language(const char* code)
+{
+    page_language(code);
 }
