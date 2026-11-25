@@ -1101,6 +1101,8 @@ pair_yes = YES
 pair_no = NO
 pair_close = CLOSE
 pair_card_accept = TO ACCEPT
+pair_timed_out = PAIRING TIMED OUT
+pair_failed = PAIRING FAILED
 
 # Browser frontend (emulator chooser, game page and FILES panel)
 web_page_title = piccolo: play

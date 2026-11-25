@@ -19,7 +19,7 @@
 //   2  TYPE THIS CODE ON <HOST> (or GIVE THIS CODE TO THE OTHER USER), our
 //      code in three boxes, WAITING FOR DEVICE, CANCEL
 //   3  PAIRED WITH <HOST>, ROLE, LET <HOST> CONNECT TO THIS DEVICE, WITH
-//      THE SAME ROLE?  YES / NO
+//      THE SAME ROLE?  YES / NO  (already paired with it: no question, CLOSE)
 //   The connection is FILE TRANSFER's (NetShareLink).
 //
 // PAIR WITH A CLIENT (was INVITE and the pairing request dialog): a device
@@ -51,6 +51,11 @@
 // before. With the menu or a window up (or no game) the window opens at
 // once, as before.
 //
+// Every waiting step (PAIR WITH A HOST's code, our own code's wait, a
+// request) gives up after PAIR_WINDOW_WAIT_MS (Andrés: 5 minutes at most):
+// back to its start, with a PAIRING TIMED OUT card. The device answered with
+// our own code leaving or failing first gives PAIRING FAILED.
+//
 // Split like every window: pair_window_update follows FILE TRANSFER's
 // connection and the requests (no GUI), pair_window_state fills what the
 // window shows, pair_window_draw draws it and records what was pressed, and
@@ -69,6 +74,8 @@
 #include "retro_ui_font.h"
 
 struct HudStack;
+
+constexpr uint64_t PAIR_WINDOW_WAIT_MS = 5 * 60 * 1000;   // a waiting step gives up after this
 
 enum class PairMode : uint8_t
 {
@@ -96,7 +103,7 @@ struct PairRequest
     char        name[NET_DEVICE_NAME_MAX + 1] = {};
     char        code[NET_PAIR_CODE_DIGITS + 1] = {};
     uint32_t    level = 0;         // NetAccessLevel
-    uint64_t    since_ms = 0;      // when it came (pair_window_update stamps it)
+    uint64_t    since_ms = 0;      // when it came (pair_window_update stamps it): its card, its timeout
 };
 
 // PAIR WITH A CLIENT's own code (was TOOLS > INVITE): a device across the
@@ -111,6 +118,15 @@ struct PairInvite
     char     code[NET_PAIR_CODE_DIGITS + 1] = {};
     uint32_t level = 0;            // NetAccessLevel
     bool     focus = false;
+    uint64_t since_ms = 0;         // ALLOW pressed (pair_window_update stamps it): its timeout
+};
+
+// Why the last pairing step went back to its start, as a notification card.
+enum class PairNotice : uint8_t
+{
+    none,
+    timed_out,   // PAIRING TIMED OUT
+    failed,      // PAIRING FAILED
 };
 
 struct PairWindow
@@ -130,6 +146,8 @@ struct PairWindow
     NetAccessLevel  given = NetAccessLevel::gamepad;   // done: what it gave us
     uint8_t         host_key[NET_KEY_SIZE] = {};
     bool            seen_connecting = false;   // waiting: the link took our request
+    bool            newly_paired = false;      // done: paired just now (else it already was: no access back)
+    uint64_t        host_since_ms = 0;         // waiting since (pair_window_update stamps it): its timeout
     std::string     preselect;          // pair_window_open's name to pick, until the list shows it
 
     // PAIR WITH A CLIENT.
@@ -141,6 +159,9 @@ struct PairWindow
 
     // A request shown as a card in the game: START held on it.
     InputHold       accept_hold;
+
+    PairNotice      notice = PairNotice::none;
+    uint64_t        notice_ms = 0;      // when it came: its card shows for a few seconds
 };
 
 struct PairWindowState
@@ -177,7 +198,7 @@ void pair_window_open(PairWindow* window, const char* preselect);
 // Before drawing, every frame: follows FILE TRANSFER's connection (`link`
 // nullptr: it doesn't run) and opens the window on a request, unless
 // `in_game` (the player is in the game, no menu or window up: a card shows
-// it instead).
+// it instead). Stamps when each waiting step began.
 void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool in_game, uint64_t now_ms);
 void pair_window_state(PairWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
                        bool network, bool can_give_back);
@@ -195,11 +216,17 @@ void pair_window_apply_host(PairWindow* window, const PairWindowAction* action, 
 // nullptr: networking is off, only the window changes).
 void pair_window_apply_client(PairWindow* window, const PairWindowAction* action, NetAccess* access);
 
+// Every frame, after the presses: a waiting step past PAIR_WINDOW_WAIT_MS
+// goes back to its start with PAIRING TIMED OUT (the link's code dropped, a
+// request refused and our own code's wait ended on `access`, under the
+// network lock; nullptr: networking is off).
+void pair_window_expire(PairWindow* window, NetShareLink* link, NetAccess* access, uint64_t now_ms);
 // The request's card in the game (`in_game` as pair_window_update's): START
 // (`held`, on any controller) held as long as HOLD START TO REMAP opens the
 // window on the request. True when it did.
 bool pair_window_hold_accept(PairWindow* window, bool in_game, bool held, uint64_t now_ms);
-// Its notification card: the request, in the game (`in_game`).
+// Its notification cards: the request in the game (`in_game`), and PAIRING
+// TIMED OUT / PAIRING FAILED for a few seconds.
 void pair_window_add_hud(const PairWindow* window, const Localization* strings, bool in_game, HudStack* stack,
                          uint64_t now_ms);
 
@@ -210,8 +237,9 @@ void pair_window_add_hud(const PairWindow* window, const Localization* strings, 
 bool pair_window_take_request(PairWindow* window, NetAccess* access, const NetAccessEvent* event);
 // A device paired (`name`: as the list calls it now): PAIRED WITH, if it was ours.
 void pair_window_paired(PairWindow* window, NetAccess* access, const NetAccessEvent* event, const char* name);
-// A request ended without pairing (it cancelled, left, or failed).
-void pair_window_request_gone(PairWindow* window, uint32_t peer);
+// A request ended without pairing (it cancelled, left, or failed). The
+// device answered with our own code too: PAIRING FAILED, back to typing it.
+void pair_window_request_gone(PairWindow* window, NetAccess* access, uint32_t peer, uint64_t now_ms);
 // Networking stopped (turned off, or the listener restarted): the request
 // and our own code's wait belonged to the NetAccess that's gone (its peer
 // numbers mean nothing to the next one).

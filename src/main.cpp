@@ -1414,6 +1414,25 @@ static void pair_apply(App* app, const PairWindowAction* action)
     }
 }
 
+// TOOLS > PAIR...'s waiting steps, every frame (also closed: a request in
+// the game waits as a card): 5 minutes at most (pair_window.h). Our own
+// code's wait and a request are the NetAccess's, so under the network lock.
+static void pair_expire(App* app)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    // (The lock only when a NetAccess step waits: not taken every frame for nothing.)
+    if (app->net_running && (app->pair_window.request.active || app->pair_window.invite.waiting))
+    {
+        net_service_lock(&app->net_service);
+        pair_window_expire(&app->pair_window, &app->share_link, &app->net_service.access, now_ms);
+        net_service_unlock(&app->net_service);
+    }
+    else
+    {
+        pair_window_expire(&app->pair_window, &app->share_link, nullptr, now_ms);
+    }
+}
+
 static void open_share_window(App* app)
 {
     std::vector<std::string> game_folders;
@@ -5158,7 +5177,8 @@ static void net_update_locked(App* app)
         case NetAccessEventType::closed:
             if (event.device < 0)
             {
-                pair_window_request_gone(&app->pair_window, event.peer);   // it cancelled, or left
+                // It cancelled, or left.
+                pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -5194,7 +5214,7 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            pair_window_request_gone(&app->pair_window, event.peer);
+            pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
             break;
         case NetAccessEventType::pairing_requested:
             // A device asks (Andrés, 2026-11-22): TOOLS > PAIR... opens on
@@ -5837,6 +5857,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     {
         pair_apply(app, &actions->pair);
     }
+    pair_expire(app);
     // TOOLS > REMOTE PLAY: acts on the NetAccess, so under the lock.
     if (view->guest_shown)
     {

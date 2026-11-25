@@ -44,6 +44,8 @@ static void reset_host(PairWindow* window)
     window->given = NetAccessLevel::gamepad;
     std::memset(window->host_key, 0, sizeof(window->host_key));
     window->seen_connecting = false;
+    window->newly_paired = false;
+    window->host_since_ms = 0;
     window->preselect.clear();
     net_pair_code_generate(window->code);
 }
@@ -69,9 +71,22 @@ static void open_on_request(PairWindow* window)
 
 void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool in_game, uint64_t now_ms)
 {
+    // When each waiting step began (pair_window_expire's timeouts).
     if (window->request.active && window->request.since_ms == 0)
     {
-        window->request.since_ms = now_ms;   // (a card slides in from then)
+        window->request.since_ms = now_ms;   // (a card slides in from then too)
+    }
+    if (window->invite.waiting && window->invite.since_ms == 0)
+    {
+        window->invite.since_ms = now_ms;
+    }
+    if (window->phase != PairWindowPhase::waiting)
+    {
+        window->host_since_ms = 0;
+    }
+    else if (window->host_since_ms == 0)
+    {
+        window->host_since_ms = now_ms;
     }
     // A device asks to pair: the window opens on PAIR WITH A CLIENT, unless
     // PAIR WITH A HOST is halfway through a step (it waits until that ends),
@@ -124,9 +139,15 @@ void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool
         {
             window->seen_connecting = true;
         }
-        else if (link->state == NetShareLinkState::ready && link->newly_paired)
+        else if (link->state == NetShareLinkState::ready)
         {
+            // Ours: connecting (net_share_link_connect / _pair_beacon) set the
+            // state under the link's lock before this step began, so a ready
+            // now is this connection's. Without newly_paired the host already
+            // knew us (paired before): paired all the same, but no access
+            // back (it's offered only on a new pairing's connection).
             window->phase = PairWindowPhase::done;
+            window->newly_paired = link->newly_paired;
             window->host_name = link->host_name;
             window->given = link->access;
             std::memcpy(window->host_key, link->host_key, NET_KEY_SIZE);
@@ -299,9 +320,10 @@ static void draw_host(PairWindow* window, const PairWindowState* state, PairButt
     }
     draw_paired_with(strings, window->host_name.c_str());
     draw_role_value(strings, static_cast<uint32_t>(window->given));
-    if (!state->can_give_back)
+    if (!state->can_give_back || !window->newly_paired)
     {
-        // Our listener doesn't run: nothing to give back.
+        // Our listener doesn't run, or the host already knew us: nothing to
+        // give back (net_share_link_grant_back is for a new pairing only).
         add_button(buttons, "close", piccolo_text(strings, Str::pair_close), PairWindowPress::close, true, nullptr);
         return;
     }
@@ -569,6 +591,20 @@ static void close_window(PairWindow* window, NetShareLink* link, bool started, b
     window->open = false;
 }
 
+// PAIR WITH A HOST's wait given up: back to the list with a new code (the
+// old one dies with the connection).
+static void host_back_to_list(PairWindow* window, NetShareLink* link, bool started)
+{
+    window->phase = PairWindowPhase::list;
+    window->seen_connecting = false;
+    window->host_since_ms = 0;
+    net_pair_code_generate(window->code);
+    if (started)
+    {
+        net_share_link_disconnect(link);
+    }
+}
+
 void pair_window_apply_host(PairWindow* window, const PairWindowAction* action, NetShareLink* link,
                             const NetShareLinkStatus* status, const char* beacon, NetService* service,
                             bool share_open)
@@ -610,13 +646,7 @@ void pair_window_apply_host(PairWindow* window, const PairWindowAction* action, 
         }
         break;
     case PairWindowPress::cancel:
-        window->phase = PairWindowPhase::list;
-        window->seen_connecting = false;
-        net_pair_code_generate(window->code);
-        if (started)
-        {
-            net_share_link_disconnect(link);
-        }
+        host_back_to_list(window, link, started);
         break;
     case PairWindowPress::give_back:
         // Access back (Andrés, 2026-11-22): the host may come to us at the
@@ -751,6 +781,45 @@ bool pair_window_take_request(PairWindow* window, NetAccess* access, const NetAc
     return false;
 }
 
+static bool expired(uint64_t since_ms, uint64_t now_ms)
+{
+    return since_ms != 0 && now_ms >= since_ms && now_ms - since_ms >= PAIR_WINDOW_WAIT_MS;
+}
+
+static void set_notice(PairWindow* window, PairNotice notice, uint64_t now_ms)
+{
+    window->notice = notice;
+    window->notice_ms = now_ms;
+}
+
+void pair_window_expire(PairWindow* window, NetShareLink* link, NetAccess* access, uint64_t now_ms)
+{
+    if (window->phase == PairWindowPhase::waiting && expired(window->host_since_ms, now_ms))
+    {
+        SDL_Log("Pair: waiting for the host timed out");
+        host_back_to_list(window, link, net_share_link_started(link));
+        set_notice(window, PairNotice::timed_out, now_ms);
+    }
+    if (window->request.active && expired(window->request.since_ms, now_ms))
+    {
+        // Refused, as DENY: the device stops asking (it may ask again).
+        SDL_Log("Pair: the request from \"%s\" timed out", window->request.name);
+        if (access != nullptr)
+        {
+            net_access_refuse_pairing(access, window->request.peer);
+        }
+        window->request = {};
+        input_hold_reset(&window->accept_hold);
+        set_notice(window, PairNotice::timed_out, now_ms);
+    }
+    if (window->invite.waiting && expired(window->invite.since_ms, now_ms))
+    {
+        SDL_Log("Pair: waiting with our own code timed out");
+        end_invite(window, access);
+        set_notice(window, PairNotice::timed_out, now_ms);
+    }
+}
+
 bool pair_window_hold_accept(PairWindow* window, bool in_game, bool held, uint64_t now_ms)
 {
     if (!window->request.active || window->open || !in_game)
@@ -768,9 +837,32 @@ bool pair_window_hold_accept(PairWindow* window, bool in_game, bool held, uint64
     return true;
 }
 
+constexpr uint64_t NOTICE_CARD_MS = 2500;      // PAIRING TIMED OUT / FAILED stays this long (as the DVR's)...
+constexpr uint64_t NOTICE_CARD_FADE_MS = 500;  // ...then fades out
+
+static void add_notice_card(const PairWindow* window, const Localization* strings, HudStack* stack, uint64_t now_ms)
+{
+    uint64_t since = window->notice_ms;
+    if (window->notice == PairNotice::none || since == 0 || now_ms < since ||
+        now_ms - since >= NOTICE_CARD_MS + NOTICE_CARD_FADE_MS)
+    {
+        return;
+    }
+    HudCard card = {};
+    hud_view_card_text(&card, piccolo_text(strings, window->notice == PairNotice::timed_out ? Str::pair_timed_out
+                                                                                             : Str::pair_failed));
+    card.since_ms = since;
+    if (now_ms - since > NOTICE_CARD_MS)
+    {
+        card.alpha = 1.0f - static_cast<float>(now_ms - since - NOTICE_CARD_MS) / static_cast<float>(NOTICE_CARD_FADE_MS);
+    }
+    hud_view_add_card(stack, &card);
+}
+
 void pair_window_add_hud(const PairWindow* window, const Localization* strings, bool in_game, HudStack* stack,
                          uint64_t now_ms)
 {
+    add_notice_card(window, strings, stack, now_ms);
     const PairRequest* request = &window->request;
     if (!request->active || window->open || !in_game)
     {
@@ -835,10 +927,19 @@ void pair_window_network_stopped(PairWindow* window)
     window->invite.level = level;
 }
 
-void pair_window_request_gone(PairWindow* window, uint32_t peer)
+void pair_window_request_gone(PairWindow* window, NetAccess* access, uint32_t peer, uint64_t now_ms)
 {
     if (window->request.active && window->request.peer == peer)
     {
         window->request = {};
+    }
+    // The device we answered with our own code left or failed before
+    // pairing: nothing comes any more (WAITING FOR DEVICE would stay up), so
+    // back to typing a code.
+    if (window->invite.answered && window->invite.peer == peer)
+    {
+        SDL_Log("Pair: the device answered with our own code left without pairing");
+        end_invite(window, access);
+        set_notice(window, PairNotice::failed, now_ms);
     }
 }
