@@ -37,6 +37,13 @@
 // SETTINGS > SHADER > CHOOSE): no core row, only presets (.slangp, or .glpreset on OpenGL ES), no archives
 // (presets are always plain files), and NONE / USE instead of the game
 // buttons. It can go to any folder (e.g. a full slang-shaders checkout).
+//
+// Split like every window: file_picker_update lists the folder when it
+// changed and file_picker_state fills what the window shows (no GUI),
+// file_picker_draw draws it and records what was clicked, and
+// file_picker_apply acts on it (no GUI): goes to a folder, selects and peeks
+// at a file, picks the core, makes the choice. The listing, the selection and
+// SHOW ALL FILES stay the picker's own state.
 
 #include <cstdint>
 #include <string>
@@ -112,7 +119,58 @@ void file_picker_open_folder(FilePicker* picker, const char* directory, const st
 // `extension`: the presets this GPU path takes (".slangp" on Vulkan, ".glpreset" on OpenGL ES).
 void file_picker_open_shader(FilePicker* picker, const char* directory, const char* extension);
 
-// Draws the window if open. Returns true on the frame the user picked
-// something; the picker closes itself then.
-bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, RetroUiFont* pixel_font, int32_t scale,
-                      const Localization* strings, FilePickerChoice* choice);
+// Every frame before file_picker_state: the folder listed again when the
+// folder, the core or SHOW ALL FILES changed.
+void file_picker_update(FilePicker* picker, const CoreCatalog* catalog);
+
+// What the window shows from the rest of the program (and its own lines,
+// made here so the drawing only draws them).
+struct FilePickerState
+{
+    const Localization* strings = nullptr;
+    const CoreCatalog*  catalog = nullptr;   // CORE's choices (only read)
+    char        core_preview[LIBRETRO_INFO_TEXT_MAX * 2 + 8] = {};   // the chosen core, its version
+    const char* folder_preview = "";         // FOLDER's text (a game folder, HOME or where we are)
+    bool        no_game = false;             // the core starts without a game: START WITHOUT GAME shows
+    bool        selected_archive = false;    // the selected file is an archive (BROWSE)
+    char        where[LIBRETRO_PATH_MAX + 300] = {};   // the line under the lists
+};
+
+enum class FilePickerPress
+{
+    none,
+    core,          // a core from CORE (`index` into the catalog)
+    game_folder,   // a game folder from FOLDER (`index`)
+    home,          // HOME from FOLDER
+    volume,        // an SD card / USB drive / drive from FOLDER (`index`)
+    parent,        // ".."
+    open_folder,   // a folder in the list (`index`)
+    show_all,      // SHOW ALL FILES changed
+    load,          // LOAD, or a double click on a file
+    browse,        // BROWSE: the selected archive as a folder
+    start_alone,   // START WITHOUT GAME
+    use_folder,    // USE THIS FOLDER (CHOOSE FOLDER)
+    shader_none,   // NONE (shader preset)
+    shader_use,    // USE (shader preset)
+};
+
+struct FilePickerAction
+{
+    FilePickerPress press = FilePickerPress::none;
+    int32_t index = -1;            // see FilePickerPress
+    int32_t select_file = -1;      // a file clicked that wasn't selected
+    bool    volumes_opened = false;   // FOLDER's list opened: the volumes read again
+    bool    closed = false;        // Esc or the window's X
+};
+
+void file_picker_state(FilePickerState* state, const FilePicker* picker, const CoreCatalog* catalog,
+                       const Localization* strings);
+
+// Draws the window if open.
+void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiFont* pixel_font, int32_t scale,
+                      FilePickerAction* action);
+
+// Returns true on the frame the user picked something; the picker closes
+// itself then.
+bool file_picker_apply(FilePicker* picker, const FilePickerAction* action, const CoreCatalog* catalog,
+                       FilePickerChoice* choice);

@@ -17,9 +17,12 @@
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
+
 // ---------------------------------------------------------------------------
-// Paths
+// State (no GUI)
 // ---------------------------------------------------------------------------
+
+// Paths.
 
 // "a.7z#" (an archive's top folder) takes names right after the '#'.
 static bool join_path(const char* directory, const char* name, char* out, size_t out_size)
@@ -97,9 +100,7 @@ static void go_to_parent(char* directory)
     directory[last - 1] = '\0';
 }
 
-// ---------------------------------------------------------------------------
-// Listing
-// ---------------------------------------------------------------------------
+// Listing.
 
 // Names in order, case-insensitive (std::sort's comparison).
 static bool name_before(const std::string& a, const std::string& b)
@@ -261,23 +262,6 @@ static void list_folder(FilePicker* picker, const CoreCatalog* catalog)
     sort_names(&picker->files);
 }
 
-// ---------------------------------------------------------------------------
-// Public functions
-// ---------------------------------------------------------------------------
-
-static bool is_directory(const char* path)
-{
-    SDL_PathInfo info = {};
-    return path[0] != '\0' && SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
-}
-
-static void go_home(FilePicker* picker)
-{
-    const char* home = app_paths_home_folder();   // /sdcard on Android
-    std::snprintf(picker->directory, sizeof(picker->directory), "%s", home != nullptr ? home : "/");
-    host_fs_forward_slashes(picker->directory);
-}
-
 // Is `directory` `folder` or inside it ("/roms" holds "/roms/snes" and
 // "/roms/a.7z#x", not "/roms2")? Forward slashes on both.
 static bool folder_holds(const std::string* folder, const char* directory)
@@ -325,6 +309,373 @@ static const char* folder_preview(const FilePicker* picker, const Localization* 
         }
     }
     return picker->directory;
+}
+
+// The selected file, if it's an archive in a real folder (archives inside
+// archives are plain files: they aren't browsed). Only in LOAD GAME.
+static bool selected_archive(const FilePicker* picker)
+{
+    std::string archive;
+    std::string folder;
+    return picker->mode == FilePickerMode::game && picker->selected_file >= 0 &&
+           !archive_split_path(picker->directory, &archive, &folder) &&
+           archive_format(picker->files[static_cast<size_t>(picker->selected_file)].c_str()) != ArchiveFormat::none;
+}
+
+// Every frame before the state: the folder's contents again when the
+// folder, the core or "show all" changed.
+void file_picker_update(FilePicker* picker, const CoreCatalog* catalog)
+{
+    if (picker->open && picker->listing_stale)
+    {
+        list_folder(picker, catalog);
+    }
+}
+
+// The line under the lists: where we are, or what LOAD does with the
+// selected archive.
+static void where_text(const FilePicker* picker, const LibretroCoreInfo* core, const Localization* strings, char* where,
+                       size_t where_size)
+{
+    if (selected_archive(picker))
+    {
+        const char* name = picker->files[static_cast<size_t>(picker->selected_file)].c_str();
+        if (content_archive_core_takes_whole(core, name))
+        {
+            std::snprintf(where, where_size, "%s: %s", name, piccolo_text(strings, Str::picker_peek_whole));
+        }
+        else if (!picker->archive_readable)
+        {
+            std::snprintf(where, where_size, "%s: %s", name, piccolo_text(strings, Str::picker_peek_unreadable));
+        }
+        else if (picker->peek_loadable == 1)
+        {
+            std::snprintf(where, where_size, "%s: %s %s", name, piccolo_text(strings, Str::picker_peek_loads),
+                          picker->peek_single.c_str());
+        }
+        else if (picker->peek_loadable == 0)
+        {
+            std::snprintf(where, where_size, "%s: %s", name, piccolo_text(strings, Str::picker_peek_none));
+        }
+        else
+        {
+            std::snprintf(where, where_size, "%s: %s %d", name, piccolo_text(strings, Str::picker_peek_folder),
+                          static_cast<int>(picker->peek_loadable));
+        }
+    }
+    else
+    {
+        std::snprintf(where, where_size, "%s", picker->directory);
+    }
+}
+
+void file_picker_state(FilePickerState* state, const FilePicker* picker, const CoreCatalog* catalog,
+                       const Localization* strings)
+{
+    state->strings = strings;
+    state->catalog = catalog;
+    const LibretroCoreInfo* core = selected_core(picker, catalog);
+    state->no_game = core != nullptr && core->supports_no_game;
+    std::snprintf(state->core_preview, sizeof(state->core_preview), "%s %s",
+                  core != nullptr ? core->name : piccolo_text(strings, Str::picker_no_cores), core != nullptr ? core->version : "");
+    state->folder_preview = folder_preview(picker, strings);
+    state->selected_archive = selected_archive(picker);
+    where_text(picker, core, strings, state->where, sizeof(state->where));
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+// CHOOSE FOLDER's bottom row: USE THIS FOLDER (the folder shown) at the right.
+static void draw_folder_buttons(const Localization* strings, FilePickerAction* action)
+{
+    RetroUiEndButton use = {};
+    use.id = "use_folder";
+    use.label = piccolo_text(strings, Str::picker_use_folder);
+    if (retro_ui_end_buttons(&use, 1, false) == 0)
+    {
+        action->press = FilePickerPress::use_folder;
+    }
+}
+
+// The shader picker's bottom row: NONE and USE at the right.
+static void draw_shader_buttons(const FilePicker* picker, const Localization* strings, FilePickerAction* action)
+{
+    RetroUiEndButton buttons[2] = {};
+    buttons[0].id = "none";
+    buttons[0].label = piccolo_text(strings, Str::shader_preset_none);
+    buttons[1].id = "use";
+    buttons[1].label = piccolo_text(strings, Str::shader_picker_use);
+    buttons[1].enabled = picker->selected_file >= 0;
+    int32_t pressed = retro_ui_end_buttons(buttons, 2, false);
+    if (pressed == 0)
+    {
+        action->press = FilePickerPress::shader_none;
+    }
+    else if (pressed == 1)
+    {
+        action->press = FilePickerPress::shader_use;
+    }
+}
+
+// LOAD GAME's bottom row: SHOW ALL FILES, then START WITHOUT GAME, BROWSE and
+// LOAD at the right.
+static void draw_game_buttons(FilePicker* picker, const FilePickerState* state, FilePickerAction* action)
+{
+    const Localization* strings = state->strings;
+    // (SHOW ALL FILES is the picker's own switch: apply lists the folder again.)
+    if (retro_ui_check("show_all", piccolo_text(strings, Str::picker_show_all), &picker->show_all))
+    {
+        action->press = FilePickerPress::show_all;
+    }
+    RetroUiEndButton buttons[3] = {};
+    buttons[0].id = "alone";
+    buttons[0].label = piccolo_text(strings, Str::picker_start_without_game);
+    buttons[0].shown = state->no_game;
+    // BROWSE: the selected archive as a folder, whatever the core.
+    buttons[1].id = "browse";
+    buttons[1].label = piccolo_text(strings, Str::picker_browse);
+    buttons[1].enabled = state->selected_archive;
+    buttons[2].id = "load";
+    buttons[2].label = piccolo_text(strings, Str::picker_load);
+    buttons[2].enabled = picker->selected_file >= 0;
+    int32_t pressed = retro_ui_end_buttons(buttons, 3, true);
+    if (pressed == 0)
+    {
+        action->press = FilePickerPress::start_alone;
+    }
+    else if (pressed == 1)
+    {
+        action->press = FilePickerPress::browse;
+    }
+    else if (pressed == 2)
+    {
+        action->press = FilePickerPress::load;
+    }
+}
+
+void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiFont* pixel_font, int32_t scale,
+                      FilePickerAction* action)
+{
+    if (!picker->open)
+    {
+        return;
+    }
+    const Localization* strings = state->strings;
+    const CoreCatalog* catalog = state->catalog;
+
+    float block = static_cast<float>(scale);
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
+
+    retro_ui_push_theme(pixel_font, scale);
+    // 400 x 250 retro pixels, but never bigger than the window.
+    float width = 400.0f * block;
+    float height = 250.0f * block;
+    RetroUiWindow window = {};
+    window.width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    window.height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    window.centered_on_open = true;
+
+    bool choosing_folder = picker->mode == FilePickerMode::folder;
+    bool shader = picker->mode == FilePickerMode::shader_preset;
+    if (choosing_folder)
+    {
+        window.id = "choose_folder";
+        window.title = piccolo_text(strings, Str::picker_folder_title);
+    }
+    else if (shader)
+    {
+        window.id = "shader_preset";
+        window.title = piccolo_text(strings, Str::shader_picker_title);
+    }
+    else
+    {
+        window.id = "load_game";
+        window.title = piccolo_text(strings, Str::picker_title);
+    }
+    bool closed = false;
+    if (retro_ui_window_begin(&window, scale, &closed))
+    {
+        // Core first: it decides which files are shown. Neither the core nor
+        // the game folders matter when picking a shader preset.
+        bool core_row = !choosing_folder && !shader;
+        const char* core_label = piccolo_text(strings, Str::picker_core);
+        const char* folder_label = piccolo_text(strings, Str::picker_folder);
+        // One label column for CORE and FOLDER, so the choices line up.
+        float label_width = core_row ? retro_ui_text_width(core_label) : 0.0f;
+        float folder_label_width = retro_ui_text_width(folder_label);
+        label_width = (label_width > folder_label_width ? label_width : folder_label_width) + retro_ui_item_spacing();
+        if (core_row)
+        {
+            RetroUiRow row = {};
+            row.id = "core";
+            row.marker_column = false;
+            row.label = core_label;
+            row.label_width = label_width;
+            retro_ui_row_begin(&row);
+            if (retro_ui_begin_choice("choice", state->core_preview))
+            {
+                for (int32_t i = 0; i < catalog->count; i++)
+                {
+                    const CoreCatalogEntry* entry = &catalog->entries[i];
+                    if (!entry->info.usable)
+                    {
+                        continue;
+                    }
+                    char label[LIBRETRO_INFO_TEXT_MAX * 2 + 8] = {};
+                    std::snprintf(label, sizeof(label), "%s %s", entry->info.name, entry->info.version);
+                    if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), label, i == picker->core_index))
+                    {
+                        action->press = FilePickerPress::core;
+                        action->index = i;
+                    }
+                }
+                retro_ui_end_choice();
+            }
+            retro_ui_row_end(&row);
+        }
+
+        // Where to start: a game folder or HOME.
+        RetroUiRow folder_row = {};
+        folder_row.id = "folder";
+        folder_row.marker_column = false;
+        folder_row.label = folder_label;
+        folder_row.label_width = label_width;
+        retro_ui_row_begin(&folder_row);
+        if (retro_ui_begin_choice("choice", state->folder_preview))
+        {
+            if (retro_ui_choice_opened())
+            {
+                action->volumes_opened = true;   // read again every time the list opens
+            }
+            // Items: the game folders, HOME, then the volumes (none shows as
+            // selected: picking the folder shown reads it again).
+            uint32_t item = 0;
+            for (size_t i = 0; i < picker->game_folders.size(); i++)
+            {
+                if (retro_ui_choice_item(item++, picker->game_folders[i].c_str(), false))
+                {
+                    action->press = FilePickerPress::game_folder;
+                    action->index = static_cast<int32_t>(i);
+                }
+            }
+            if (retro_ui_choice_item(item++, piccolo_text(strings, Str::picker_home), false))
+            {
+                action->press = FilePickerPress::home;
+            }
+            // SD cards and USB drives (Android), the drives (Windows), as they are while the list is open.
+            for (size_t i = 0; i < picker->volumes.size(); i++)
+            {
+                if (retro_ui_choice_item(item++, picker->volumes[i].c_str(), false))
+                {
+                    action->press = FilePickerPress::volume;
+                    action->index = static_cast<int32_t>(i);
+                }
+            }
+            retro_ui_end_choice();
+        }
+        retro_ui_row_end(&folder_row);
+
+        // Files (left) and folders (right), leaving room for two rows below.
+        float row = retro_ui_line_step();
+        float list_height = retro_ui_height_left() - row * 2.0f;
+        float files_width = retro_ui_width_left() * 0.62f;
+
+        if (!choosing_folder)   // folders only: the whole width
+        {
+            retro_ui_begin_list("files", files_width, list_height);
+            // Only the rows in view are drawn (thousands of files stay smooth;
+            // keyboard / gamepad navigation still reaches them all).
+            uint32_t first = 0;
+            uint32_t end = 0;
+            retro_ui_begin_clipped(static_cast<uint32_t>(picker->files.size()));
+            while (retro_ui_clipped_step(&first, &end))
+            {
+                for (uint32_t i = first; i < end; i++)
+                {
+                    int32_t index = static_cast<int32_t>(i);
+                    RetroUiClick click = retro_ui_list_item_click(i, picker->files[i].c_str(), index == picker->selected_file);
+                    if (click != RetroUiClick::none && picker->selected_file != index)
+                    {
+                        action->select_file = index;
+                    }
+                    if (click == RetroUiClick::twice)
+                    {
+                        action->press = FilePickerPress::load;
+                    }
+                }
+            }
+            if (picker->files.empty())
+            {
+                retro_ui_dim_text(piccolo_text(strings, Str::picker_nothing_here), nullptr);
+            }
+            retro_ui_end_list();
+            retro_ui_same_line();
+        }
+        retro_ui_begin_list("folders", 0.0f, list_height);
+        retro_ui_push_id("parent");
+        if (retro_ui_list_item(0, "..", false, nullptr))
+        {
+            action->press = FilePickerPress::parent;
+        }
+        retro_ui_pop_id();
+        uint32_t first = 0;
+        uint32_t end = 0;
+        retro_ui_begin_clipped(static_cast<uint32_t>(picker->folders.size()));
+        while (retro_ui_clipped_step(&first, &end))
+        {
+            for (uint32_t i = first; i < end; i++)
+            {
+                if (retro_ui_list_item(i, picker->folders[i].c_str(), false, nullptr))
+                {
+                    action->press = FilePickerPress::open_folder;
+                    action->index = static_cast<int32_t>(i);
+                }
+            }
+        }
+        retro_ui_end_list();
+
+        // Where we are, or what LOAD does with the selected archive.
+        retro_ui_dim_text(state->where, nullptr);
+
+        // Bottom row. (A double click above may have picked already.)
+        if (choosing_folder)
+        {
+            draw_folder_buttons(strings, action);
+        }
+        else if (shader)
+        {
+            draw_shader_buttons(picker, strings, action);
+        }
+        else
+        {
+            draw_game_buttons(picker, state, action);
+        }
+    }
+    retro_ui_window_end();
+    retro_ui_pop_theme();
+
+    action->closed = closed;
+}
+
+// ---------------------------------------------------------------------------
+// Apply (no GUI)
+// ---------------------------------------------------------------------------
+
+static bool is_directory(const char* path)
+{
+    SDL_PathInfo info = {};
+    return path[0] != '\0' && SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+}
+
+static void go_home(FilePicker* picker)
+{
+    const char* home = app_paths_home_folder();   // /sdcard on Android
+    std::snprintf(picker->directory, sizeof(picker->directory), "%s", home != nullptr ? home : "/");
+    host_fs_forward_slashes(picker->directory);
 }
 
 // The first game folder that exists, else the home folder.
@@ -435,17 +786,6 @@ void file_picker_open(FilePicker* picker, const CoreCatalog* catalog, const char
     }
 }
 
-// The selected file, if it's an archive in a real folder (archives inside
-// archives are plain files: they aren't browsed). Only in LOAD GAME.
-static bool selected_archive(const FilePicker* picker)
-{
-    std::string archive;
-    std::string folder;
-    return picker->mode == FilePickerMode::game && picker->selected_file >= 0 &&
-           !archive_split_path(picker->directory, &archive, &folder) &&
-           archive_format(picker->files[static_cast<size_t>(picker->selected_file)].c_str()) != ArchiveFormat::none;
-}
-
 // What's in the selected archive for the chosen core (see file_picker.h).
 static void peek_selected(FilePicker* picker, const CoreCatalog* catalog)
 {
@@ -530,337 +870,103 @@ static bool load_selected(FilePicker* picker, const CoreCatalog* catalog, FilePi
     return false;
 }
 
-// CHOOSE FOLDER's bottom row: USE THIS FOLDER (the folder shown) at the right.
-static bool draw_folder_buttons(FilePicker* picker, const Localization* strings, FilePickerChoice* choice)
+// The folder picked (`directory`): listed next frame.
+static void go_to(FilePicker* picker, const char* directory)
 {
-    RetroUiEndButton use = {};
-    use.id = "use_folder";
-    use.label = piccolo_text(strings, Str::picker_use_folder);
-    if (retro_ui_end_buttons(&use, 1, false) != 0)
-    {
-        return false;
-    }
-    *choice = FilePickerChoice{};
-    std::snprintf(choice->content_path, sizeof(choice->content_path), "%s", picker->directory);
-    picker->open = false;
-    return true;
+    std::snprintf(picker->directory, sizeof(picker->directory), "%s", directory);
+    picker->listing_stale = true;
 }
 
-// The shader picker's bottom row: NONE and USE at the right.
-static bool draw_shader_buttons(FilePicker* picker, const Localization* strings, FilePickerChoice* choice)
+bool file_picker_apply(FilePicker* picker, const FilePickerAction* action, const CoreCatalog* catalog,
+                       FilePickerChoice* choice)
 {
     bool picked = false;
-    RetroUiEndButton buttons[2] = {};
-    buttons[0].id = "none";
-    buttons[0].label = piccolo_text(strings, Str::shader_preset_none);
-    buttons[1].id = "use";
-    buttons[1].label = piccolo_text(strings, Str::shader_picker_use);
-    buttons[1].enabled = picker->selected_file >= 0;
-    int32_t pressed = retro_ui_end_buttons(buttons, 2, false);
-    if (pressed == 0)
+    // A file clicked: selected, and an archive peeked at (before a double
+    // click's LOAD, which uses it).
+    if (action->select_file >= 0 && static_cast<size_t>(action->select_file) < picker->files.size())
     {
-        picked = choose_shader(picker, nullptr, choice);
+        picker->selected_file = action->select_file;
+        peek_selected(picker, catalog);
     }
-    else if (pressed == 1 && picker->selected_file >= 0)
+    int32_t index = action->index;
+    switch (action->press)
     {
-        picked = choose_shader(picker, picker->files[static_cast<size_t>(picker->selected_file)].c_str(), choice);
-    }
-    return picked;
-}
-
-// LOAD GAME's bottom row: SHOW ALL FILES, then START WITHOUT GAME, BROWSE and
-// LOAD at the right.
-static bool draw_game_buttons(FilePicker* picker, const CoreCatalog* catalog, const LibretroCoreInfo* core,
-                              const Localization* strings, FilePickerChoice* choice)
-{
-    bool picked = false;
-    if (retro_ui_check("show_all", piccolo_text(strings, Str::picker_show_all), &picker->show_all))
-    {
+    case FilePickerPress::none:
+        break;
+    case FilePickerPress::core:
+        picker->core_index = index;
         picker->listing_stale = true;
-    }
-    RetroUiEndButton buttons[3] = {};
-    buttons[0].id = "alone";
-    buttons[0].label = piccolo_text(strings, Str::picker_start_without_game);
-    buttons[0].shown = core != nullptr && core->supports_no_game;
-    // BROWSE: the selected archive as a folder, whatever the core.
-    buttons[1].id = "browse";
-    buttons[1].label = piccolo_text(strings, Str::picker_browse);
-    buttons[1].enabled = selected_archive(picker);
-    buttons[2].id = "load";
-    buttons[2].label = piccolo_text(strings, Str::picker_load);
-    buttons[2].enabled = picker->selected_file >= 0;
-    int32_t pressed = retro_ui_end_buttons(buttons, 3, true);
-    if (pressed == 0)
-    {
-        picked = choose(picker, catalog, nullptr, choice);
-    }
-    else if (pressed == 1 && selected_archive(picker))
-    {
-        browse_selected(picker);
-    }
-    else if (pressed == 2 && picker->selected_file >= 0)
-    {
-        picked = load_selected(picker, catalog, choice);
-    }
-    return picked;
-}
-
-bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, RetroUiFont* pixel_font, int32_t scale,
-                      const Localization* strings, FilePickerChoice* choice)
-{
-    if (!picker->open)
-    {
-        return false;
-    }
-    if (picker->listing_stale)
-    {
-        list_folder(picker, catalog);
-    }
-
-    bool picked = false;
-    float block = static_cast<float>(scale);
-    float screen_width = 0.0f;
-    float screen_height = 0.0f;
-    ui_toolkit_screen_size(&screen_width, &screen_height);
-
-    retro_ui_push_theme(pixel_font, scale);
-    // 400 x 250 retro pixels, but never bigger than the window.
-    float width = 400.0f * block;
-    float height = 250.0f * block;
-    RetroUiWindow window = {};
-    window.width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
-    window.height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
-    window.centered_on_open = true;
-
-    bool choosing_folder = picker->mode == FilePickerMode::folder;
-    bool shader = picker->mode == FilePickerMode::shader_preset;
-    if (choosing_folder)
-    {
-        window.id = "choose_folder";
-        window.title = piccolo_text(strings, Str::picker_folder_title);
-    }
-    else if (shader)
-    {
-        window.id = "shader_preset";
-        window.title = piccolo_text(strings, Str::shader_picker_title);
-    }
-    else
-    {
-        window.id = "load_game";
-        window.title = piccolo_text(strings, Str::picker_title);
-    }
-    bool closed = false;
-    if (retro_ui_window_begin(&window, scale, &closed))
-    {
-        // Core first: it decides which files are shown. Neither the core nor
-        // the game folders matter when picking a shader preset.
-        const LibretroCoreInfo* core = selected_core(picker, catalog);
-        bool core_row = !choosing_folder && !shader;
-        char preview[LIBRETRO_INFO_TEXT_MAX * 2 + 8] = {};
-        std::snprintf(preview, sizeof(preview), "%s %s", core != nullptr ? core->name : piccolo_text(strings, Str::picker_no_cores),
-                      core != nullptr ? core->version : "");
-        const char* core_label = piccolo_text(strings, Str::picker_core);
-        const char* folder_label = piccolo_text(strings, Str::picker_folder);
-        // One label column for CORE and FOLDER, so the choices line up.
-        float label_width = core_row ? retro_ui_text_width(core_label) : 0.0f;
-        float folder_label_width = retro_ui_text_width(folder_label);
-        label_width = (label_width > folder_label_width ? label_width : folder_label_width) + retro_ui_item_spacing();
-        if (core_row)
+        break;
+    case FilePickerPress::game_folder:
+        if (index >= 0 && static_cast<size_t>(index) < picker->game_folders.size())
         {
-            RetroUiRow row = {};
-            row.id = "core";
-            row.marker_column = false;
-            row.label = core_label;
-            row.label_width = label_width;
-            retro_ui_row_begin(&row);
-            if (retro_ui_begin_choice("choice", preview))
-            {
-                for (int32_t i = 0; i < catalog->count; i++)
-                {
-                    const CoreCatalogEntry* entry = &catalog->entries[i];
-                    if (!entry->info.usable)
-                    {
-                        continue;
-                    }
-                    char label[LIBRETRO_INFO_TEXT_MAX * 2 + 8] = {};
-                    std::snprintf(label, sizeof(label), "%s %s", entry->info.name, entry->info.version);
-                    if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), label, i == picker->core_index))
-                    {
-                        picker->core_index = i;
-                        picker->listing_stale = true;
-                    }
-                }
-                retro_ui_end_choice();
-            }
-            retro_ui_row_end(&row);
+            go_to(picker, picker->game_folders[static_cast<size_t>(index)].c_str());
         }
-
-        // Where to start: a game folder or HOME.
-        RetroUiRow folder_row = {};
-        folder_row.id = "folder";
-        folder_row.marker_column = false;
-        folder_row.label = folder_label;
-        folder_row.label_width = label_width;
-        retro_ui_row_begin(&folder_row);
-        if (retro_ui_begin_choice("choice", folder_preview(picker, strings)))
+        break;
+    case FilePickerPress::home:
+        go_home(picker);
+        picker->listing_stale = true;
+        break;
+    case FilePickerPress::volume:
+        if (index >= 0 && static_cast<size_t>(index) < picker->volumes.size())
         {
-            if (retro_ui_choice_opened())
-            {
-                app_paths_storage_volumes(&picker->volumes);   // read again every time the list opens
-            }
-            // Items: the game folders, HOME, then the volumes (none shows as
-            // selected: picking the folder shown reads it again).
-            uint32_t item = 0;
-            for (size_t i = 0; i < picker->game_folders.size(); i++)
-            {
-                if (retro_ui_choice_item(item++, picker->game_folders[i].c_str(), false))
-                {
-                    std::snprintf(picker->directory, sizeof(picker->directory), "%s", picker->game_folders[i].c_str());
-                    picker->listing_stale = true;
-                }
-            }
-            if (retro_ui_choice_item(item++, piccolo_text(strings, Str::picker_home), false))
-            {
-                go_home(picker);
-                picker->listing_stale = true;
-            }
-            // SD cards and USB drives (Android), the drives (Windows), as they are while the list is open.
-            for (size_t i = 0; i < picker->volumes.size(); i++)
-            {
-                if (retro_ui_choice_item(item++, picker->volumes[i].c_str(), false))
-                {
-                    std::snprintf(picker->directory, sizeof(picker->directory), "%s", picker->volumes[i].c_str());
-                    picker->listing_stale = true;
-                }
-            }
-            retro_ui_end_choice();
+            go_to(picker, picker->volumes[static_cast<size_t>(index)].c_str());
         }
-        retro_ui_row_end(&folder_row);
-
-        // Files (left) and folders (right), leaving room for two rows below.
-        float row = retro_ui_line_step();
-        float list_height = retro_ui_height_left() - row * 2.0f;
-        float files_width = retro_ui_width_left() * 0.62f;
-
-        if (!choosing_folder)   // folders only: the whole width
-        {
-            retro_ui_begin_list("files", files_width, list_height);
-            // Only the rows in view are drawn (thousands of files stay smooth;
-            // keyboard / gamepad navigation still reaches them all).
-            uint32_t first = 0;
-            uint32_t end = 0;
-            retro_ui_begin_clipped(static_cast<uint32_t>(picker->files.size()));
-            while (retro_ui_clipped_step(&first, &end))
-            {
-                for (uint32_t i = first; i < end; i++)
-                {
-                    int32_t index = static_cast<int32_t>(i);
-                    RetroUiClick click = retro_ui_list_item_click(i, picker->files[i].c_str(), index == picker->selected_file);
-                    if (click != RetroUiClick::none && picker->selected_file != index)
-                    {
-                        picker->selected_file = index;
-                        peek_selected(picker, catalog);
-                    }
-                    if (click == RetroUiClick::twice)
-                    {
-                        picked = load_selected(picker, catalog, choice);
-                    }
-                }
-            }
-            if (picker->files.empty())
-            {
-                retro_ui_dim_text(piccolo_text(strings, Str::picker_nothing_here), nullptr);
-            }
-            retro_ui_end_list();
-            retro_ui_same_line();
-        }
-        retro_ui_begin_list("folders", 0.0f, list_height);
-        const char* open_folder = nullptr;
-        retro_ui_push_id("parent");
-        if (retro_ui_list_item(0, "..", false, nullptr))
-        {
-            go_to_parent(picker->directory);
-            picker->listing_stale = true;
-        }
-        retro_ui_pop_id();
-        uint32_t first = 0;
-        uint32_t end = 0;
-        retro_ui_begin_clipped(static_cast<uint32_t>(picker->folders.size()));
-        while (retro_ui_clipped_step(&first, &end))
-        {
-            for (uint32_t i = first; i < end; i++)
-            {
-                if (retro_ui_list_item(i, picker->folders[i].c_str(), false, nullptr))
-                {
-                    open_folder = picker->folders[i].c_str();
-                }
-            }
-        }
-        retro_ui_end_list();
-        if (open_folder != nullptr)
+        break;
+    case FilePickerPress::parent:
+        go_to_parent(picker->directory);
+        picker->listing_stale = true;
+        break;
+    case FilePickerPress::open_folder:
+        if (index >= 0 && static_cast<size_t>(index) < picker->folders.size())
         {
             char next[LIBRETRO_PATH_MAX] = {};
-            if (join_path(picker->directory, open_folder, next, sizeof(next)))
+            if (join_path(picker->directory, picker->folders[static_cast<size_t>(index)].c_str(), next, sizeof(next)))
             {
-                std::snprintf(picker->directory, sizeof(picker->directory), "%s", next);
-                picker->listing_stale = true;
+                go_to(picker, next);
             }
         }
-
-        // Where we are, or what LOAD does with the selected archive.
-        char where[LIBRETRO_PATH_MAX + 300] = {};
+        break;
+    case FilePickerPress::show_all:
+        picker->listing_stale = true;
+        break;
+    case FilePickerPress::load:
+        if (picker->selected_file >= 0)
+        {
+            picked = load_selected(picker, catalog, choice);
+        }
+        break;
+    case FilePickerPress::browse:
         if (selected_archive(picker))
         {
-            const char* name = picker->files[static_cast<size_t>(picker->selected_file)].c_str();
-            if (content_archive_core_takes_whole(core, name))
-            {
-                std::snprintf(where, sizeof(where), "%s: %s", name, piccolo_text(strings, Str::picker_peek_whole));
-            }
-            else if (!picker->archive_readable)
-            {
-                std::snprintf(where, sizeof(where), "%s: %s", name, piccolo_text(strings, Str::picker_peek_unreadable));
-            }
-            else if (picker->peek_loadable == 1)
-            {
-                std::snprintf(where, sizeof(where), "%s: %s %s", name, piccolo_text(strings, Str::picker_peek_loads),
-                              picker->peek_single.c_str());
-            }
-            else if (picker->peek_loadable == 0)
-            {
-                std::snprintf(where, sizeof(where), "%s: %s", name, piccolo_text(strings, Str::picker_peek_none));
-            }
-            else
-            {
-                std::snprintf(where, sizeof(where), "%s: %s %d", name, piccolo_text(strings, Str::picker_peek_folder),
-                              static_cast<int>(picker->peek_loadable));
-            }
+            browse_selected(picker);
         }
-        else
+        break;
+    case FilePickerPress::start_alone:
+        picked = choose(picker, catalog, nullptr, choice);
+        break;
+    case FilePickerPress::use_folder:
+        // CHOOSE FOLDER: the folder shown.
+        *choice = FilePickerChoice{};
+        std::snprintf(choice->content_path, sizeof(choice->content_path), "%s", picker->directory);
+        picker->open = false;
+        picked = true;
+        break;
+    case FilePickerPress::shader_none:
+        picked = choose_shader(picker, nullptr, choice);
+        break;
+    case FilePickerPress::shader_use:
+        if (picker->selected_file >= 0)
         {
-            std::snprintf(where, sizeof(where), "%s", picker->directory);
+            picked = choose_shader(picker, picker->files[static_cast<size_t>(picker->selected_file)].c_str(), choice);
         }
-        retro_ui_dim_text(where, nullptr);
-
-        // Bottom row. (A double click above may have picked already.)
-        bool clicked = false;
-        if (choosing_folder)
-        {
-            clicked = draw_folder_buttons(picker, strings, choice);
-        }
-        else if (shader)
-        {
-            clicked = draw_shader_buttons(picker, strings, choice);
-        }
-        else
-        {
-            clicked = draw_game_buttons(picker, catalog, core, strings, choice);
-        }
-        picked = picked || clicked;
+        break;
     }
-    retro_ui_window_end();
-    retro_ui_pop_theme();
-
-    if (closed)
+    if (action->volumes_opened)
+    {
+        app_paths_storage_volumes(&picker->volumes);   // SD cards / USB drives, as they are now
+    }
+    if (action->closed)
     {
         picker->open = false;
     }

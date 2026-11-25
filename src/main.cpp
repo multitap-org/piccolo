@@ -3308,8 +3308,13 @@ static void open_shader_picker(App* app, SettingLayer scope)
 // Drawn over the QUICK MENU.
 static void draw_shader_picker(App* app)
 {
+    file_picker_update(&app->shader_picker, &app->catalog);
+    FilePickerState picker_state = {};
+    file_picker_state(&picker_state, &app->shader_picker, &app->catalog, &app->strings);
+    FilePickerAction picker_action = {};
+    file_picker_draw(&app->shader_picker, &picker_state, app->pixel_font, app->ui_scale, &picker_action);
     FilePickerChoice choice = {};
-    if (!file_picker_draw(&app->shader_picker, &app->catalog, app->pixel_font, app->ui_scale, &app->strings, &choice))
+    if (!file_picker_apply(&app->shader_picker, &picker_action, &app->catalog, &choice))
     {
         return;
     }
@@ -5402,7 +5407,12 @@ static bool app_frame(App* app)
         // After SETTINGS, so CHOOSE FOLDER opened from it is drawn on top.
         FilePickerChoice picked;
         bool choosing_folder = app->picker.mode == FilePickerMode::folder;
-        if (file_picker_draw(&app->picker, &app->catalog, app->pixel_font, app->ui_scale, &app->strings, &picked))
+        file_picker_update(&app->picker, &app->catalog);
+        FilePickerState picker_state = {};
+        file_picker_state(&picker_state, &app->picker, &app->catalog, &app->strings);
+        FilePickerAction picker_action = {};
+        file_picker_draw(&app->picker, &picker_state, app->pixel_font, app->ui_scale, &picker_action);
+        if (file_picker_apply(&app->picker, &picker_action, &app->catalog, &picked))
         {
             if (choosing_folder)
             {
