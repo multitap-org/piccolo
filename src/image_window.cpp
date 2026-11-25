@@ -3,16 +3,15 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "imgui.h"
-
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
+#include "ui_toolkit.h"
 
-// Shading over the cut-off parts, and the outline of what stays (0xAABBGGRR,
-// ImGui's packed order).
-constexpr ImU32 CROP_SHADE   = 0xC0000000u;
-constexpr ImU32 CROP_OUTLINE = 0xFF40C0F0u;   // amber
+// Shading over the cut-off parts, and the outline of what stays (0xAARRGGBB).
+constexpr uint32_t CROP_SHADE   = 0xC0000000u;
+constexpr uint32_t CROP_OUTLINE = 0xFFF0C040u;   // amber
 
 static const char* const CROP_KEYS[] = {PICCOLO_VIDEO_CROP_TOP, PICCOLO_VIDEO_CROP_BOTTOM, PICCOLO_VIDEO_CROP_LEFT,
                                         PICCOLO_VIDEO_CROP_RIGHT};
@@ -30,14 +29,11 @@ static void draw_preview(const SettingsUiContext* context, const ImageWindowSour
 {
     float width = static_cast<float>(source->frame_width) * factor;
     float height = static_cast<float>(source->frame_height) * factor;
-    ImVec2 top_left = ImGui::GetCursorScreenPos();
-    ImVec2 bottom_right(top_left.x + width, top_left.y + height);
-    ImGui::Dummy(ImVec2(width, height));
+    retro_ui_canvas(width, height);
 
     // retro_ui_begin_window() switched this window to nearest sampling: sharp pixels.
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddImage(ImTextureRef(static_cast<ImTextureID>(source->texture_id)), top_left, bottom_right,
-                        ImVec2(0.0f, 0.0f), ImVec2(source->uv_max_x, source->uv_max_y));
+    retro_ui_canvas_image(source->texture_id, 0.0f, 0.0f, width, height, source->uv_max_x, source->uv_max_y,
+                          0xFFFFFFFFu);
 
     float top = crop_at_scope(context, PICCOLO_VIDEO_CROP_TOP) * factor;
     float bottom = crop_at_scope(context, PICCOLO_VIDEO_CROP_BOTTOM) * factor;
@@ -54,34 +50,33 @@ static void draw_preview(const SettingsUiContext* context, const ImageWindowSour
         left = 0.0f;
         right = 0.0f;
     }
-    ImVec2 keep_min(top_left.x + left, top_left.y + top);
-    ImVec2 keep_max(bottom_right.x - right, bottom_right.y - bottom);
+    // The kept part, in the canvas.
+    float keep_x = left;
+    float keep_y = top;
+    float keep_width = width - right - left;
+    float keep_height = height - bottom - top;
 
     // Pass 0's result is the part the game shows. When it matches the kept
     // part (it may not: editing a scope whose crop isn't the one in use),
     // it's drawn there, so the picture controls show on the preview.
-    float keep_width = keep_max.x - keep_min.x;
-    float keep_height = keep_max.y - keep_min.y;
     if (source->processed_texture_id != 0 && static_cast<float>(source->processed_width) * factor == keep_width &&
         static_cast<float>(source->processed_height) * factor == keep_height)
     {
-        draw_list->AddImage(ImTextureRef(static_cast<ImTextureID>(source->processed_texture_id)), keep_min, keep_max,
-                            ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+        retro_ui_canvas_image(source->processed_texture_id, keep_x, keep_y, keep_width, keep_height, 1.0f, 1.0f,
+                              0xFFFFFFFFu);
     }
-    draw_list->AddRectFilled(top_left, ImVec2(bottom_right.x, keep_min.y), CROP_SHADE);
-    draw_list->AddRectFilled(ImVec2(top_left.x, keep_max.y), bottom_right, CROP_SHADE);
-    draw_list->AddRectFilled(ImVec2(top_left.x, keep_min.y), ImVec2(keep_min.x, keep_max.y), CROP_SHADE);
-    draw_list->AddRectFilled(ImVec2(keep_max.x, keep_min.y), ImVec2(bottom_right.x, keep_max.y), CROP_SHADE);
-    draw_list->AddRect(keep_min, keep_max, CROP_OUTLINE, 0.0f, 0, block);
+    retro_ui_canvas_rect(0.0f, 0.0f, width, keep_y, CROP_SHADE);
+    retro_ui_canvas_rect(0.0f, keep_y + keep_height, width, height - keep_y - keep_height, CROP_SHADE);
+    retro_ui_canvas_rect(0.0f, keep_y, keep_x, keep_height, CROP_SHADE);
+    retro_ui_canvas_rect(keep_x + keep_width, keep_y, width - keep_x - keep_width, keep_height, CROP_SHADE);
+    retro_ui_canvas_outline(keep_x, keep_y, keep_width, keep_height, CROP_OUTLINE, block);
 }
 
 // The image controls, in the column right of the picture. Each group is a
 // collapsible section; more join them later.
 static void draw_controls(const SettingsUiContext* context, const ImageWindowSource* source)
 {
-    char header[200] = {};
-    std::snprintf(header, sizeof(header), "%s###crop", piccolo_text(context->strings, Str::image_section_crop));
-    if (retro_ui_collapsing_header(header, ImGuiTreeNodeFlags_DefaultOpen))
+    if (retro_ui_section_header("crop", piccolo_text(context->strings, Str::image_section_crop), true))
     {
         for (int32_t i = 0; i < CROP_KEY_COUNT; i++)
         {
@@ -89,21 +84,19 @@ static void draw_controls(const SettingsUiContext* context, const ImageWindowSou
         }
     }
 
-    std::snprintf(header, sizeof(header), "%s###profile", piccolo_text(context->strings, Str::image_section_profile));
-    if (retro_ui_collapsing_header(header, ImGuiTreeNodeFlags_DefaultOpen))
+    if (retro_ui_section_header("profile", piccolo_text(context->strings, Str::image_section_profile), true))
     {
         if (!source->controls_available)
         {
             // Without librashader there's no pass 0: the values (here and in
             // PICTURE CONTROLS) are kept, not used.
-            ImGui::TextDisabled("%s", piccolo_text(context->strings, Str::image_controls_unavailable));
+            retro_ui_dim_text(piccolo_text(context->strings, Str::image_controls_unavailable), nullptr);
         }
         settings_ui_row(context, PICCOLO_IMAGE_COLOR_PROFILE, nullptr);
         settings_ui_row(context, PICCOLO_IMAGE_PROFILE_STRENGTH, nullptr);
     }
 
-    std::snprintf(header, sizeof(header), "%s###controls", piccolo_text(context->strings, Str::image_section_controls));
-    if (retro_ui_collapsing_header(header, ImGuiTreeNodeFlags_DefaultOpen))
+    if (retro_ui_section_header("controls", piccolo_text(context->strings, Str::image_section_controls), true))
     {
         for (uint32_t i = 0; i < PICCOLO_PASS0_CONTROL_COUNT; i++)
         {
@@ -120,23 +113,26 @@ void image_window_draw(bool* open, const SettingsUiContext* context, const Image
         return;
     }
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
 
     // Layout: the picture on the left, the controls' column on the right.
     // The picture gets the biggest whole factor that fits next to the column
     // in piccolo's window.
-    const ImGuiStyle& style = ImGui::GetStyle();
     float controls_width = 190.0f * block;
     // Both sections' rows and headers (and the note); taller than the window
     // allows, the column scrolls.
     float controls_height = static_cast<float>(CROP_KEY_COUNT + static_cast<int32_t>(PICCOLO_PASS0_CONTROL_COUNT) + 6) *
-                            ImGui::GetFrameHeightWithSpacing();
-    float chrome_x = style.WindowPadding.x * 2.0f + style.ItemSpacing.x;
-    float chrome_y = style.WindowPadding.y * 2.0f + ImGui::GetFrameHeight() +   // title bar
-                     ImGui::GetTextLineHeightWithSpacing();                      // "EDITING: ..."
-    float max_width = io.DisplaySize.x - 8.0f * block;
-    float max_height = io.DisplaySize.y - 16.0f * block;
+                            retro_ui_line_step();
+    float chrome_x = 0.0f;
+    float chrome_y = 0.0f;
+    retro_ui_window_chrome(&chrome_x, &chrome_y);   // the padding and the title bar
+    chrome_x += retro_ui_item_spacing();              // between the picture and the column
+    chrome_y += retro_ui_text_line_step();            // "EDITING: ..."
+    float max_width = screen_width - 8.0f * block;
+    float max_height = screen_height - 16.0f * block;
     bool has_picture = source->texture_id != 0 && source->frame_width > 0 && source->frame_height > 0;
     float factor = 1.0f;
     if (has_picture)
@@ -146,28 +142,28 @@ void image_window_draw(bool* open, const SettingsUiContext* context, const Image
         float fit = fit_x < fit_y ? fit_x : fit_y;
         factor = fit >= 1.0f ? static_cast<float>(static_cast<int32_t>(fit)) : 1.0f;
     }
-    ImVec2 picture(has_picture ? static_cast<float>(source->frame_width) * factor : 160.0f * block,
-                   has_picture ? static_cast<float>(source->frame_height) * factor : controls_height);
-    float body_height = picture.y > controls_height ? picture.y : controls_height;
-    ImVec2 size(picture.x + controls_width + chrome_x, body_height + chrome_y);
-    size.x = size.x < max_width ? size.x : max_width;
-    size.y = size.y < max_height ? size.y : max_height;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
-                            ImVec2(0.5f, 0.5f));
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
-    char title[200] = {};
-    std::snprintf(title, sizeof(title), "%s###image_settings", piccolo_text(context->strings, Str::image_title));
-    if (ImGui::Begin(title, nullptr, flags))
+    float picture_width = has_picture ? static_cast<float>(source->frame_width) * factor : 160.0f * block;
+    float picture_height = has_picture ? static_cast<float>(source->frame_height) * factor : controls_height;
+    float body_height = picture_height > controls_height ? picture_height : controls_height;
+    float width = picture_width + controls_width + chrome_x;
+    float height = body_height + chrome_y;
+    RetroUiWindow window = {};
+    window.id = "image_settings";
+    window.title = piccolo_text(context->strings, Str::image_title);
+    window.width = width < max_width ? width : max_width;
+    window.height = height < max_height ? height : max_height;
+    window.centered_on_open = true;
+    bool closed = false;
+    if (retro_ui_window_begin(&window, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             *open = false;
         }
-        ImGui::TextDisabled("%s: %s", piccolo_text(context->strings, Str::image_editing),
-                            settings_ui_scope_name(context->strings, context->scope));
+        char editing[200] = {};
+        std::snprintf(editing, sizeof(editing), "%s: %s", piccolo_text(context->strings, Str::image_editing),
+                      settings_ui_scope_name(context->strings, context->scope));
+        retro_ui_dim_text(editing, nullptr);
 
         if (has_picture)
         {
@@ -175,27 +171,21 @@ void image_window_draw(bool* open, const SettingsUiContext* context, const Image
         }
         else
         {
-            ImGui::BeginGroup();
-            ImGui::TextDisabled("%s", piccolo_text(context->strings, Str::image_no_picture));
-            ImGui::Dummy(ImVec2(picture.x, 0.0f));
-            ImGui::EndGroup();
+            // The note, in a block as wide as the picture would be: the column stays beside it.
+            retro_ui_begin_group();
+            retro_ui_dim_text(piccolo_text(context->strings, Str::image_no_picture), nullptr);
+            retro_ui_canvas(picture_width, 0.0f);
+            retro_ui_end_group();
         }
 
-        // A child region, so the rows (and their RESET buttons) fit the column.
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        if (ImGui::BeginChild("controls", ImVec2(0.0f, body_height)))
+        // A scroll area of its own, so the rows (and their RESET buttons) fit the column.
+        retro_ui_same_line();
+        if (retro_ui_begin_scroll_area("controls", 0.0f, body_height))
         {
-            // A child has its own draw list: the pixel font needs nearest sampling here too.
-            const ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-            ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_SetSamplerNearest, nullptr);
             draw_controls(context, source);
-            ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_SetSamplerLinear, nullptr);
         }
-        ImGui::EndChild();
-        ImGui::PopStyleColor();
-        retro_ui_end_window();
+        retro_ui_end_scroll_area();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
 }

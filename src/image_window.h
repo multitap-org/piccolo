@@ -27,7 +27,7 @@ struct ImFont;
 // The game picture to show (the core session's texture).
 struct ImageWindowSource
 {
-    uint64_t texture_id   = 0;      // ImGui texture id; 0 = no picture
+    uint64_t texture_id   = 0;      // the GUI toolkit's texture id; 0 = no picture
     float    uv_max_x     = 0.0f;   // the used part of the texture
     float    uv_max_y     = 0.0f;
     uint32_t frame_width  = 0;
