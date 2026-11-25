@@ -437,7 +437,7 @@ void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, con
         retro_ui_begin_disabled(request->waiting);
         retro_ui_next_width(retro_ui_text_width("0000000000000"));
         RetroUiEditField code_field = {};
-        code_field.digits_only = true;
+        code_field.decimal = true;
         code_field.focus = request->focus;
         request->focus = false;
         bool enter = retro_ui_edit_field("code", request->code, sizeof(request->code), &code_field);
@@ -557,7 +557,7 @@ void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* s
             retro_ui_begin_disabled(invite->waiting);
             retro_ui_next_width(retro_ui_text_width("0000000000000"));
             RetroUiEditField code_field = {};
-            code_field.digits_only = true;
+            code_field.decimal = true;
             code_field.focus = invite->focus;
             invite->focus = false;
             bool enter = retro_ui_edit_field("invite_code", invite->code, sizeof(invite->code), &code_field);

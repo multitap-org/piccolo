@@ -162,7 +162,7 @@ static void draw_seats_and_access(GuestWindow* window, NetAccess* access, const 
         retro_ui_same_line_at(column);
     }
     retro_ui_next_width(retro_ui_font_size() * 7.0f);
-    bool seats_changed = retro_ui_number_field("guest_seats", &window->seats, 1);
+    bool seats_changed = retro_ui_number_field_steps("guest_seats", &window->seats, 1, 1);
     if (window->seats < 1)
     {
         window->seats = 1;

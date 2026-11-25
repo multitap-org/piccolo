@@ -684,7 +684,7 @@ bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, ImFont* pi
                     }
                     char label[LIBRETRO_INFO_TEXT_MAX * 2 + 8] = {};
                     std::snprintf(label, sizeof(label), "%s %s", entry->info.name, entry->info.version);
-                    if (retro_ui_choice_item(static_cast<uint32_t>(i), label, i == picker->core_index))
+                    if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), label, i == picker->core_index))
                     {
                         picker->core_index = i;
                         picker->listing_stale = true;
