@@ -17,16 +17,37 @@ static const char* const CROP_KEYS[] = {PICCOLO_VIDEO_CROP_TOP, PICCOLO_VIDEO_CR
                                         PICCOLO_VIDEO_CROP_RIGHT};
 constexpr int32_t CROP_KEY_COUNT = 4;
 
+// ---------------------------------------------------------------------------
+// State
+
 // The crop as it resolves at the scope being edited (what this window edits).
-static float crop_at_scope(const SettingsUiContext* context, const char* key)
+static float crop_at_scope(const Settings* settings, SettingLayer scope, const char* key)
 {
-    const char* value = settings_get_at(context->settings, context->scope, key, nullptr);
+    const char* value = settings_get_at(settings, scope, key, nullptr);
     return value != nullptr ? static_cast<float>(std::strtol(value, nullptr, 10)) : 0.0f;
 }
 
-// The frame at `factor`, with the crop shaded and outlined, at the cursor.
-static void draw_preview(const SettingsUiContext* context, const ImageWindowSource* source, float factor, float block)
+void image_window_state(ImageWindowState* state, const Settings* settings, const Localization* strings,
+                        SettingLayer scope, const ImageWindowSource* source)
 {
+    state->settings = settings;
+    state->strings = strings;
+    state->scope = scope;
+    state->scope_name = settings_ui_scope_name(strings, scope);
+    for (int32_t i = 0; i < CROP_KEY_COUNT; i++)
+    {
+        state->crop[i] = crop_at_scope(settings, scope, CROP_KEYS[i]);
+    }
+    state->source = source != nullptr ? *source : ImageWindowSource{};
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+
+// The frame at `factor`, with the crop shaded and outlined, at the cursor.
+static void draw_preview(const ImageWindowState* state, float factor, float block)
+{
+    const ImageWindowSource* source = &state->source;
     float width = static_cast<float>(source->frame_width) * factor;
     float height = static_cast<float>(source->frame_height) * factor;
     retro_ui_canvas(width, height);
@@ -35,10 +56,11 @@ static void draw_preview(const SettingsUiContext* context, const ImageWindowSour
     retro_ui_canvas_image(source->texture_id, 0.0f, 0.0f, width, height, source->uv_max_x, source->uv_max_y,
                           0xFFFFFFFFu);
 
-    float top = crop_at_scope(context, PICCOLO_VIDEO_CROP_TOP) * factor;
-    float bottom = crop_at_scope(context, PICCOLO_VIDEO_CROP_BOTTOM) * factor;
-    float left = crop_at_scope(context, PICCOLO_VIDEO_CROP_LEFT) * factor;
-    float right = crop_at_scope(context, PICCOLO_VIDEO_CROP_RIGHT) * factor;
+    // In CROP_KEYS' order: top, bottom, left, right.
+    float top = state->crop[0] * factor;
+    float bottom = state->crop[1] * factor;
+    float left = state->crop[2] * factor;
+    float right = state->crop[3] * factor;
     // Same rule as the viewport: a crop that leaves nothing on an axis is ignored there.
     if (top + bottom >= height)
     {
@@ -105,18 +127,28 @@ static void draw_controls(const SettingsUiContext* context, const ImageWindowSou
     }
 }
 
-void image_window_draw(bool* open, const SettingsUiContext* context, const ImageWindowSource* source,
-                       RetroUiFont* pixel_font, int32_t scale)
+void image_window_draw(bool* open, const ImageWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       ImageWindowAction* action)
 {
     if (!*open)
     {
         return;
     }
+    const ImageWindowSource* source = &state->source;
     float block = static_cast<float>(scale);
     float screen_width = 0.0f;
     float screen_height = 0.0f;
     ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
+
+    // The rows hand their edit out (image_window_apply).
+    SettingsUiContext rows = {};
+    rows.settings = state->settings;
+    rows.strings = state->strings;
+    rows.scope = state->scope;
+    rows.label_width = settings_ui_label_width(state->settings, state->strings);
+    rows.edit = &action->setting;
+    const SettingsUiContext* context = &rows;
 
     // Layout: the picture on the left, the controls' column on the right.
     // The picture gets the biggest whole factor that fits next to the column
@@ -162,12 +194,12 @@ void image_window_draw(bool* open, const SettingsUiContext* context, const Image
         }
         char editing[200] = {};
         std::snprintf(editing, sizeof(editing), "%s: %s", piccolo_text(context->strings, Str::image_editing),
-                      settings_ui_scope_name(context->strings, context->scope));
+                      state->scope_name);
         retro_ui_dim_text(editing, nullptr);
 
         if (has_picture)
         {
-            draw_preview(context, source, factor, block);
+            draw_preview(state, factor, block);
         }
         else
         {
@@ -188,4 +220,13 @@ void image_window_draw(bool* open, const SettingsUiContext* context, const Image
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+bool image_window_apply(const ImageWindowAction* action, Settings* settings)
+{
+    SettingsUiEdit edit = action->setting;
+    return settings_ui_apply_edit(settings, &edit);
 }

@@ -20,6 +20,8 @@
 
 #include <cstdint>
 
+#include "localization.h"
+#include "settings.h"
 #include "settings_ui.h"
 
 #include "retro_ui_font.h"
@@ -42,7 +44,32 @@ struct ImageWindowSource
     bool controls_available = false;   // pass 0 runs (librashader loaded): else its rows show a note
 };
 
-// Draws the window while *open; the close button clears it. `source` may
-// have no picture (texture_id 0): the controls still work.
-void image_window_draw(bool* open, const SettingsUiContext* context, const ImageWindowSource* source,
-                       RetroUiFont* pixel_font, int32_t scale);
+// What the window shows from the rest of piccolo, read only.
+struct ImageWindowState
+{
+    const Settings*     settings   = nullptr;   // the rows read it (settings_ui)
+    const Localization* strings    = nullptr;   // UI text (piccolo_text.h)
+    SettingLayer        scope      = SettingLayer::global;   // the scope chosen in SETTINGS: edits go there
+    const char*         scope_name = "";        // "GLOBAL", "THIS CORE", ... for "EDITING:"
+    float               crop[4]    = {};        // top, bottom, left, right as they resolve at `scope`
+    ImageWindowSource   source;                 // no picture: texture_id 0
+};
+
+// What the user did this frame: a row's edit, applied by image_window_apply.
+struct ImageWindowAction
+{
+    SettingsUiEdit setting;
+};
+
+// Fills *state. `source` may be nullptr (no picture).
+void image_window_state(ImageWindowState* state, const Settings* settings, const Localization* strings,
+                        SettingLayer scope, const ImageWindowSource* source);
+
+// Draws the window while *open; the close button clears it. With no picture
+// (texture_id 0) the controls still work. What the user changes goes to
+// *action.
+void image_window_draw(bool* open, const ImageWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       ImageWindowAction* action);
+
+// Applies the row's edit. True when a setting changed.
+bool image_window_apply(const ImageWindowAction* action, Settings* settings);

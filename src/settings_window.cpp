@@ -802,16 +802,10 @@ void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* c
 
     if (window->image_open)
     {
-        SettingsUiContext ui = {};
-        ui.settings = context->settings;
-        ui.apply_to = context->settings;
-        ui.strings = context->strings;
-        ui.scope = window->scope;
-        retro_ui_push_theme(pixel_font, scale);
-        ui.label_width = settings_ui_label_width(context->settings, context->strings);
-        retro_ui_pop_theme();
-        ImageWindowSource no_picture = {};
-        image_window_draw(&window->image_open, &ui, context->image != nullptr ? context->image : &no_picture,
-                          pixel_font, scale);
+        ImageWindowState image_state = {};
+        image_window_state(&image_state, context->settings, context->strings, window->scope, context->image);
+        ImageWindowAction image_action = {};
+        image_window_draw(&window->image_open, &image_state, pixel_font, scale, &image_action);
+        image_window_apply(&image_action, context->settings);
     }
 }
