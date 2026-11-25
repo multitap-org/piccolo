@@ -410,7 +410,7 @@ static void draw_stored(CoreOptionsUi* ui, const CoreOptionsUiState* state, Core
     const char* core = ui->selected_core.c_str();
     std::vector<std::string> sections;
     core_options_store_sections_of(state->store, core, &sections);
-    if (!retro_ui_section_header("stored", piccolo_text(strings, Str::core_options_stored), true))
+    if (!retro_ui_section_header("stored", piccolo_text(strings, Str::core_options_stored), false))
     {
         return;
     }

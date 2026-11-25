@@ -298,8 +298,8 @@ static void draw_display(const SettingsUiContext* ui, const SettingsWindowState*
 {
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN, nullptr);
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN_TYPE, nullptr);
-    // WINDOW: open at first (the window's size is what most come here for).
-    if (!settings_ui_section("window", piccolo_text(ui->strings, Str::section_window), nullptr, true))
+    // WINDOW: closed at first, like most sections (Andrés, testing round 2).
+    if (!settings_ui_section("window", piccolo_text(ui->strings, Str::section_window), nullptr, false))
     {
         return;
     }
@@ -753,7 +753,7 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
             settings_ui_row(ui, piccolo_settings_ui_color_key(i), nullptr);
         }
     }
-    if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, true))
+    if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, false))
     {
         settings_ui_row(ui, PICCOLO_SCREEN_EFFECTS, nullptr);
     }

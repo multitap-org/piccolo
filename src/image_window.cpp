@@ -99,7 +99,7 @@ static void draw_preview(const ImageWindowState* state, float factor, float bloc
 // collapsible section; more join them later.
 static void draw_controls(const SettingsUiContext* context, const ImageWindowSource* source)
 {
-    if (retro_ui_section_header("crop", piccolo_text(context->strings, Str::image_section_crop), true))
+    if (retro_ui_section_header("crop", piccolo_text(context->strings, Str::image_section_crop), false))
     {
         for (int32_t i = 0; i < CROP_KEY_COUNT; i++)
         {
@@ -107,7 +107,7 @@ static void draw_controls(const SettingsUiContext* context, const ImageWindowSou
         }
     }
 
-    if (retro_ui_section_header("profile", piccolo_text(context->strings, Str::image_section_profile), true))
+    if (retro_ui_section_header("profile", piccolo_text(context->strings, Str::image_section_profile), false))
     {
         if (!source->controls_available)
         {
@@ -119,7 +119,7 @@ static void draw_controls(const SettingsUiContext* context, const ImageWindowSou
         settings_ui_row(context, PICCOLO_IMAGE_PROFILE_STRENGTH, nullptr);
     }
 
-    if (retro_ui_section_header("controls", piccolo_text(context->strings, Str::image_section_controls), true))
+    if (retro_ui_section_header("controls", piccolo_text(context->strings, Str::image_section_controls), false))
     {
         for (uint32_t i = 0; i < PICCOLO_PASS0_CONTROL_COUNT; i++)
         {

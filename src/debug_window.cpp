@@ -157,16 +157,16 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     if (retro_ui_window_begin(&window, scale, &action->closed))
     {
         draw_about(state);
-        // Every section after the numbers folds away (Andrés, testing round 1).
-        if (retro_ui_section_header("hud", "Widgets (HUD)", true))
+        // Every section after the numbers folds away, closed at first (Andrés, testing rounds 1 and 2).
+        if (retro_ui_section_header("hud", "Widgets (HUD)", false))
         {
             draw_hud_widgets(action);
         }
-        if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", true))
+        if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", false))
         {
             draw_window_widgets(state, action);
         }
-        if (retro_ui_section_header("previews", "Dialogs (preview)", true))
+        if (retro_ui_section_header("previews", "Dialogs (preview)", false))
         {
             draw_previews(state, action);
         }
