@@ -30,7 +30,7 @@
 #include "video_texture.h"
 
 struct AppShell;
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class QuickMenuAction
 {
@@ -80,7 +80,7 @@ void quick_menu_refresh(QuickMenu* menu);
 
 // Draws the menu while open (its X closes it: open = false); returns what
 // was picked this frame.
-QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, ImFont* pixel_font, int32_t scale);
+QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, RetroUiFont* pixel_font, int32_t scale);
 
 // Uploads a newly loaded thumbnail. Call after app_shell_acquire, outside
 // rendering (where the game's video is uploaded).

@@ -31,7 +31,7 @@
 #include "core_updater.h"
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct CoresWindow
 {
@@ -57,4 +57,4 @@ struct CoresWindowContext
 // Opens the window and asks for the list (the updater must be set up first).
 void cores_window_open(CoresWindow* window, CoreUpdater* updater);
 
-void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, ImFont* pixel_font, int32_t scale);
+void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, RetroUiFont* pixel_font, int32_t scale);

@@ -7,12 +7,12 @@
 // ui_toolkit_imgui.cpp knows they come from ImGui. A second toolkit would
 // write its own ui_toolkit_*.cpp with the same functions.
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 // Starts the toolkit's side of piccolo once the window and GPU are up (after
 // app_shell_create): the pixel font, the theme's text shadows. Returns the
 // pixel font as the toolkit holds it (for retroui), or nullptr if it failed.
-ImFont* ui_toolkit_start();
+RetroUiFont* ui_toolkit_start();
 
 // Where the toolkit keeps its window layout between runs (imgui.ini);
 // nullptr: nowhere.

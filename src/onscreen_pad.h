@@ -31,7 +31,7 @@
 #include "touch_fingers.h"
 
 union SDL_Event;
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class OnscreenPadShow
 {
@@ -102,7 +102,7 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
 // The pad (or EDIT LAYOUT), over the game. `menu_label` / `quick_label`: the
 // MAIN MENU and QUICK MENU buttons. `opacity` 0.1..1 (the layouts not
 // changed in EDIT LAYOUT); `vibrate`: a buzz on each press.
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
+void onscreen_pad_draw(OnscreenPad* pad, RetroUiFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
                        bool vibrate);
 
 // After the frame: the fingers' frame ends.

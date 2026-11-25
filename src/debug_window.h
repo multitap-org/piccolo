@@ -11,7 +11,7 @@
 
 #include <cstdint>
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 // The state icons the window can force on (StateIcon order: pause, rewind,
 // play, fast forward).
@@ -78,4 +78,4 @@ struct DebugWindowAction
 
 // Draws the window (inside the retro theme's push / pop, done here).
 // action->icons_forced and ->toolkit_demo_shown start as the state's.
-void debug_window_draw(const DebugWindowState* state, ImFont* pixel_font, int32_t scale, DebugWindowAction* action);
+void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);

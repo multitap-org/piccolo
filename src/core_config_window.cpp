@@ -1912,7 +1912,7 @@ static void end_tab()
     retro_ui_end_tab();
 }
 
-void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* context, ImFont* pixel_font,
+void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* context, RetroUiFont* pixel_font,
                              int32_t scale)
 {
     if (!config->open)

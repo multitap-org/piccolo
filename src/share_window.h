@@ -43,7 +43,7 @@
 #include "net_share_folders.h"
 #include "net_share_link.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct SharePane
 {
@@ -141,7 +141,7 @@ struct ShareWindowContext
 };
 
 void share_window_open(ShareWindow* window);
-void share_window_draw(ShareWindow* window, const ShareWindowContext* context, ImFont* pixel_font, int32_t scale);
+void share_window_draw(ShareWindow* window, const ShareWindowContext* context, RetroUiFont* pixel_font, int32_t scale);
 
 // The other side's folder to list, one at a time: the folder open there, or
 // one where the selected game's saves and states may be (the caller sends a

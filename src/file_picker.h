@@ -46,7 +46,7 @@
 #include "core_catalog.h"
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 constexpr size_t  FILE_PICKER_NAME_MAX    = 256;
 
@@ -114,5 +114,5 @@ void file_picker_open_shader(FilePicker* picker, const char* directory, const ch
 
 // Draws the window if open. Returns true on the frame the user picked
 // something; the picker closes itself then.
-bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, ImFont* pixel_font, int32_t scale,
+bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, RetroUiFont* pixel_font, int32_t scale,
                       const Localization* strings, FilePickerChoice* choice);

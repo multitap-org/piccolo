@@ -29,7 +29,7 @@
 #include "piccolo_settings.h"
 #include "settings.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class SettingsTab
 {
@@ -97,5 +97,5 @@ void settings_window_open(SettingsWindow* window, SettingsTab tab);
 
 // Draws the window (and IMAGE SETTINGS) while open. The caller saves when
 // both have closed (Esc may close them too, outside this function).
-void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* context, ImFont* pixel_font,
+void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* context, RetroUiFont* pixel_font,
                           int32_t scale);

@@ -24,7 +24,7 @@
 #include "localization.h"
 #include "net_share_link.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class PairWindowPhase : uint8_t
 {
@@ -62,4 +62,4 @@ struct PairWindowContext
 
 // `preselect`: a name in the LAN list to pick (SHARE's PAIR), or nullptr.
 void pair_window_open(PairWindow* window, const char* preselect);
-void pair_window_draw(PairWindow* window, const PairWindowContext* context, ImFont* pixel_font, int32_t scale);
+void pair_window_draw(PairWindow* window, const PairWindowContext* context, RetroUiFont* pixel_font, int32_t scale);

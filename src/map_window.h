@@ -49,7 +49,7 @@
 #include "input_sdl_mapping.h"
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class MapStage
 {
@@ -130,4 +130,4 @@ void map_window_close(MapWindow* window, InputSystem* input);
 
 bool map_window_open_now(const MapWindow* window);
 
-void map_window_draw(MapWindow* window, const MapWindowContext* context, ImFont* pixel_font, int32_t scale);
+void map_window_draw(MapWindow* window, const MapWindowContext* context, RetroUiFont* pixel_font, int32_t scale);

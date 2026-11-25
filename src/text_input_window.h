@@ -19,7 +19,7 @@
 #include "libretro_host.h"
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct TextInputWindow
 {
@@ -37,5 +37,5 @@ enum class TextInputChoice
 
 // Draws the box for `request` (mode TEXT), modal and centered. A new request
 // (another serial) starts again from its initial text.
-TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTextInput* request, ImFont* pixel_font,
+TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTextInput* request, RetroUiFont* pixel_font,
                                        int32_t scale, const Localization* strings);

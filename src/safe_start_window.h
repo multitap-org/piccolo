@@ -21,7 +21,7 @@
 
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class SafeStartChoice
 {
@@ -34,5 +34,5 @@ enum class SafeStartChoice
 
 // Draws the dialog (modal, centered). `core`: the core's short name;
 // options_changed: options were changed in the session that didn't end.
-SafeStartChoice safe_start_window_draw(ImFont* pixel_font, int32_t scale, const Localization* strings, const char* core,
+SafeStartChoice safe_start_window_draw(RetroUiFont* pixel_font, int32_t scale, const Localization* strings, const char* core,
                                        bool options_changed);

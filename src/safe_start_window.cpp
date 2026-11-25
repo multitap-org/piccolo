@@ -7,7 +7,7 @@
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
-SafeStartChoice safe_start_window_draw(ImFont* pixel_font, int32_t scale, const Localization* strings, const char* core,
+SafeStartChoice safe_start_window_draw(RetroUiFont* pixel_font, int32_t scale, const Localization* strings, const char* core,
                                        bool options_changed)
 {
     SafeStartChoice choice = SafeStartChoice::none;

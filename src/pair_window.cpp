@@ -170,7 +170,7 @@ static void draw_done(PairWindow* window, const PairWindowContext* context, bool
     }
 }
 
-void pair_window_draw(PairWindow* window, const PairWindowContext* context, ImFont* pixel_font, int32_t scale)
+void pair_window_draw(PairWindow* window, const PairWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!window->open)
     {

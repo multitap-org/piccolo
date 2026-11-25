@@ -551,7 +551,7 @@ void core_options_manager_open(bool* open, CoreOptionsUiState* state)
 }
 
 void core_options_manager_draw(bool* open, CoreOptionsUiState* state, const CoreOptionsUiContext* context,
-                               ImFont* pixel_font, int32_t scale)
+                               RetroUiFont* pixel_font, int32_t scale)
 {
     if (!*open)
     {

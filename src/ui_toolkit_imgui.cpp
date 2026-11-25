@@ -20,7 +20,7 @@ static void add_text_shadows(ImDrawData* draw_data, void* user)
     retro_ui_text_shadows(draw_data, g_scale);
 }
 
-ImFont* ui_toolkit_start()
+RetroUiFont* ui_toolkit_start()
 {
     debug_ui_set_draw_data_hook(add_text_shadows, nullptr);
     return pixel_font_imgui_add();

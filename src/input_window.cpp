@@ -1226,7 +1226,7 @@ static void end_content()
     retro_ui_end_scroll_area();
 }
 
-void input_window_draw(InputWindow* window, const InputWindowContext* context, ImFont* pixel_font, int32_t scale)
+void input_window_draw(InputWindow* window, const InputWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     run_capture(window, context);
     if (!window->open)

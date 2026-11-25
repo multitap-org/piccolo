@@ -7,7 +7,7 @@
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
-TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTextInput* request, ImFont* pixel_font,
+TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTextInput* request, RetroUiFont* pixel_font,
                                        int32_t scale, const Localization* strings)
 {
     if (window->serial != request->serial)

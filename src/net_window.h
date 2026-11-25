@@ -32,7 +32,7 @@
 #include "net_access.h"
 #include "settings.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 // The last speed test of a device, as it reported each step (net_speed.h
 // speed_result): the best rate each way that lost no more than
@@ -116,14 +116,14 @@ void net_window_draw_tab(const NetWindowContext* context, float label_width);
 void net_pairing_request_open(NetPairingRequest* request, const NetAccessEvent* event);
 void net_pairing_request_close(NetPairingRequest* request);
 void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings,
-                             ImFont* pixel_font, int32_t scale);
+                             RetroUiFont* pixel_font, int32_t scale);
 // The four port LEDs lit in turn, then `label`: something being waited for.
 void net_window_waiting_leds(const char* label);
 
 // TOOLS > INVITE (drawn every frame while open). `access` nullptr = network off.
 void net_invite_open(NetInvite* invite);
 void net_invite_close(NetInvite* invite, NetAccess* access);
-void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, ImFont* pixel_font,
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, RetroUiFont* pixel_font,
                      int32_t scale);
 // A pairing request while waiting: answered with the typed code (true), or not ours.
 bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAccessEvent* event);

@@ -244,7 +244,7 @@ static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* cont
     return action;
 }
 
-QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, ImFont* pixel_font, int32_t scale)
+QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!menu->open)
     {

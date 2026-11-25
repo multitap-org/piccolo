@@ -26,7 +26,7 @@
 #include "localization.h"
 #include "settings.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct InputWindow
 {
@@ -68,7 +68,7 @@ struct InputWindowContext
 void input_window_open(InputWindow* window);
 
 // Draws the window while open (and runs a SET / BIND ALL in progress).
-void input_window_draw(InputWindow* window, const InputWindowContext* context, ImFont* pixel_font, int32_t scale);
+void input_window_draw(InputWindow* window, const InputWindowContext* context, RetroUiFont* pixel_font, int32_t scale);
 
 // A gamepad's layout (its appearance, as kept in its profile), or nullptr
 // when it has none (never mapped, declined, or a layout that's gone).

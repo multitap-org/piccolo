@@ -774,7 +774,7 @@ static void build_view(DvrWidget* widget, const Localization* strings, bool touc
     view->hint_count = n;
 }
 
-void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
+void dvr_widget_draw(DvrWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
                      uint64_t now_ms)
 {
     follow_history(widget);

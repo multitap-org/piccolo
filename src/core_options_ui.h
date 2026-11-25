@@ -26,7 +26,7 @@
 #include "localization.h"
 
 struct CoreSession;
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct CoreOptionsUiState
 {
@@ -55,7 +55,7 @@ void core_options_ui_draw(CoreOptionsUiState* state, const CoreOptionsUiContext*
 // The CORE OPTIONS MANAGER window. Opening it starts on the running core.
 void core_options_manager_open(bool* open, CoreOptionsUiState* state);
 void core_options_manager_draw(bool* open, CoreOptionsUiState* state, const CoreOptionsUiContext* context,
-                               ImFont* pixel_font, int32_t scale);
+                               RetroUiFont* pixel_font, int32_t scale);
 
 // Only the running core's options (SAVE TO and the options), e.g. for the
 // quick menu. Nothing when no core runs.

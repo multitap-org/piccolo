@@ -22,7 +22,7 @@
 
 #include "settings_ui.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 // The game picture to show (the core session's texture).
 struct ImageWindowSource
@@ -45,4 +45,4 @@ struct ImageWindowSource
 // Draws the window while *open; the close button clears it. `source` may
 // have no picture (texture_id 0): the controls still work.
 void image_window_draw(bool* open, const SettingsUiContext* context, const ImageWindowSource* source,
-                       ImFont* pixel_font, int32_t scale);
+                       RetroUiFont* pixel_font, int32_t scale);

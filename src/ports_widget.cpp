@@ -314,7 +314,7 @@ static PortsViewText view_text(const Localization* strings)
     return text;
 }
 
-void ports_widget_draw_tabs(PortsWidget* widget, ImFont* pixel_font, int32_t scale, const Localization* strings,
+void ports_widget_draw_tabs(PortsWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings,
                             bool menu_shown, uint64_t now_ms)
 {
     PortsViewText text = view_text(strings);
@@ -583,7 +583,7 @@ void ports_widget_board_update(PortsWidget* widget, InputSystem* input)
     }
 }
 
-void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, ImFont* pixel_font, int32_t scale, uint64_t now_ms,
+void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, RetroUiFont* pixel_font, int32_t scale, uint64_t now_ms,
                              const Localization* strings)
 {
     if (!widget->open)

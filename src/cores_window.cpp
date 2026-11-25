@@ -289,7 +289,7 @@ static void draw_show_row(CoresWindow* window, const CoresWindowContext* context
                      &window->show_experimental);
 }
 
-void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, ImFont* pixel_font, int32_t scale)
+void cores_window_draw(CoresWindow* window, const CoresWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!window->open)
     {

@@ -106,7 +106,7 @@ static void draw_controls(const SettingsUiContext* context, const ImageWindowSou
 }
 
 void image_window_draw(bool* open, const SettingsUiContext* context, const ImageWindowSource* source,
-                       ImFont* pixel_font, int32_t scale)
+                       RetroUiFont* pixel_font, int32_t scale)
 {
     if (!*open)
     {

@@ -412,7 +412,7 @@ void net_window_waiting_leds(const char* label)
 //   +-------------------------------------------------+
 // After ALLOW: the same box, waiting (LEDs), until paired / gone.
 void net_pairing_request_draw(NetPairingRequest* request, NetAccess* access, const Localization* strings,
-                             ImFont* pixel_font, int32_t scale)
+                             RetroUiFont* pixel_font, int32_t scale)
 {
     if (!request->active || access == nullptr)
     {
@@ -526,7 +526,7 @@ bool net_invite_take_request(NetInvite* invite, NetAccess* access, const NetAcce
 //   |                                     [ALLOW] [CANCEL]       |
 //   +-----------------------------------------------------------+
 // After ALLOW: waiting (LEDs) until paired (it closes then).
-void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, ImFont* pixel_font,
+void net_invite_draw(NetInvite* invite, NetAccess* access, const Localization* strings, RetroUiFont* pixel_font,
                      int32_t scale)
 {
     if (!invite->open)

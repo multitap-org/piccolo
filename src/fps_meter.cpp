@@ -65,7 +65,7 @@ void fps_meter_format(const FpsMeter* meter, double target_fps, char* out, uint3
     }
 }
 
-void fps_meter_draw(const FpsMeter* meter, double target_fps, ImFont* pixel_font, int32_t scale, float display_width)
+void fps_meter_draw(const FpsMeter* meter, double target_fps, RetroUiFont* pixel_font, int32_t scale, float display_width)
 {
     char text[96];
     fps_meter_format(meter, target_fps, text, sizeof(text));

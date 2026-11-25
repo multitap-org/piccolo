@@ -79,7 +79,7 @@ static void draw_widgets(const DebugWindowState* state, DebugWindowAction* actio
     retro_ui_dim_text("Text box and KEEP / REVERT show once the menu is closed.", nullptr);
 }
 
-void debug_window_draw(const DebugWindowState* state, ImFont* pixel_font, int32_t scale, DebugWindowAction* action)
+void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)
 {
     *action = {};
     for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)

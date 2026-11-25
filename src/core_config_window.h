@@ -32,7 +32,7 @@
 #include "localization.h"
 #include "settings.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class CoreConfigTab
 {
@@ -130,5 +130,5 @@ void core_config_window_close_sub_view(CoreConfigWindow* config);
 
 // Draws the window while open (its X closes it: open = false). Also drops
 // a SET or a macro recording nobody looks at any more: call every frame.
-void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* context, ImFont* pixel_font,
+void core_config_window_draw(CoreConfigWindow* config, const CoreConfigContext* context, RetroUiFont* pixel_font,
                              int32_t scale);

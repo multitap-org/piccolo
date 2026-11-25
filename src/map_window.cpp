@@ -1037,7 +1037,7 @@ static void draw_page_indicator(const MapWindow* window)
     }
 }
 
-void map_window_draw(MapWindow* window, const MapWindowContext* context, ImFont* pixel_font, int32_t scale)
+void map_window_draw(MapWindow* window, const MapWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     if (window->stage == MapStage::closed)
     {

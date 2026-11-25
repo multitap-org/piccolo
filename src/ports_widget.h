@@ -26,7 +26,7 @@
 #include "localization.h"
 #include "ports_view.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct PortsWidget
 {
@@ -63,7 +63,7 @@ void ports_widget_set_pings(PortsWidget* widget, const InputSystem* input, const
 float ports_widget_tabs_width(const PortsWidget* widget);
 
 // The tabs, behind every window; `menu_shown`: they peek.
-void ports_widget_draw_tabs(PortsWidget* widget, ImFont* pixel_font, int32_t scale, const Localization* strings,
+void ports_widget_draw_tabs(PortsWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings,
                             bool menu_shown, uint64_t now_ms);
 
 // DEVICES: open (what's held now is ignored until let go), close.
@@ -76,5 +76,5 @@ void ports_widget_close(PortsWidget* widget, InputSystem* input);
 void ports_widget_board_update(PortsWidget* widget, InputSystem* input);
 
 // DEVICES, above everything (and what a mouse did on it).
-void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, ImFont* pixel_font, int32_t scale, uint64_t now_ms,
+void ports_widget_draw_board(PortsWidget* widget, InputSystem* input, RetroUiFont* pixel_font, int32_t scale, uint64_t now_ms,
                              const Localization* strings);

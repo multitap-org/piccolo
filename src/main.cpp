@@ -120,7 +120,7 @@ struct App
     bool     show_debug_window = false;
     bool     show_imgui_demo = false;
 
-    ImFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
+    RetroUiFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
     float   ui_display_width  = 0.0f;   // the screen's size last frame (a turn changes it)
     float   ui_display_height = 0.0f;

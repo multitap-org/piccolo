@@ -49,7 +49,7 @@
 struct AppShell;
 struct HudStack;
 struct CoreSession;
-struct ImFont;
+#include "retro_ui_font.h"
 struct InputFrame;
 struct Localization;
 struct Settings;
@@ -127,7 +127,7 @@ void dvr_widget_upload(DvrWidget* widget, CoreSession* session, AppShell* shell)
 float dvr_widget_strip_height(const DvrWidget* widget, int32_t scale);
 
 // The strip (above every window) and what a click / tap on it did.
-void dvr_widget_draw(DvrWidget* widget, ImFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
+void dvr_widget_draw(DvrWidget* widget, RetroUiFont* pixel_font, int32_t scale, const Localization* strings, bool touch,
                      uint64_t now_ms);
 // Why it didn't open, as a notification card for a few seconds (hud_view).
 void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms);

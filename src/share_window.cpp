@@ -918,7 +918,7 @@ static void draw_conflict(ShareWindow* window, const Localization* strings)
 // The window
 // ---------------------------------------------------------------------------
 
-void share_window_draw(ShareWindow* window, const ShareWindowContext* context, ImFont* pixel_font, int32_t scale)
+void share_window_draw(ShareWindow* window, const ShareWindowContext* context, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!window->open)
     {

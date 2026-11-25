@@ -605,7 +605,7 @@ static bool draw_game_buttons(FilePicker* picker, const CoreCatalog* catalog, co
     return picked;
 }
 
-bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, ImFont* pixel_font, int32_t scale,
+bool file_picker_draw(FilePicker* picker, const CoreCatalog* catalog, RetroUiFont* pixel_font, int32_t scale,
                       const Localization* strings, FilePickerChoice* choice)
 {
     if (!picker->open)

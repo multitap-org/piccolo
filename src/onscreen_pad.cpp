@@ -233,7 +233,7 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
     pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
 }
 
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
+void onscreen_pad_draw(OnscreenPad* pad, RetroUiFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
                        bool vibrate)
 {
     pad->menu_pressed = false;

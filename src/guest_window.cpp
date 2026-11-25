@@ -397,7 +397,7 @@ static void draw_live(GuestWindow* window, NetAccess* access, const InputNet* in
 }
 
 void guest_window_draw(GuestWindow* window, NetAccess* access, const InputNet* input_net, const InputSystem* input,
-                       bool game, bool internet, const Localization* strings, ImFont* pixel_font, int32_t scale)
+                       bool game, bool internet, const Localization* strings, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!window->open)
     {

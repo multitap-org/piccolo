@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct FpsMeter
 {
@@ -44,4 +44,4 @@ void fps_meter_reset(FpsMeter* meter);
 void fps_meter_format(const FpsMeter* meter, double target_fps, char* out, uint32_t out_size);
 
 // Draws the chip in the top right corner of a `display_width` wide screen.
-void fps_meter_draw(const FpsMeter* meter, double target_fps, ImFont* pixel_font, int32_t scale, float display_width);
+void fps_meter_draw(const FpsMeter* meter, double target_fps, RetroUiFont* pixel_font, int32_t scale, float display_width);

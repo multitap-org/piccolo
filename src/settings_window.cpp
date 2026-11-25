@@ -751,7 +751,7 @@ static void draw_tabs(SettingsWindow* window, const SettingsUiContext* ui, const
     retro_ui_end_tabs();
 }
 
-void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* context, ImFont* pixel_font,
+void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* context, RetroUiFont* pixel_font,
                           int32_t scale)
 {
     if (!window->open && !window->image_open)
