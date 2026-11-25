@@ -704,7 +704,7 @@ static void build_view(DvrWidget* widget, const Localization* strings, bool touc
         format_back(thumb->label, sizeof(thumb->label), lane_end(&position) - frame, fps, false);
         thumb->after = frame > position.cursor;
         int32_t t = thumb_for(widget, frame);
-        thumb->texture = t >= 0 ? widget->thumbs[t].imgui_id : 0;
+        thumb->texture = t >= 0 ? widget->thumbs[t].ui_texture : 0;
         if (t >= 0)
         {
             video_texture_uv_max(&widget->thumbs[t], &thumb->u_max, &thumb->v_max);

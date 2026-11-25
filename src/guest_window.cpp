@@ -111,7 +111,7 @@ static void draw_preview(GuestWindow* window, float width, const Localization* s
         float v = 0.0f;
         video_texture_uv_max(&window->preview, &u, &v);
         // retro_ui_window_begin() switched this window to nearest sampling: sharp pixels.
-        retro_ui_canvas_image(window->preview.imgui_id, 0.0f, 0.0f, box_width, box_height, u, v, 0xFFFFFFFFu);
+        retro_ui_canvas_image(window->preview.ui_texture, 0.0f, 0.0f, box_width, box_height, u, v, 0xFFFFFFFFu);
     }
     else
     {

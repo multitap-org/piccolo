@@ -53,7 +53,7 @@ struct QuickMenu
     bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 1-9)
 
     // The selected slot's thumbnail: loaded from its PNG, uploaded on the next frame.
-    VideoTexture          texture;   // texture.imgui_id: what the toolkit draws
+    VideoTexture          texture;   // texture.ui_texture: what the toolkit draws
     std::vector<uint32_t> pixels;
     uint32_t              width = 0;
     uint32_t              height = 0;

@@ -3178,7 +3178,7 @@ static void draw_game(App* app)
     video_output_skip(&app->video);
     app->input.view_width = 0.0f;   // (until it is drawn)
     app->shown_aspect = 0.0;
-    if (!game_running(app) || !session->texture.has_content || session->texture.imgui_id == 0)
+    if (!game_running(app) || !session->texture.has_content || session->texture.ui_texture == 0)
     {
         return;
     }
@@ -3378,9 +3378,9 @@ static void draw_settings(App* app)
 {
     const CoreSession* session = &app->session;
     ImageWindowSource image = {};
-    if (game_running(app) && session->texture.has_content && session->texture.imgui_id != 0)
+    if (game_running(app) && session->texture.has_content && session->texture.ui_texture != 0)
     {
-        image.texture_id = session->texture.imgui_id;
+        image.texture_id = session->texture.ui_texture;
         video_texture_uv_max(&session->texture, &image.uv_max_x, &image.uv_max_y);
         image.frame_width = session->texture.content_width;
         image.frame_height = session->texture.content_height;

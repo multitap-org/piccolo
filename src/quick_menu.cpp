@@ -163,7 +163,7 @@ static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* cont
     float room_y = static_cast<float>(static_cast<int>(retro_ui_height_left() - (retro_ui_line_step() - retro_ui_line_height())));
     room_x = room_x > 160.0f * block ? room_x : 160.0f * block;
     room_y = room_y > 120.0f * block ? room_y : 120.0f * block;
-    bool showing = menu->has_picture && menu->shown_slot == menu->slot && menu->texture.imgui_id != 0 &&
+    bool showing = menu->has_picture && menu->shown_slot == menu->slot && menu->texture.ui_texture != 0 &&
                    menu->width > 0 && menu->height > 0;
     float box_x = room_x;   // no picture: a 4:3 box
     float box_y = room_x * 3.0f / 4.0f;
@@ -208,7 +208,7 @@ static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* cont
         float u = 0.0f;
         float v = 0.0f;
         video_texture_uv_max(&menu->texture, &u, &v);
-        retro_ui_canvas_image(menu->texture.imgui_id, 0.0f, 0.0f, box_x, box_y, u, v, 0xFFFFFFFFu);
+        retro_ui_canvas_image(menu->texture.ui_texture, 0.0f, 0.0f, box_x, box_y, u, v, 0xFFFFFFFFu);
     }
     retro_ui_same_line();
     retro_ui_begin_group();
