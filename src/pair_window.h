@@ -29,13 +29,27 @@
 //      pairing room on the beacon
 //   request  a device asking on the network (the game pauses meanwhile):
 //      <NAME> WANTS TO PAIR, its code typed, ROLE, ALLOW / DENY. It opens
-//      the window on this mode by itself.
+//      the window on this mode by itself (in the game, a card first: below).
 //   2  the code and the role, WAITING FOR DEVICE, CANCEL
 //   3  PAIRED WITH <NAME>, ROLE, CLOSE
 //   These answer on the NetAccess (under the network lock).
 //
 // While a step of one mode is in progress the other mode is greyed out, so
 // a half-done pairing isn't left behind by switching.
+//
+// A request while the player is in the game (Andrés, testing round 1): no
+// window and no pause, a notification card instead (pair_window_add_hud):
+//
+//   +--------------------------------+
+//   | <NAME> WANTS TO PAIR           |
+//   | HOLD [START] TO ACCEPT         |
+//   +--------------------------------+
+//
+// It stays while the request is pending; START held (REMAP on a gamepad,
+// START by default; the keyboard player's START, Enter by default) as long
+// as HOLD START TO REMAP's opens the window on it, and the game pauses as
+// before. With the menu or a window up (or no game) the window opens at
+// once, as before.
 //
 // Split like every window: pair_window_update follows FILE TRANSFER's
 // connection and the requests (no GUI), pair_window_state fills what the
@@ -46,12 +60,15 @@
 #include <cstdint>
 #include <string>
 
+#include "input_hold.h"
 #include "localization.h"
 #include "net_access.h"
 #include "net_service.h"
 #include "net_share_link.h"
 
 #include "retro_ui_font.h"
+
+struct HudStack;
 
 enum class PairMode : uint8_t
 {
@@ -79,6 +96,7 @@ struct PairRequest
     char        name[NET_DEVICE_NAME_MAX + 1] = {};
     char        code[NET_PAIR_CODE_DIGITS + 1] = {};
     uint32_t    level = 0;         // NetAccessLevel
+    uint64_t    since_ms = 0;      // when it came (pair_window_update stamps it)
 };
 
 // PAIR WITH A CLIENT's own code (was TOOLS > INVITE): a device across the
@@ -120,6 +138,9 @@ struct PairWindow
     bool            client_done = false;     // paired: who, and the role given
     std::string     client_name;
     NetAccessLevel  client_level = NetAccessLevel::gamepad;
+
+    // A request shown as a card in the game: START held on it.
+    InputHold       accept_hold;
 };
 
 struct PairWindowState
@@ -154,8 +175,10 @@ struct PairWindowAction
 // nullptr. Opens on PAIR WITH A HOST; already open, it stays as it is.
 void pair_window_open(PairWindow* window, const char* preselect);
 // Before drawing, every frame: follows FILE TRANSFER's connection (`link`
-// nullptr: it doesn't run) and opens the window on a request.
-void pair_window_update(PairWindow* window, const NetShareLinkStatus* link);
+// nullptr: it doesn't run) and opens the window on a request, unless
+// `in_game` (the player is in the game, no menu or window up: a card shows
+// it instead).
+void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool in_game, uint64_t now_ms);
 void pair_window_state(PairWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
                        bool network, bool can_give_back);
 void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiFont* pixel_font, int32_t scale,
@@ -171,6 +194,14 @@ void pair_window_apply_host(PairWindow* window, const PairWindowAction* action, 
 // PAIR WITH A CLIENT's presses, on the NetAccess (under the network lock;
 // nullptr: networking is off, only the window changes).
 void pair_window_apply_client(PairWindow* window, const PairWindowAction* action, NetAccess* access);
+
+// The request's card in the game (`in_game` as pair_window_update's): START
+// (`held`, on any controller) held as long as HOLD START TO REMAP opens the
+// window on the request. True when it did.
+bool pair_window_hold_accept(PairWindow* window, bool in_game, bool held, uint64_t now_ms);
+// Its notification card: the request, in the game (`in_game`).
+void pair_window_add_hud(const PairWindow* window, const Localization* strings, bool in_game, HudStack* stack,
+                         uint64_t now_ms);
 
 // The NetAccess's events for PAIR WITH A CLIENT (under the network lock).
 // A device asks: answered with our own code when it's the one we wait for

@@ -1100,6 +1100,7 @@ pair_back_after = CONNECT TO THIS DEVICE, WITH THE SAME ROLE?
 pair_yes = YES
 pair_no = NO
 pair_close = CLOSE
+pair_card_accept = TO ACCEPT
 
 # Browser frontend (emulator chooser, game page and FILES panel)
 web_page_title = piccolo: play

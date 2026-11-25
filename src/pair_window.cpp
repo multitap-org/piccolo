@@ -6,8 +6,10 @@
 
 #include <SDL3/SDL_log.h>
 
+#include "hud_view.h"
 #include "net_access.h"
 #include "piccolo_text.h"
+#include "remap_widget.h"
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
 
@@ -46,33 +48,45 @@ static void reset_host(PairWindow* window)
     net_pair_code_generate(window->code);
 }
 
+// The window on PAIR WITH A CLIENT, over every other one, for the request.
+static void open_on_request(PairWindow* window)
+{
+    if (!window->open)
+    {
+        reset_host(window);
+    }
+    window->open = true;
+    window->mode = PairMode::client;
+    window->select_mode = true;
+    window->raise = true;
+    window->request.focus = true;
+    window->client_done = false;
+    window->client_name.clear();
+}
+
 // ---------------------------------------------------------------------------
 // State
 
-void pair_window_update(PairWindow* window, const NetShareLinkStatus* link)
+void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool in_game, uint64_t now_ms)
 {
+    if (window->request.active && window->request.since_ms == 0)
+    {
+        window->request.since_ms = now_ms;   // (a card slides in from then)
+    }
     // A device asks to pair: the window opens on PAIR WITH A CLIENT, unless
-    // PAIR WITH A HOST is halfway through a step (it waits until that ends).
-    // A new request also replaces PAIRED WITH (the last pairing is over), and
-    // raises the window even when it waits behind a host step, so it's never
-    // left hidden behind another window.
+    // PAIR WITH A HOST is halfway through a step (it waits until that ends),
+    // or the player is in the game with the window closed (a card asks:
+    // pair_window_hold_accept opens it). A new request also replaces PAIRED
+    // WITH (the last pairing is over), and raises the window even when it
+    // waits behind a host step, so it's never left hidden behind another window.
     bool host_busy = window->open && host_in_progress(window);
+    bool as_card = in_game && !window->open;
     bool fresh = window->request.active && window->request.fresh;
     window->request.fresh = false;
-    if (window->request.active && !host_busy &&
+    if (window->request.active && !host_busy && !as_card &&
         (!window->open || window->mode != PairMode::client || (fresh && window->client_done)))
     {
-        if (!window->open)
-        {
-            reset_host(window);
-        }
-        window->open = true;
-        window->mode = PairMode::client;
-        window->select_mode = true;
-        window->raise = true;
-        window->request.focus = true;
-        window->client_done = false;
-        window->client_name.clear();
+        open_on_request(window);
     }
     if (fresh && window->open)
     {
@@ -735,6 +749,53 @@ bool pair_window_take_request(PairWindow* window, NetAccess* access, const NetAc
     request->focus = true;
     request->fresh = true;
     return false;
+}
+
+bool pair_window_hold_accept(PairWindow* window, bool in_game, bool held, uint64_t now_ms)
+{
+    if (!window->request.active || window->open || !in_game)
+    {
+        input_hold_reset(&window->accept_hold);   // no card: nothing to hold for
+        return false;
+    }
+    // As long as HOLD START TO REMAP's hold.
+    if (!input_hold_update(&window->accept_hold, held, now_ms, REMAP_WIDGET_HOLD_MS))
+    {
+        return false;
+    }
+    input_hold_reset(&window->accept_hold);
+    open_on_request(window);
+    return true;
+}
+
+void pair_window_add_hud(const PairWindow* window, const Localization* strings, bool in_game, HudStack* stack,
+                         uint64_t now_ms)
+{
+    const PairRequest* request = &window->request;
+    if (!request->active || window->open || !in_game)
+    {
+        return;
+    }
+    // <NAME> WANTS TO PAIR / HOLD [START] TO ACCEPT, the key lit as it's held.
+    HudCard card = {};
+    // (A long name is cut: the card clips its title at its edge anyway.)
+    int written = std::snprintf(card.title, sizeof(card.title), "%s %s", request->name,
+                                piccolo_text(strings, Str::pair_wants));
+    if (written < 0)
+    {
+        card.title[0] = '\0';
+    }
+    std::snprintf(card.before, sizeof(card.before), "%s", piccolo_text(strings, Str::remap_card_hold));
+    std::snprintf(card.key, sizeof(card.key), "%s", piccolo_text(strings, Str::input_action_pad_start));
+    std::snprintf(card.after, sizeof(card.after), "%s", piccolo_text(strings, Str::pair_card_accept));
+    const InputHold* hold = &window->accept_hold;
+    if (hold->since_ms != 0 && now_ms >= hold->since_ms)
+    {
+        float fill = static_cast<float>(now_ms - hold->since_ms) / static_cast<float>(REMAP_WIDGET_HOLD_MS);
+        card.key_fill = fill > 1.0f ? 1.0f : fill;
+    }
+    card.since_ms = request->since_ms != 0 ? request->since_ms : now_ms;
+    hud_view_add_card(stack, &card);
 }
 
 void pair_window_paired(PairWindow* window, NetAccess* access, const NetAccessEvent* event, const char* name)

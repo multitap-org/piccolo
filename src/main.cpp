@@ -2510,7 +2510,9 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
-    facts.pairing_request = app->pair_window.request.active;
+    // A request pauses once its window shows (in the game it's a card first:
+    // no pause until START held opens the window).
+    facts.pairing_request = app->pair_window.request.active && app->pair_window.open;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -2539,6 +2541,35 @@ static bool game_has_keyboard(const App* app)
 static bool ui_is_up(const App* app)
 {
     return !game_has_keyboard(app);
+}
+
+// A pairing request shows as a card, not its window (testing round 1): the
+// player is in the game with no window over it (pair_window.h).
+static bool pair_request_in_game(const App* app)
+{
+    return game_has_keyboard(app) && !app->pair_window.open && !app->guest_window.open;
+}
+
+// START held on any controller, for the pairing request's card: REMAP on a
+// gamepad (START by default, as HOLD START TO REMAP), the keyboard player's
+// START (Enter by default: the keyboard has no REMAP key).
+static bool pair_accept_held(const App* app)
+{
+    for (size_t i = 0; i < app->input.controllers.size(); i++)
+    {
+        uint32_t controller = static_cast<uint32_t>(i);
+        const InputDevice* device = input_devices_find_const(&app->input.devices, app->input.controllers[i].device_id);
+        if (device == nullptr)
+        {
+            continue;
+        }
+        InputAction action = device->kind == InputDeviceKind::keyboard ? InputAction::pad_start : InputAction::hotkey_remap;
+        if (input_controller_action_held(&app->input, controller, action))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Escape / B: back, the same in every mode (ui_back): a grab is cancelled,
@@ -2990,6 +3021,12 @@ static void app_update_input(App* app)
     if (remap.open_remap)
     {
         app_open_core_config(app, remap.port, remap.controller);   // CONTROLS, that controller's remap
+    }
+    // A pairing request's card (in GAME): START held opens its window (the
+    // game pauses then, as for a request that opens it by itself).
+    if (pair_window_hold_accept(&app->pair_window, pair_request_in_game(app), pair_accept_held(app), SDL_GetTicks()))
+    {
+        SDL_Log("Network: pairing request accepted from the game: its window opens");
     }
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
@@ -5313,7 +5350,8 @@ static uint32_t menu_backdrop_alpha(const App* app)
 {
     int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
     // (Not DEBUG: it's watched while playing.)
-    bool window_over_game = app->pair_window.open || app->guest_window.open || app->pair_window.request.active;
+    bool window_over_game = app->pair_window.open || app->guest_window.open ||
+                            (app->pair_window.request.active && !pair_request_in_game(app));
     if ((!ui_is_up(app) && !window_over_game) || percent <= 0)
     {
         return 0;
@@ -5340,6 +5378,7 @@ static void hud_fill(App* app, UiView* view)
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
     guest_window_add_hud(&app->guest_window, &app->strings, &app->hud, now_ms);
+    pair_window_add_hud(&app->pair_window, &app->strings, pair_request_in_game(app), &app->hud, now_ms);
 
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
@@ -5482,7 +5521,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         {
             pair_link = &app->share_status;
         }
-        pair_window_update(&app->pair_window, pair_link);
+        pair_window_update(&app->pair_window, pair_link, pair_request_in_game(app), SDL_GetTicks());
     }
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
