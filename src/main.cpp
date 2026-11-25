@@ -5417,18 +5417,12 @@ static bool app_frame(App* app)
                 app->has_pending_start = true;   // see pending_start
             }
         }
-        QuickMenuContext quick = {};
-        quick.strings = &app->strings;
-        quick.session = &app->session;
-        quick.core_name = app->core_name;
-        quick.game_name = app->game_name;
-        quick.user_paused = app->ui.user_paused;
-        uint32_t slot_before = app->quick_menu.slot;
-        QuickMenuAction quick_action = quick_menu_draw(&app->quick_menu, &quick, app->pixel_font, app->ui_scale);
-        if (app->quick_menu.slot != slot_before || app->quick_menu.open)
-        {
-            app->session.state_slot = app->quick_menu.slot;   // F2 / F4 follow the picked slot
-        }
+        quick_menu_update(&app->quick_menu, &app->session);
+        QuickMenuState quick_state = {};
+        quick_menu_state(&quick_state, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
+        QuickMenuAction quick_action = {};
+        quick_menu_draw(&app->quick_menu, &quick_state, app->pixel_font, app->ui_scale, &quick_action);
+        quick_menu_apply(&app->quick_menu, &quick_action, &app->session);
         if (!game_running(app))
         {
             app->core_config.open = false;   // the core it configured is gone
@@ -5455,38 +5449,38 @@ static bool app_frame(App* app)
         draw_shader_picker(app);   // over CORE CONFIGURATION
         ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
         dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
-        switch (quick_action)
+        switch (quick_action.press)
         {
-        case QuickMenuAction::save:
+        case QuickMenuPress::save:
             save_state_with_thumbnail(app);
             set_status(app, app->session.message);
             break;
-        case QuickMenuAction::load:
+        case QuickMenuPress::load:
             if (core_session_load_state(&app->session))
             {
                 app_enter_game(app);   // back to the game
             }
             set_status(app, app->session.message);
             break;
-        case QuickMenuAction::reset:
+        case QuickMenuPress::reset:
             libretro_host_reset(app->session.host);
             set_status(app, piccolo_text(&app->strings, Str::status_reset));
             app_enter_game(app);
             break;
-        case QuickMenuAction::close_game:
+        case QuickMenuPress::close_game:
             app->pending_close_game = true;   // the texture may be in this frame already
             app_enter_game(app);
             break;
-        case QuickMenuAction::pause:
+        case QuickMenuPress::pause:
             toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
             break;
-        case QuickMenuAction::dvr:
+        case QuickMenuPress::dvr:
             app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
             break;
-        case QuickMenuAction::config:
+        case QuickMenuPress::config:
             app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes
             break;
-        case QuickMenuAction::none:
+        case QuickMenuPress::none:
             break;
         }
         CoreOptionsUiContext manager = core_options_context(app);

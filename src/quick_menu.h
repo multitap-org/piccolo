@@ -21,6 +21,12 @@
 // overwritten by accident. Each slot shows its thumbnail (the PNG saved next
 // to the state, at the aspect in use: core_session.h) and date. PAUSE IN
 // MENU pauses the game while it's open. F1 or Esc closes it.
+//
+// Split like every window: quick_menu_update reads the slots and
+// quick_menu_state fills what the window shows (no GUI), quick_menu_draw
+// draws it and records what was pressed, and quick_menu_apply acts on it (no
+// GUI): the session's slot, the thumbnail of the slot picked. What a press
+// does to the game is main.cpp's.
 
 #include <cstdint>
 #include <vector>
@@ -32,7 +38,7 @@
 struct AppShell;
 #include "retro_ui_font.h"
 
-enum class QuickMenuAction
+enum class QuickMenuPress
 {
     none,
     save,         // save to `slot`
@@ -49,7 +55,7 @@ struct QuickMenu
     bool          open = false;
     uint32_t      slot = LIBRETRO_STATE_SLOT_FIRST;   // the selected slot
     StateSlotInfo slots[LIBRETRO_STATE_SLOT_LAST + 1] = {};   // [1..9]
-    bool          refresh = true;   // read the slots again on the next draw
+    bool          refresh = true;   // read the slots again on the next update
     bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 1-9)
 
     // The selected slot's thumbnail: loaded from its PNG, uploaded on the next frame.
@@ -63,13 +69,19 @@ struct QuickMenu
     int64_t               shown_modified = 0;
 };
 
-struct QuickMenuContext
+struct QuickMenuState
 {
     const Localization* strings = nullptr;
-    const CoreSession*  session = nullptr;
     const char*         core_name = "";
     const char*         game_name = "";
     bool                user_paused = false;   // the player paused: PAUSE reads RESUME
+};
+
+struct QuickMenuAction
+{
+    QuickMenuPress press = QuickMenuPress::none;
+    bool           closed = false;        // its X
+    bool           slot_picked = false;   // `slot` changed this frame (a slot button, 1-9)
 };
 
 // Opens on `slot` (the session's current slot).
@@ -78,9 +90,16 @@ void quick_menu_open(QuickMenu* menu, uint32_t slot);
 // The slots changed on disk (a state was saved): read them again.
 void quick_menu_refresh(QuickMenu* menu);
 
-// Draws the menu while open (its X closes it: open = false); returns what
-// was picked this frame.
-QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, RetroUiFont* pixel_font, int32_t scale);
+// Before drawing, every frame: reads the slots again when asked to.
+void quick_menu_update(QuickMenu* menu, const CoreSession* session);
+void quick_menu_state(QuickMenuState* state, const Localization* strings, const char* core_name, const char* game_name,
+                      bool user_paused);
+// Draws the menu while open.
+void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* pixel_font, int32_t scale,
+                     QuickMenuAction* action);
+// Closes it (its X), makes the picked slot the session's (F2 / F4 follow it)
+// and loads the selected slot's thumbnail. What `press` asks is main.cpp's.
+void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSession* session);
 
 // Uploads a newly loaded thumbnail. Call after app_shell_acquire, outside
 // rendering (where the game's video is uploaded).

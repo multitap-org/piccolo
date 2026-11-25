@@ -17,89 +17,39 @@ constexpr uint32_t THUMBNAIL_CAPACITY = 1024;
 // The used slots' button color (0xAARRGGBB), so they stand out from empty ones.
 constexpr uint32_t USED_SLOT = 0xFF3A6EA5u;
 
-void quick_menu_open(QuickMenu* menu, uint32_t slot)
-{
-    menu->open = true;
-    menu->slot = slot >= LIBRETRO_STATE_SLOT_FIRST && slot <= LIBRETRO_STATE_SLOT_LAST ? slot : LIBRETRO_STATE_SLOT_FIRST;
-    menu->refresh = true;
-}
+// ---------------------------------------------------------------------------
+// State
 
 void quick_menu_refresh(QuickMenu* menu)
 {
     menu->refresh = true;
 }
 
-// Loads the selected slot's PNG into `pixels` (B8G8R8A8, opaque) when it isn't the one shown.
-static void load_thumbnail(QuickMenu* menu)
+void quick_menu_update(QuickMenu* menu, const CoreSession* session)
 {
-    const StateSlotInfo* info = &menu->slots[menu->slot];
-    if (!info->used || !info->has_thumbnail)
-    {
-        menu->has_picture = false;
-        menu->shown_slot = 0;
-        return;
-    }
-    if (menu->shown_slot == menu->slot && menu->shown_modified == info->modified)
+    if (!menu->open || !menu->refresh)
     {
         return;
     }
-    menu->shown_slot = menu->slot;
-    menu->shown_modified = info->modified;
-    menu->has_picture = false;
-    SDL_Surface* png = SDL_LoadPNG(info->thumbnail_path);
-    SDL_Surface* converted = png != nullptr ? SDL_ConvertSurface(png, SDL_PIXELFORMAT_ARGB8888) : nullptr;
-    if (converted != nullptr && converted->w > 0 && converted->h > 0 &&
-        static_cast<uint32_t>(converted->w) <= THUMBNAIL_CAPACITY && static_cast<uint32_t>(converted->h) <= THUMBNAIL_CAPACITY)
+    menu->refresh = false;
+    for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
     {
-        menu->width = static_cast<uint32_t>(converted->w);
-        menu->height = static_cast<uint32_t>(converted->h);
-        menu->pixels.resize(static_cast<size_t>(menu->width) * menu->height);
-        for (uint32_t y = 0; y < menu->height; y++)
-        {
-            const uint8_t* row = static_cast<const uint8_t*>(converted->pixels) + static_cast<size_t>(y) * static_cast<size_t>(converted->pitch);
-            std::memcpy(&menu->pixels[static_cast<size_t>(y) * menu->width], row, static_cast<size_t>(menu->width) * 4);
-        }
-        menu->upload_pending = true;
+        core_session_slot_info(session, slot, &menu->slots[slot]);
     }
-    else
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Quick menu: could not read thumbnail %s: %s", info->thumbnail_path,
-                    SDL_GetError());
-    }
-    SDL_DestroySurface(converted);
-    SDL_DestroySurface(png);
+    menu->shown_slot = 0;   // the selected thumbnail may have changed
 }
 
-void quick_menu_upload(QuickMenu* menu, AppShell* shell)
+void quick_menu_state(QuickMenuState* state, const Localization* strings, const char* core_name, const char* game_name,
+                      bool user_paused)
 {
-    if (!menu->upload_pending)
-    {
-        return;
-    }
-    if (!video_texture_created(&menu->texture))
-    {
-        if (!video_texture_create(&menu->texture, shell, THUMBNAIL_CAPACITY, THUMBNAIL_CAPACITY,
-                                  FramePixelFormat::xrgb8888, false))
-        {
-            menu->upload_pending = false;
-            return;
-        }
-    }
-    if (!app_shell_acquire(shell))
-    {
-        return;   // try on the next frame
-    }
-    if (video_texture_upload(&menu->texture, shell, menu->pixels.data(), menu->width, menu->height))
-    {
-        menu->has_picture = true;
-    }
-    menu->upload_pending = false;
+    state->strings = strings;
+    state->core_name = core_name;
+    state->game_name = game_name;
+    state->user_paused = user_paused;
 }
 
-void quick_menu_destroy(QuickMenu* menu, AppShell* shell)
-{
-    video_texture_destroy(&menu->texture, shell);   // waits for the GPU
-}
+// ---------------------------------------------------------------------------
+// Drawing
 
 // The nine slot buttons; the focused one (arrows) or the clicked one is the selection.
 static void draw_slots(QuickMenu* menu, float block, bool appearing)
@@ -147,12 +97,11 @@ static void draw_slots(QuickMenu* menu, float block, bool appearing)
 }
 
 // The states: slots, the selected one's thumbnail and date, SAVE / LOAD.
-static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* context, float block, bool appearing)
+static void draw_states(QuickMenu* menu, const QuickMenuState* state, float block, bool appearing,
+                        QuickMenuAction* action)
 {
-    const Localization* strings = context->strings;
-    QuickMenuAction action = QuickMenuAction::none;
+    const Localization* strings = state->strings;
     draw_slots(menu, block, appearing);
-    load_thumbnail(menu);
 
     // The thumbnail at the biggest whole-number scale that fits (sharp pixels:
     // nearest filtering, on whole pixels), the slot's details beside it. Room:
@@ -228,40 +177,31 @@ static QuickMenuAction draw_states(QuickMenu* menu, const QuickMenuContext* cont
     bool keys = !ui_toolkit_wants_text() && retro_ui_window_focused();
     if (retro_ui_button(piccolo_text(strings, Str::quick_menu_save)) || (keys && retro_ui_key_pressed(RetroUiKey::s, false)))
     {
-        action = QuickMenuAction::save;
+        action->press = QuickMenuPress::save;
     }
     retro_ui_same_line();
     retro_ui_begin_disabled(!info->used);
     if (retro_ui_button(piccolo_text(strings, Str::quick_menu_load)) ||
         (info->used && keys && retro_ui_key_pressed(RetroUiKey::l, false)))
     {
-        action = QuickMenuAction::load;
+        action->press = QuickMenuPress::load;
     }
     retro_ui_end_disabled();
     retro_ui_end_group();
     retro_ui_spacing();
     retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::quick_menu_keys), 0.0f);
-    return action;
 }
 
-QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context, RetroUiFont* pixel_font, int32_t scale)
+void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* pixel_font, int32_t scale,
+                     QuickMenuAction* action)
 {
+    *action = {};
     if (!menu->open)
     {
-        return QuickMenuAction::none;
+        return;
     }
-    const Localization* strings = context->strings;
-    if (menu->refresh)
-    {
-        menu->refresh = false;
-        for (uint32_t slot = LIBRETRO_STATE_SLOT_FIRST; slot <= LIBRETRO_STATE_SLOT_LAST; slot++)
-        {
-            core_session_slot_info(context->session, slot, &menu->slots[slot]);
-        }
-        menu->shown_slot = 0;   // the selected thumbnail may have changed
-    }
-
-    QuickMenuAction action = QuickMenuAction::none;
+    const Localization* strings = state->strings;
+    uint32_t slot_before = menu->slot;
     float block = static_cast<float>(scale);
     float screen_width = 0.0f;
     float screen_height = 0.0f;
@@ -287,19 +227,19 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
     {
         if (closed)
         {
-            menu->open = false;
+            action->closed = true;
         }
         bool appearing = retro_ui_window_appearing();
 
         // What runs (the pixel font draws it in capitals).
         char running[600] = {};
-        if (context->game_name[0] != '\0')
+        if (state->game_name[0] != '\0')
         {
-            std::snprintf(running, sizeof(running), "%s - %s", context->game_name, context->core_name);
+            std::snprintf(running, sizeof(running), "%s - %s", state->game_name, state->core_name);
         }
         else
         {
-            std::snprintf(running, sizeof(running), "%s", context->core_name);
+            std::snprintf(running, sizeof(running), "%s", state->core_name);
         }
         retro_ui_dim_text(running, nullptr);
         retro_ui_spacing();
@@ -308,37 +248,135 @@ QuickMenuAction quick_menu_draw(QuickMenu* menu, const QuickMenuContext* context
         float row_width = retro_ui_width_left();
         float third = static_cast<float>(static_cast<int>((row_width - 2.0f * retro_ui_item_spacing()) / 3.0f));
         float half = static_cast<float>(static_cast<int>((row_width - retro_ui_item_spacing()) / 2.0f));
-        if (retro_ui_button_sized(piccolo_text(strings, context->user_paused ? Str::quick_menu_resume : Str::quick_menu_pause),
+        if (retro_ui_button_sized(piccolo_text(strings, state->user_paused ? Str::quick_menu_resume : Str::quick_menu_pause),
                                   third, 0.0f))
         {
-            action = QuickMenuAction::pause;
+            action->press = QuickMenuPress::pause;
         }
         retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_dvr), third, 0.0f))
         {
-            action = QuickMenuAction::dvr;   // a window widget: it replaces QUICK MENU
+            action->press = QuickMenuPress::dvr;   // a window widget: it replaces QUICK MENU
         }
         retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_config), third, 0.0f))
         {
-            action = QuickMenuAction::config;   // CORE CONFIGURATION, a MAIN MENU window
+            action->press = QuickMenuPress::config;   // CORE CONFIGURATION, a MAIN MENU window
         }
         retro_ui_item_tooltip(piccolo_text(strings, Str::quick_menu_config_help));
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_reset), half, 0.0f))
         {
-            action = QuickMenuAction::reset;
+            action->press = QuickMenuPress::reset;
         }
         retro_ui_same_line();
         if (retro_ui_button_sized(piccolo_text(strings, Str::quick_menu_close_game), half, 0.0f))
         {
-            action = QuickMenuAction::close_game;
+            action->press = QuickMenuPress::close_game;
         }
         retro_ui_separator();
         retro_ui_spacing();
-        QuickMenuAction states = draw_states(menu, context, block, appearing);
-        action = states != QuickMenuAction::none ? states : action;
+        draw_states(menu, state, block, appearing, action);
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
-    return action;
+    action->slot_picked = menu->slot != slot_before;
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void quick_menu_open(QuickMenu* menu, uint32_t slot)
+{
+    menu->open = true;
+    menu->slot = slot >= LIBRETRO_STATE_SLOT_FIRST && slot <= LIBRETRO_STATE_SLOT_LAST ? slot : LIBRETRO_STATE_SLOT_FIRST;
+    menu->refresh = true;
+}
+
+// Loads the selected slot's PNG into `pixels` (B8G8R8A8, opaque) when it isn't the one shown.
+static void load_thumbnail(QuickMenu* menu)
+{
+    const StateSlotInfo* info = &menu->slots[menu->slot];
+    if (!info->used || !info->has_thumbnail)
+    {
+        menu->has_picture = false;
+        menu->shown_slot = 0;
+        return;
+    }
+    if (menu->shown_slot == menu->slot && menu->shown_modified == info->modified)
+    {
+        return;
+    }
+    menu->shown_slot = menu->slot;
+    menu->shown_modified = info->modified;
+    menu->has_picture = false;
+    SDL_Surface* png = SDL_LoadPNG(info->thumbnail_path);
+    SDL_Surface* converted = png != nullptr ? SDL_ConvertSurface(png, SDL_PIXELFORMAT_ARGB8888) : nullptr;
+    if (converted != nullptr && converted->w > 0 && converted->h > 0 &&
+        static_cast<uint32_t>(converted->w) <= THUMBNAIL_CAPACITY && static_cast<uint32_t>(converted->h) <= THUMBNAIL_CAPACITY)
+    {
+        menu->width = static_cast<uint32_t>(converted->w);
+        menu->height = static_cast<uint32_t>(converted->h);
+        menu->pixels.resize(static_cast<size_t>(menu->width) * menu->height);
+        for (uint32_t y = 0; y < menu->height; y++)
+        {
+            const uint8_t* row = static_cast<const uint8_t*>(converted->pixels) + static_cast<size_t>(y) * static_cast<size_t>(converted->pitch);
+            std::memcpy(&menu->pixels[static_cast<size_t>(y) * menu->width], row, static_cast<size_t>(menu->width) * 4);
+        }
+        menu->upload_pending = true;
+    }
+    else
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Quick menu: could not read thumbnail %s: %s", info->thumbnail_path,
+                    SDL_GetError());
+    }
+    SDL_DestroySurface(converted);
+    SDL_DestroySurface(png);
+}
+
+void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSession* session)
+{
+    if (action->closed)
+    {
+        menu->open = false;
+    }
+    if (action->slot_picked || menu->open)
+    {
+        session->state_slot = menu->slot;   // F2 / F4 follow the picked slot
+    }
+    if (menu->open)
+    {
+        load_thumbnail(menu);   // the slot picked this frame's, uploaded later in the frame
+    }
+}
+
+// The thumbnail's texture (the renderer's, outside the toolkit).
+void quick_menu_upload(QuickMenu* menu, AppShell* shell)
+{
+    if (!menu->upload_pending)
+    {
+        return;
+    }
+    if (!video_texture_created(&menu->texture))
+    {
+        if (!video_texture_create(&menu->texture, shell, THUMBNAIL_CAPACITY, THUMBNAIL_CAPACITY,
+                                  FramePixelFormat::xrgb8888, false))
+        {
+            menu->upload_pending = false;
+            return;
+        }
+    }
+    if (!app_shell_acquire(shell))
+    {
+        return;   // try on the next frame
+    }
+    if (video_texture_upload(&menu->texture, shell, menu->pixels.data(), menu->width, menu->height))
+    {
+        menu->has_picture = true;
+    }
+    menu->upload_pending = false;
+}
+
+void quick_menu_destroy(QuickMenu* menu, AppShell* shell)
+{
+    video_texture_destroy(&menu->texture, shell);   // waits for the GPU
 }
