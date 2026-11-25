@@ -7,6 +7,7 @@
 // ui_toolkit_imgui.cpp knows they come from ImGui. A second toolkit would
 // write its own ui_toolkit_*.cpp with the same functions.
 
+#include "retro_ui.h"   // RetroUiPalette
 #include "retro_ui_font.h"
 
 // Starts the toolkit's side of piccolo once the window and GPU are up (after
@@ -20,6 +21,23 @@ void ui_toolkit_set_layout_file(const char* path);
 
 // The retro UI's scale this frame (the text shadows follow it).
 void ui_toolkit_set_scale(int32_t scale);
+
+// The retro UI's scale (window pixels per retro pixel) for a screen this
+// size, in the toolkit's units.
+int32_t ui_toolkit_scale_for_screen(float width, float height);
+
+// The interface's colors (the theme), from now on. At the frame's start,
+// before the toolkit's frame begins.
+void ui_toolkit_set_palette(const RetroUiPalette* palette);
+
+// The screen changed size (a phone turned, the window resized): the open
+// windows go back to the middle, or they'd keep their old place, half off
+// the screen.
+void ui_toolkit_center_windows();
+
+// PAGE LEFT / RIGHT this loop: the focused window's tabs move by `delta`
+// (-1, 0, 1) when they're next drawn.
+void ui_toolkit_page_request(int delta);
 
 // The interface keys a gamepad drives the menus and dialogs with, as the
 // keyboard does: move, activate, and back (closes an open list or popup).

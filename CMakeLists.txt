@@ -212,6 +212,7 @@ set(PICCOLO_SOURCES
     src/image_window.cpp
     src/piccolo_window.cpp
     src/recent_games.cpp
+    src/ui.cpp
     src/ui_toolkit_imgui.cpp
     src/debug_window.cpp
     src/core_options_ui.cpp

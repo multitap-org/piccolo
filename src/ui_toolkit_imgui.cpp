@@ -42,6 +42,26 @@ void ui_toolkit_set_scale(int32_t scale)
     g_scale = scale;
 }
 
+int32_t ui_toolkit_scale_for_screen(float width, float height)
+{
+    return retro_ui_scale_for_window(width, height);
+}
+
+void ui_toolkit_set_palette(const RetroUiPalette* palette)
+{
+    retro_ui_set_palette(palette);
+}
+
+void ui_toolkit_center_windows()
+{
+    retro_ui_center_windows();
+}
+
+void ui_toolkit_page_request(int delta)
+{
+    retro_ui_set_page_request(delta);
+}
+
 static ImGuiKey imgui_key(UiNavKey key)
 {
     switch (key)
