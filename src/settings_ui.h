@@ -44,10 +44,7 @@ struct SettingsUiContext
     const Localization* strings     = nullptr;   // UI text (piccolo_text.h)
     SettingLayer scope       = SettingLayer::global;
     float        label_width = 0.0f;   // width of the label column
-    // Where a change goes. While a window isn't split yet (it passes
-    // nullptr), `apply_to` gets it right away instead.
-    SettingsUiEdit* edit     = nullptr;
-    Settings*       apply_to = nullptr;
+    SettingsUiEdit* edit     = nullptr;   // where a change goes (the window applies it after drawing)
 };
 
 // Applies a pending edit to the settings and clears it. True when a value
@@ -55,8 +52,8 @@ struct SettingsUiContext
 bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit);
 
 // One setting's row. `hint` is shown in an empty path field (e.g. the
-// default folder); may be nullptr. Returns true if the value changed (with
-// an edit out: if the user changed it, to be applied after drawing).
+// default folder); may be nullptr. Returns true if the user changed the
+// value (the change is in context->edit, applied after drawing).
 bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint);
 
 // A folder setting changed with CHOOSE FOLDER: the row of settings_ui_row,
@@ -65,15 +62,15 @@ bool settings_ui_row(const SettingsUiContext* context, const char* key, const ch
 bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, const char* hint);
 
 // A path setting's row with a button after the field (e.g. CHOOSE, which
-// opens a picker). Sets *button_clicked. Returns true if the value changed
-// (typed in the field, or reset).
+// opens a picker). Sets *button_clicked. Returns true if the user changed
+// the value (typed in the field, or reset).
 bool settings_ui_path_row_with_button(const SettingsUiContext* context, const char* key, const char* hint,
                                       const char* button, bool* button_clicked);
 
 // A text setting picked from a list (e.g. the audio devices connected now).
 // "" shows `empty_label`; a stored value that isn't in the list is shown
 // with `missing_label` after it, and kept until something else is picked.
-// Returns true if the value changed.
+// Returns true if the user changed the value.
 bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* key, const char* const* choices,
                                  uint32_t choice_count, const char* empty_label, const char* missing_label);
 

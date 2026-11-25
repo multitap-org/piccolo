@@ -201,18 +201,13 @@ static void draw_row(const SettingsUiContext* context, const SettingRowState* st
 
 // ---------------------------------------------------------------------------
 // The rows the windows use: state from settings_view, drawing above, the
-// action handed to the window (context->edit) or, for a window not split
-// yet, applied by settings_view right away.
+// action handed to the window (context->edit), which applies it after
+// drawing with settings_ui_apply_edit.
 
-// What a row does with its action. True when something changed (or, with an
-// edit out, when the user changed something).
+// Hands a row's action out. True when the user changed something.
 static bool finish_row(const SettingsUiContext* context, const char* key, const SettingRowAction* action)
 {
-    if (context->edit == nullptr)
-    {
-        return context->apply_to != nullptr && settings_view_apply(context->apply_to, context->scope, key, action);
-    }
-    if (action->edit == SettingRowEdit::none)
+    if (context->edit == nullptr || action->edit == SettingRowEdit::none)
     {
         return false;
     }
