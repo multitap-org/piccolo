@@ -219,6 +219,7 @@ set(PICCOLO_SOURCES
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp
+    src/share_paths.cpp
     src/pair_window.cpp
     src/safe_start_window.cpp
     src/text_input_window.cpp
@@ -535,6 +536,15 @@ if(MULTITAP_BUILD_TESTS)
              COMMAND piccolo_recent_games_test "${CMAKE_CURRENT_BINARY_DIR}/recent_games_test")
     set_tests_properties(piccolo_recent_games PROPERTIES
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # FILE TRANSFER's target paths (MIRROR FOLDER STRUCTURE), no GUI.
+    add_executable(piccolo_share_paths_test tools/share_paths_test.cpp src/share_paths.cpp)
+    target_include_directories(piccolo_share_paths_test PRIVATE src)
+    target_link_libraries(piccolo_share_paths_test PRIVATE frontend_net)
+    multitap_set_project_flags(piccolo_share_paths_test)
+    add_test(NAME piccolo_share_paths COMMAND piccolo_share_paths_test)
+    set_tests_properties(piccolo_share_paths PROPERTIES
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 endif()
 
 

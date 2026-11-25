@@ -2963,6 +2963,14 @@ msgctxt "setting_net_beacon_help"
 msgid "The server that introduces paired devices across the internet. Anyone can run their own (MULTITAP-BEACON)."
 msgstr "El servidor que presenta a los dispositivos vinculados a través de internet. Cualquiera puede montar el suyo (MULTITAP-BEACON)."
 
+msgctxt "setting_share_mirror_folders"
+msgid "MIRROR FOLDER STRUCTURE"
+msgstr "REPLICAR ESTRUCTURA DE CARPETAS"
+
+msgctxt "setting_share_mirror_folders_help"
+msgid "FILE TRANSFER copies a file to the same place on the other side: ROMS/gba/Game.gba goes to its ROMS/gba, making the folders it needs, whatever folder is open there. Off, it goes into the folder open on the other side."
+msgstr "TRANSFERIR ARCHIVOS copia un archivo al mismo lugar del otro lado: ROMS/gba/Juego.gba va a su ROMS/gba, creando las carpetas que falten, sea cual sea la carpeta abierta allí. Desactivado, va a la carpeta abierta del otro lado."
+
 msgctxt "net_beacon_status"
 msgid "STATUS"
 msgstr "ESTADO"
@@ -3293,6 +3301,18 @@ msgstr "Copia el archivo elegido del otro piccolo a la carpeta abierta aquí."
 msgctxt "share_hint"
 msgid "SELECT A FILE, OPEN A FOLDER ON THE OTHER SIDE, THEN PRESS THE ARROW."
 msgstr "ELIGE UN ARCHIVO, ABRE UNA CARPETA DEL OTRO LADO Y PULSA LA FLECHA."
+
+msgctxt "share_hint_mirror"
+msgid "SELECT A FILE, THEN PRESS THE ARROW: IT GOES TO THE SAME FOLDER ON THE OTHER SIDE."
+msgstr "ELIGE UN ARCHIVO Y PULSA LA FLECHA: VA A LA MISMA CARPETA DEL OTRO LADO."
+
+msgctxt "share_copy_to_remote_mirror_help"
+msgid "Copies the selected file to the same folder on the other piccolo (SETTINGS > NETWORK > MIRROR FOLDER STRUCTURE), making the folders it needs."
+msgstr "Copia el archivo elegido a la misma carpeta del otro piccolo (AJUSTES > RED > REPLICAR ESTRUCTURA DE CARPETAS), creando las carpetas que falten."
+
+msgctxt "share_copy_to_local_mirror_help"
+msgid "Copies the selected file from the other piccolo to the same folder here (SETTINGS > NETWORK > MIRROR FOLDER STRUCTURE), making the folders it needs."
+msgstr "Copia el archivo elegido del otro piccolo a la misma carpeta aquí (AJUSTES > RED > REPLICAR ESTRUCTURA DE CARPETAS), creando las carpetas que falten."
 
 msgctxt "share_sending"
 msgid "SENDING"
