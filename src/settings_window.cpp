@@ -40,6 +40,32 @@ static bool true_at_scope(const Settings* settings, SettingLayer scope, const ch
     return value != nullptr && std::strcmp(value, "true") == 0;
 }
 
+// A REWIND value as its label ("auto" -> AUTO); "" for an unknown one.
+static const char* rewind_value_text(const Localization* strings, const char* value)
+{
+    if (value == nullptr)
+    {
+        return "";
+    }
+    if (std::strcmp(value, "off") == 0)
+    {
+        return piccolo_text(strings, Str::value_rewind_off);
+    }
+    if (std::strcmp(value, "auto") == 0)
+    {
+        return piccolo_text(strings, Str::value_rewind_auto);
+    }
+    if (std::strcmp(value, "scrub") == 0)
+    {
+        return piccolo_text(strings, Str::value_rewind_scrub);
+    }
+    if (std::strcmp(value, "snapshots") == 0)
+    {
+        return piccolo_text(strings, Str::value_rewind_snapshots);
+    }
+    return "";
+}
+
 void settings_window_state(SettingsWindowState* state, const SettingsWindow* window, const Settings* settings,
                            const Localization* strings, const AppPaths* paths, const char* core_name,
                            const char* game_name, const SettingsWindowNotes* notes,
@@ -74,6 +100,14 @@ void settings_window_state(SettingsWindowState* state, const SettingsWindow* win
     state->themes = themes;
     image_window_state(&state->image, settings, strings, scope, image);
     state->network = network;
+    // REWIND's header: what runs now (AUTO's choice for the running game),
+    // else the setting at the scope being edited.
+    state->rewind_mode = notes->rewind_in_use;
+    if (state->rewind_mode == nullptr || state->rewind_mode[0] == '\0')
+    {
+        const char* value = settings_get_at(settings, scope, PICCOLO_REWIND, nullptr);
+        state->rewind_mode = rewind_value_text(strings, value);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,22 +197,14 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     }
 }
 
-static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowState* state,
-                         SettingsWindowAction* action)
+// REWIND, folded at first: its header shows the mode in use now (what AUTO
+// chose for the running game, else the setting), so it says enough closed.
+static void draw_rewind(const SettingsUiContext* ui, const SettingsWindowState* state, SettingsWindowAction* action)
 {
-    settings_ui_row(ui, PICCOLO_LANGUAGE, nullptr);
-    settings_ui_row(ui, PICCOLO_PAUSE_IN_MENU, nullptr);
-    settings_ui_row(ui, PICCOLO_PAUSE_ON_FOCUS_LOSS, nullptr);
-    settings_ui_row(ui, PICCOLO_PAUSE_ON_DISCONNECT, nullptr);
-    settings_ui_row(ui, PICCOLO_SCREENSAVER_WHEN_PAUSED, nullptr);
-    if (state->game_mode_supported)   // Linux only: nothing to turn on elsewhere
+    if (!settings_ui_section("rewind", piccolo_text(ui->strings, Str::section_rewind), state->rewind_mode, false))
     {
-        settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);
-        retro_ui_dim_text(state->notes.game_mode, nullptr);
+        return;
     }
-    settings_ui_row(ui, PICCOLO_SHOW_FPS, nullptr);
-    settings_ui_row(ui, PICCOLO_SCREENSHOT_MODE, nullptr);
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_rewind));
     settings_ui_row(ui, PICCOLO_REWIND, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_SCRUB_LENGTH, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_EVERY, nullptr);
@@ -196,6 +222,24 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
         }
         retro_ui_item_tooltip(piccolo_text(ui->strings, Str::rewind_measure_again_help));
     }
+}
+
+static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowState* state,
+                         SettingsWindowAction* action)
+{
+    settings_ui_row(ui, PICCOLO_LANGUAGE, nullptr);
+    settings_ui_row(ui, PICCOLO_PAUSE_IN_MENU, nullptr);
+    settings_ui_row(ui, PICCOLO_PAUSE_ON_FOCUS_LOSS, nullptr);
+    settings_ui_row(ui, PICCOLO_PAUSE_ON_DISCONNECT, nullptr);
+    settings_ui_row(ui, PICCOLO_SCREENSAVER_WHEN_PAUSED, nullptr);
+    if (state->game_mode_supported)   // Linux only: nothing to turn on elsewhere
+    {
+        settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);
+        retro_ui_dim_text(state->notes.game_mode, nullptr);
+    }
+    settings_ui_row(ui, PICCOLO_SHOW_FPS, nullptr);
+    settings_ui_row(ui, PICCOLO_SCREENSHOT_MODE, nullptr);
+    draw_rewind(ui, state, action);
     // FOLDERS: rarely changed, closed until opened. A click on a field
     // opens CHOOSE FOLDER (piccolo); RESET goes back to the default shown.
     if (folder_section(window, FolderSection::folders, piccolo_text(ui->strings, Str::section_folders), "folders"))
@@ -254,7 +298,11 @@ static void draw_display(const SettingsUiContext* ui, const SettingsWindowState*
 {
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN, nullptr);
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN_TYPE, nullptr);
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_window));
+    // WINDOW: open at first (the window's size is what most come here for).
+    if (!settings_ui_section("window", piccolo_text(ui->strings, Str::section_window), nullptr, true))
+    {
+        return;
+    }
     settings_ui_row(ui, PICCOLO_WINDOW_MODE, nullptr);
     if (state->window_fixed)
     {
@@ -303,7 +351,11 @@ static void draw_sync(const SettingsUiContext* ui, const SettingsWindowState* st
 {
     settings_ui_row(ui, PICCOLO_VIDEO_TIMING, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_CATCH_UP, nullptr);
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_low_latency));
+    // LATENCY: folded at first (the presets are for those who look for them).
+    if (!settings_ui_section("latency", piccolo_text(ui->strings, Str::section_latency), nullptr, false))
+    {
+        return;
+    }
     if (PICCOLO_BROWSER)
     {
         // The browser paces presents itself and never waits: frames in
@@ -358,7 +410,11 @@ static void draw_sound(const SettingsUiContext* ui, const SettingsWindowState* s
     settings_ui_row(ui, PICCOLO_AUDIO_LATENCY, nullptr);
     retro_ui_dim_text(state->notes.audio_latency, nullptr);
 
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_advanced));
+    // ADVANCED: folded at first.
+    if (!settings_ui_section("advanced", piccolo_text(ui->strings, Str::section_advanced), nullptr, false))
+    {
+        return;
+    }
     settings_ui_row(ui, PICCOLO_AUDIO_RATE_CONTROL, nullptr);
     // The limit only matters with rate control on: greyed out without it, the stored value kept.
     retro_ui_begin_disabled(!state->rate_control);
@@ -688,12 +744,18 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
     settings_ui_row(ui, PICCOLO_UI_SHADOWS, nullptr);
     settings_ui_row(ui, PICCOLO_UI_THEME_CURSOR, nullptr);
     settings_ui_row(ui, PICCOLO_MENU_BACKDROP, nullptr);
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_effects));
-    settings_ui_row(ui, PICCOLO_SCREEN_EFFECTS, nullptr);
-    retro_ui_separator_text(piccolo_text(ui->strings, Str::section_colors));
-    for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
+    // COLORS, then EFFECTS (Andrés, testing round 1). COLORS is a long list
+    // THEME already sets: folded at first. EFFECTS is one row: open.
+    if (settings_ui_section("colors", piccolo_text(ui->strings, Str::section_colors), nullptr, false))
     {
-        settings_ui_row(ui, piccolo_settings_ui_color_key(i), nullptr);
+        for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
+        {
+            settings_ui_row(ui, piccolo_settings_ui_color_key(i), nullptr);
+        }
+    }
+    if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, true))
+    {
+        settings_ui_row(ui, PICCOLO_SCREEN_EFFECTS, nullptr);
     }
 }
 

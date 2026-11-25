@@ -108,8 +108,3 @@ void ui_toolkit_screen_size(float* width, float* height)
     *width = io.DisplaySize.x;
     *height = io.DisplaySize.y;
 }
-
-void ui_toolkit_demo_window(bool* open)
-{
-    ImGui::ShowDemoWindow(open);
-}

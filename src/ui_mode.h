@@ -65,6 +65,7 @@ enum class UiWindow
     debug,             // the debug window
     pad_editor,        // the on-screen pad's EDIT LAYOUT (drawn by the overlay)
     core_config,       // CORE CONFIGURATION: core options, controls, shader (also QUICK MENU's CONFIG)
+    about,             // MISC > ABOUT
     count,
 };
 
@@ -160,7 +161,7 @@ struct UiFacts
     bool played_with_gamepad = false;   // the last game input came from a local gamepad
     bool gamepad_on_port = false;       // a local gamepad is on a port now
     bool background = false;            // Android: in the background
-    bool pairing_request = false;       // the pairing request dialog is up
+    bool pairing_request = false;       // a device asks to pair (TOOLS > PAIR... shows it)
 };
 
 struct UiDerived

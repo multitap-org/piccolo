@@ -3,7 +3,12 @@
 // The debug window (MENU > DEBUG): versions, the GPU, timing and audio
 // numbers, and WIDGETS, every widget on demand to see and try them without
 // the situation that brings them up (Andrés, 2026-11-21). In English only:
-// it's for developers.
+// it's for developers. The numbers stay in view; the widget sections fold
+// away (testing round 1).
+//
+// The rule (Andrés): every new dialog, window or pop-up gets a way to show it
+// here, live, without the situation that brings it up: a HUD card with fake
+// text, or a preview of the window with fake state (debug_preview.h).
 //
 // The pattern of every window: main.cpp fills a DebugWindowState (plain
 // data, no GUI), debug_window_draw draws it with retroui and returns what was
@@ -16,6 +21,29 @@
 // The state icons the window can force on (StateIcon order: pause, rewind,
 // play, fast forward).
 constexpr uint32_t DEBUG_WINDOW_ICON_COUNT = 4;
+
+// The windows the debug window shows as previews (debug_preview.h), one at a
+// time: drawn by their own draw functions with fake state, what's pressed in
+// them ignored, closing them (X, CLOSE, Escape) ends the preview.
+enum class DebugPreview
+{
+    none,
+    // PAIR, each step of both modes (pair_window.h).
+    pair_host_list,            // PAIR WITH A HOST: the devices found
+    pair_host_code_lan,        // our code, for a device on this network
+    pair_host_code_internet,   // our code, across the internet
+    pair_host_paired,          // paired, with LET IT CONNECT ...? YES / NO
+    pair_client_type,          // PAIR WITH A CLIENT: type the code
+    pair_client_waiting,       // ALLOW pressed: waiting
+    pair_client_request,       // a device asking
+    pair_client_paired,        // paired
+    about,                     // MISC > ABOUT (about_window.h)
+    // REMOTE PLAY (guest_window.h).
+    remote_no_link,            // before CREATE LINK
+    remote_no_guests,          // a link, nobody in
+    remote_guests,             // a link, a player on a port and a spectator
+    quick_menu,                // QUICK MENU with SAVE STATES open (quick_menu.h): no game needed
+};
 
 struct DebugWindowState
 {
@@ -49,8 +77,10 @@ struct DebugWindowState
     bool devices_available = false;   // a port has a controller (DEVICES has something to show)
     bool text_box_allowed  = false;   // no text box is pending already
     bool keep_revert_allowed = false; // KEEP / REVERT isn't asking already
-
-    bool toolkit_demo_shown = false;  // the GUI toolkit's own demo window (ImGui's today)
+    bool pair_request_card = false;   // the fake pairing request's card is up
+    bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
+    bool about_open = false;          // the real ABOUT
+    bool guest_open = false;          // the real REMOTE PLAY
 };
 
 enum class DebugWindowPress
@@ -66,6 +96,9 @@ enum class DebugWindowPress
     open_dvr,
     text_box,         // a fake TEXT request from the game
     keep_revert,      // the KEEP / REVERT question
+    card_link_copied,     // REMOTE PLAY's LINK COPIED TO THE CLIPBOARD
+    card_pair_timed_out,  // PAIRING TIMED OUT
+    card_pair_failed,     // PAIRING FAILED
 };
 
 struct DebugWindowAction
@@ -73,9 +106,10 @@ struct DebugWindowAction
     DebugWindowPress press = DebugWindowPress::none;
     bool closed = false;
     bool icons_forced[DEBUG_WINDOW_ICON_COUNT] = {};   // the checkboxes after this frame
-    bool toolkit_demo_shown = false;
+    bool pair_request_card = false;                    // its checkbox after this frame
+    DebugPreview preview = DebugPreview::none;         // a preview to show
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).
-// action->icons_forced and ->toolkit_demo_shown start as the state's.
+// action->icons_forced and pair_request_card start as the state's.
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);

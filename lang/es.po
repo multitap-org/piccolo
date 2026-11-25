@@ -30,9 +30,17 @@ msgctxt "menu_load_game"
 msgid "LOAD GAME..."
 msgstr "CARGAR JUEGO..."
 
+msgctxt "menu_close_game"
+msgid "CLOSE GAME"
+msgstr "CERRAR JUEGO"
+
 msgctxt "menu_reset"
-msgid "RESET"
-msgstr "REINICIAR"
+msgid "SOFT RESET"
+msgstr "REINICIO SUAVE"
+
+msgctxt "menu_hard_reset"
+msgid "HARD RESET"
+msgstr "REINICIO COMPLETO"
 
 msgctxt "menu_save_state"
 msgid "SAVE STATE"
@@ -41,6 +49,14 @@ msgstr "GUARDAR ESTADO"
 msgctxt "menu_load_state"
 msgid "LOAD STATE"
 msgstr "CARGAR ESTADO"
+
+msgctxt "menu_quick_save"
+msgid "QUICK SAVE"
+msgstr "GUARDADO RÁPIDO"
+
+msgctxt "menu_quick_load"
+msgid "QUICK LOAD"
+msgstr "CARGA RÁPIDA"
 
 msgctxt "menu_quit"
 msgid "QUIT"
@@ -63,16 +79,32 @@ msgid "SOUND..."
 msgstr "SONIDO..."
 
 msgctxt "menu_debug_window"
-msgid "DEBUG WINDOW"
-msgstr "VENTANA DE DEPURACIÓN"
+msgid "DEBUG"
+msgstr "DEPURACIÓN"
 
 msgctxt "menu_about"
-msgid "ABOUT PICCOLO"
-msgstr "ACERCA DE PICCOLO"
+msgid "ABOUT..."
+msgstr "ACERCA DE..."
+
+msgctxt "about_title"
+msgid "ABOUT"
+msgstr "ACERCA DE"
+
+msgctxt "about_version"
+msgid "VERSION"
+msgstr "VERSIÓN"
+
+msgctxt "about_line"
+msgid "A SMALL LIBRETRO FRONTEND FOR PLAYING GAMES, PART OF THE MULTITAP PROJECT."
+msgstr "UN PEQUEÑO FRONTEND DE LIBRETRO PARA JUGAR, PARTE DEL PROYECTO MULTITAP."
 
 msgctxt "menu_recent_empty"
 msgid "NO RECENT GAMES"
 msgstr "NO HAY JUEGOS RECIENTES"
+
+msgctxt "menu_clear_recents"
+msgid "CLEAR ALL"
+msgstr "BORRAR TODO"
 
 msgctxt "recent_no_game"
 msgid "NO GAME"
@@ -258,9 +290,9 @@ msgctxt "window_sized_when_running"
 msgid "SIZED TO THE GAME WHEN ONE RUNS"
 msgstr "TOMA EL TAMAÑO DEL JUEGO CUANDO HAY UNO EN MARCHA"
 
-msgctxt "section_low_latency"
-msgid "LOW LATENCY"
-msgstr "BAJA LATENCIA"
+msgctxt "section_latency"
+msgid "LATENCY"
+msgstr "LATENCIA"
 
 msgctxt "frame_delay_needs_wait"
 msgid "ONLY WITH WAIT FOR PRESENT: WITHOUT IT THE LOOP WAITS FOR THE DISPLAY AFTER READING INPUT, SO A DELAY ONLY ADDS LATENCY."
@@ -1151,8 +1183,8 @@ msgid "NOTHING STORED: THE CORE'S DEFAULTS"
 msgstr "NADA GUARDADO: LOS VALORES DEL CORE"
 
 msgctxt "core_options_section_core"
-msgid "FOR THE CORE"
-msgstr "PARA EL CORE"
+msgid "GENERAL"
+msgstr "GENERAL"
 
 msgctxt "core_options_section_folder"
 msgid "FOLDER"
@@ -1162,19 +1194,15 @@ msgctxt "core_options_section_game"
 msgid "GAME"
 msgstr "JUEGO"
 
-msgctxt "core_options_delete"
-msgid "DELETE"
-msgstr "BORRAR"
+msgctxt "core_options_reset"
+msgid "RESET"
+msgstr "RESTABLECER"
 
-msgctxt "core_options_delete_section"
-msgid "DELETE SECTION"
-msgstr "BORRAR SECCIÓN"
+msgctxt "core_options_reset_all"
+msgid "RESET ALL"
+msgstr "RESTABLECER TODO"
 
-msgctxt "core_options_delete_all"
-msgid "DELETE ALL FOR THIS CORE"
-msgstr "BORRAR TODO DE ESTE CORE"
-
-msgctxt "core_options_delete_all_help"
+msgctxt "core_options_reset_all_help"
 msgid "Back to the core's own defaults for every game. Use it when an option keeps the core from starting."
 msgstr "Volver a los valores del propio core en todos los juegos. Úsalo cuando una opción no deja arrancar al core."
 
@@ -1254,17 +1282,33 @@ msgctxt "quick_menu_load"
 msgid "LOAD"
 msgstr "CARGAR"
 
+msgctxt "quick_menu_quick_save"
+msgid "QUICK SAVE"
+msgstr "GUARDAR YA"
+
+msgctxt "quick_menu_quick_load"
+msgid "QUICK LOAD"
+msgstr "CARGAR YA"
+
+msgctxt "quick_menu_screenshot"
+msgid "SCREENSHOT"
+msgstr "CAPTURA"
+
 msgctxt "quick_menu_reset"
-msgid "RESET"
+msgid "SOFT RESET"
 msgstr "REINICIAR"
+
+msgctxt "quick_menu_hard_reset"
+msgid "HARD RESET"
+msgstr "RECARGAR"
 
 msgctxt "quick_menu_close_game"
 msgid "CLOSE GAME"
 msgstr "CERRAR JUEGO"
 
 msgctxt "quick_menu_keys"
-msgid "ARROWS OR 1-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
-msgstr "FLECHAS O 1-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
+msgid "ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
+msgstr "FLECHAS O 0-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
 
 msgctxt "status_game_closed"
 msgid "GAME CLOSED"
@@ -1283,7 +1327,7 @@ msgid "GENERAL"
 msgstr "GENERAL"
 
 msgctxt "quick_menu_tab_states"
-msgid "SAVESTATES"
+msgid "SAVE STATES"
 msgstr "SAVESTATES"
 
 msgctxt "core_options_running_note"
@@ -1299,8 +1343,8 @@ msgid "TOOLS"
 msgstr "HERRAMIENTAS"
 
 msgctxt "menu_options_manager"
-msgid "OPTIONS MANAGER..."
-msgstr "ADMINISTRAR OPCIONES..."
+msgid "CORE OPTIONS MANAGER..."
+msgstr "ADMINISTRAR OPCIONES DE CORES..."
 
 msgctxt "setting_ui_menu_boxes"
 msgid "MENU TITLE BOXES"
@@ -2740,12 +2784,12 @@ msgid "Or press any button on the controller."
 msgstr "O presiona cualquier botón del control."
 
 msgctxt "menu_cores"
-msgid "CORES..."
-msgstr "CORES..."
+msgid "CORE MANAGER..."
+msgstr "ADMINISTRAR CORES..."
 
 msgctxt "menu_share"
-msgid "SHARE..."
-msgstr "COMPARTIR..."
+msgid "FILE TRANSFER..."
+msgstr "TRANSFERIR ARCHIVOS..."
 
 msgctxt "cores_title"
 msgid "CORES"
@@ -2808,8 +2852,8 @@ msgid "-"
 msgstr "-"
 
 msgctxt "cores_status_by_hand"
-msgid "YOURS"
-msgstr "TUYO"
+msgid "N/A"
+msgstr "N/D"
 
 msgctxt "cores_free"
 msgid "FREE"
@@ -2880,16 +2924,16 @@ msgid "NETWORK"
 msgstr "RED"
 
 msgctxt "setting_net_enabled"
-msgid "ALLOW CONNECTIONS"
-msgstr "PERMITIR CONEXIONES"
+msgid "ENABLE NETWORKING"
+msgstr "ACTIVAR LA RED"
 
 msgctxt "setting_net_enabled_help"
 msgid "Lets paired devices (PICCOLETTO, another PICCOLO) connect to this one over the network. Off: nothing listens."
 msgstr "Deja que los dispositivos vinculados (PICCOLETTO, otro PICCOLO) se conecten a este por la red. Apagado: nada escucha."
 
 msgctxt "setting_net_name"
-msgid "NAME"
-msgstr "NOMBRE"
+msgid "DEVICE NAME"
+msgstr "NOMBRE DEL DISPOSITIVO"
 
 msgctxt "setting_net_name_help"
 msgid "What other devices see when they look for this one."
@@ -2904,8 +2948,8 @@ msgid "The UDP port for everything network. Change it only if another program us
 msgstr "El puerto UDP para todo lo de red. Cámbialo solo si otro programa lo usa."
 
 msgctxt "setting_net_internet"
-msgid "INTERNET"
-msgstr "INTERNET"
+msgid "ENABLE CONNECTIONS OVER INTERNET"
+msgstr "ACTIVAR CONEXIONES POR INTERNET"
 
 msgctxt "setting_net_internet_help"
 msgid "Lets paired devices connect from outside this network, through the BEACON SERVER. It only introduces the two devices: the game never goes through it. Some networks don't let the connection through."
@@ -2920,8 +2964,8 @@ msgid "The server that introduces paired devices across the internet. Anyone can
 msgstr "El servidor que presenta a los dispositivos vinculados a través de internet. Cualquiera puede montar el suyo (MULTITAP-BEACON)."
 
 msgctxt "net_beacon_status"
-msgid "INTERNET STATUS"
-msgstr "ESTADO DE INTERNET"
+msgid "STATUS"
+msgstr "ESTADO"
 
 msgctxt "net_beacon_status_help"
 msgid "Whether the beacon server knows this PICCOLO, so paired devices can find it from outside."
@@ -2940,12 +2984,24 @@ msgid "READY: PAIRED DEVICES CAN CONNECT"
 msgstr "LISTO: LOS DISPOSITIVOS VINCULADOS PUEDEN CONECTARSE"
 
 msgctxt "net_beacon_symmetric"
-msgid "READY, BUT THIS NETWORK MAY BLOCK CONNECTIONS (SYMMETRIC NAT)"
-msgstr "LISTO, PERO ESTA RED PUEDE BLOQUEAR CONEXIONES (NAT SIMÉTRICO)"
+msgid "READY, BUT THIS NETWORK MAY BLOCK CONNECTIONS"
+msgstr "LISTO, PERO ESTA RED PUEDE BLOQUEAR CONEXIONES"
 
 msgctxt "net_beacon_unreachable"
 msgid "THE BEACON SERVER DOESN'T ANSWER"
 msgstr "EL SERVIDOR BEACON NO RESPONDE"
+
+msgctxt "net_beacon_symmetric_help"
+msgid "This network's router uses symmetric NAT: it gives each connection a different outside port, so a device across the internet may not reach this one. On the same network, or with the router's UPnP or a forwarded port, it works."
+msgstr "El router de esta red usa NAT simétrico: da a cada conexión un puerto externo distinto, así que un dispositivo al otro lado de internet puede no llegar a este. En la misma red, o con UPnP en el router o un puerto redirigido, funciona."
+
+msgctxt "net_section_internet"
+msgid "INTERNET"
+msgstr "INTERNET"
+
+msgctxt "net_section_network_devices"
+msgid "DEVICES"
+msgstr "DISPOSITIVOS"
 
 msgctxt "headless_show"
 msgid "SHOW PICCOLO"
@@ -2968,8 +3024,8 @@ msgid "THE DEVICE WITH THE GAME LEFT: PAUSED"
 msgstr "EL DISPOSITIVO CON EL JUEGO SE FUE: EN PAUSA"
 
 msgctxt "net_this_device"
-msgid "THIS DEVICE"
-msgstr "ESTE DISPOSITIVO"
+msgid "DEVICE ID"
+msgstr "ID DEL DISPOSITIVO"
 
 msgctxt "net_this_device_help"
 msgid "This device's key, in short. The other device shows the same when it pairs with this one."
@@ -2984,18 +3040,14 @@ msgid "THE PORT COULD NOT BE OPENED (IN USE?)"
 msgstr "NO SE PUDO ABRIR EL PUERTO (¿EN USO?)"
 
 msgctxt "net_section_devices"
-msgid "PAIRED DEVICES"
-msgstr "DISPOSITIVOS VINCULADOS"
+msgid "PAIRED CLIENTS"
+msgstr "CLIENTES VINCULADOS"
 
 msgctxt "net_no_devices"
 msgid "NO DEVICES PAIRED YET"
 msgstr "TODAVÍA NO HAY DISPOSITIVOS VINCULADOS"
 
 
-
-msgctxt "net_device_connected"
-msgid "CONNECTED"
-msgstr "CONECTADO"
 
 msgctxt "net_device_forget"
 msgid "FORGET"
@@ -3004,6 +3056,18 @@ msgstr "OLVIDAR"
 msgctxt "net_device_forget_help"
 msgid "Unpairs this device: if it's connected now it forgets this piccolo too; either way it has to pair again to connect."
 msgstr "Desempareja este dispositivo: si está conectado ahora también olvida este piccolo; en todo caso tiene que emparejarse de nuevo para conectarse."
+
+msgctxt "net_device_role"
+msgid "ROLE"
+msgstr "ROL"
+
+msgctxt "net_device_disconnect"
+msgid "DISCONNECT"
+msgstr "DESCONECTAR"
+
+msgctxt "net_device_disconnect_help"
+msgid "Closes this device's connection now. It stays paired and may connect again."
+msgstr "Cierra ahora la conexión de este dispositivo. Sigue vinculado y puede volver a conectarse."
 
 msgctxt "status_net_paired"
 msgid "PAIRED WITH"
@@ -3082,13 +3146,9 @@ msgctxt "status_net_unpaired"
 msgid "UNPAIRED:"
 msgstr "DESEMPAREJADO:"
 
-msgctxt "net_device_ping_help"
-msgid "The round trip to this device and back, as the connection measures it."
-msgstr "El viaje de ida y vuelta hasta este dispositivo, como lo mide la conexión."
-
 msgctxt "net_section_connected"
-msgid "CONNECTED DEVICES"
-msgstr "DISPOSITIVOS CONECTADOS"
+msgid "CONNECTED CLIENTS"
+msgstr "CLIENTES CONECTADOS"
 
 msgctxt "net_no_connected"
 msgid "NO DEVICES CONNECTED"
@@ -3105,10 +3165,6 @@ msgstr "PÉRDIDA"
 msgctxt "net_speed_test"
 msgid "SPEED TEST"
 msgstr "PRUEBA DE VELOCIDAD"
-
-msgctxt "net_speed_test_help"
-msgid "The last speed test the device ran: the best rate each way that lost almost nothing. DOWN: from this piccolo to the device. UP: from the device to this piccolo."
-msgstr "La última prueba de velocidad que hizo el dispositivo: la mejor tasa en cada sentido casi sin pérdidas. BAJADA: de este piccolo al dispositivo. SUBIDA: del dispositivo a este piccolo."
 
 msgctxt "net_speed_down"
 msgid "DOWN"
@@ -3199,8 +3255,8 @@ msgid "NO GAME RUNNING"
 msgstr "NINGÚN JUEGO CORRIENDO"
 
 msgctxt "share_title"
-msgid "SHARE"
-msgstr "COMPARTIR"
+msgid "FILE TRANSFER"
+msgstr "TRANSFERIR ARCHIVOS"
 
 msgctxt "share_this_piccolo"
 msgid "THIS PICCOLO"
@@ -3274,10 +3330,6 @@ msgctxt "share_found_none"
 msgid "LOOKING... (THE OTHER PICCOLO NEEDS NETWORK ON IN SETTINGS > NETWORK)"
 msgstr "BUSCANDO... (EL OTRO PICCOLO NECESITA LA RED ACTIVADA EN AJUSTES > RED)"
 
-msgctxt "share_code"
-msgid "YOUR CODE"
-msgstr "TU CÓDIGO"
-
 msgctxt "share_code_help"
 msgid "The first time only: the other piccolo asks for this code; type it there."
 msgstr "Solo la primera vez: el otro piccolo pide este código; escríbelo allá."
@@ -3323,8 +3375,8 @@ msgid "A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)"
 msgstr "UN PICCOLO EN OTRA RED (SIN VINCULAR)"
 
 msgctxt "share_pair_internet_help"
-msgid "CONNECT shows YOUR CODE: type it on the other piccolo in TOOLS > INVITE. Both need the same BEACON SERVER."
-msgstr "CONECTAR muestra TU CÓDIGO: escríbelo en el otro piccolo en HERRAMIENTAS > INVITAR. Los dos necesitan el mismo SERVIDOR BEACON."
+msgid "CONNECT shows a code in TOOLS > PAIR...: type it on the other piccolo in PAIR WITH A CLIENT. Both need the same BEACON SERVER."
+msgstr "CONECTAR muestra un código en HERRAMIENTAS > VINCULAR...: escríbelo en el otro piccolo en VINCULAR CON UN CLIENTE. Los dos necesitan el mismo SERVIDOR BEACON."
 
 msgctxt "share_refused_host_offline"
 msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."
@@ -3506,6 +3558,10 @@ msgctxt "input_section_touch_pad"
 msgid "ON-SCREEN GAMEPAD"
 msgstr "CONTROL EN PANTALLA"
 
+msgctxt "input_section_general"
+msgid "GENERAL"
+msgstr "GENERAL"
+
 msgctxt "input_touch_pad_edit"
 msgid "EDIT LAYOUT"
 msgstr "EDITAR LAYOUT"
@@ -3543,8 +3599,8 @@ msgid "BACKDROP"
 msgstr "FONDO"
 
 msgctxt "setting_menu_backdrop_help"
-msgid "While a menu or a window is open over a game, the game is darkened this much so the text reads well over any picture (0: not darkened)."
-msgstr "Mientras un menú o una ventana está abierto sobre un juego, el juego se oscurece así para que el texto se lea bien sobre cualquier imagen (0: sin oscurecer)."
+msgid "While the menu or a window is open, what's behind them (the game too) is darkened this much so the text reads well over any picture (0: not darkened)."
+msgstr "Mientras el menú o una ventana están abiertos, lo que hay detrás (también el juego) se oscurece así para que el texto se lea bien sobre cualquier imagen (0: sin oscurecer)."
 
 msgctxt "paused_why"
 msgid "PAUSED: %s"
@@ -3751,8 +3807,8 @@ msgid "Forget what AUTO chose for this game; it measures again the next time the
 msgstr "Olvida lo que AUTO eligió para este juego; vuelve a medir la próxima vez que empiece."
 
 msgctxt "quick_menu_dvr"
-msgid "DVR"
-msgstr "DVR"
+msgid "GAME DVR"
+msgstr "DVR DEL JUEGO"
 
 msgctxt "dvr_title"
 msgid "◀◀ DVR"
@@ -3848,8 +3904,8 @@ msgid "ALSO %s: both fire together. Bind one of them elsewhere."
 msgstr "TAMBIÉN %s: se activan juntos. Asigna uno de los dos a otro control."
 
 msgctxt "menu_screenshot"
-msgid "SCREENSHOT"
-msgstr "CAPTURA"
+msgid "TAKE SCREENSHOT"
+msgstr "TOMAR CAPTURA"
 
 msgctxt "setting_screenshot_mode"
 msgid "SCREENSHOTS"
@@ -3896,8 +3952,8 @@ msgid "SCREENSHOT"
 msgstr "CAPTURA"
 
 msgctxt "quick_menu_config"
-msgid "CONFIG"
-msgstr "CONFIGURAR"
+msgid "CORE CONFIG"
+msgstr "CONFIG. CORE"
 
 msgctxt "quick_menu_config_help"
 msgid "CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND SHADER."
@@ -3911,101 +3967,41 @@ msgctxt "menu_core_config"
 msgid "CORE CONFIGURATION..."
 msgstr "CONFIGURACIÓN DEL CORE..."
 
-msgctxt "net_request_title"
-msgid "PAIRING REQUEST"
-msgstr "SOLICITUD DE VINCULACIÓN"
-
-msgctxt "net_request_text"
-msgid "WANTS TO PAIR. TYPE THE CODE ON ITS SCREEN."
-msgstr "QUIERE VINCULARSE. ESCRIBE EL CÓDIGO DE SU PANTALLA."
-
-msgctxt "net_request_wrong"
-msgid "WRONG CODE. TYPE THE NEW ONE ON ITS SCREEN."
-msgstr "CÓDIGO ERRÓNEO. ESCRIBE EL NUEVO DE SU PANTALLA."
-
-msgctxt "net_request_access"
-msgid "ACCESS"
-msgstr "ACCESO"
-
-msgctxt "net_request_allow"
-msgid "ALLOW"
-msgstr "PERMITIR"
-
-msgctxt "net_request_refuse"
-msgid "REFUSE"
-msgstr "RECHAZAR"
-
-msgctxt "net_request_waiting"
-msgid "CONNECTING..."
-msgstr "CONECTANDO..."
-
-msgctxt "net_kind_piccolo"
-msgid "PICCOLO"
-msgstr "PICCOLO"
-
-msgctxt "net_kind_piccoletto"
-msgid "PICCOLETTO"
-msgstr "PICCOLETTO"
-
 msgctxt "pause_cause_pairing"
 msgid "PAIRING REQUEST"
 msgstr "SOLICITUD DE VINCULACIÓN"
 
-msgctxt "share_waiting"
-msgid "WAITING FOR THE OTHER PICCOLO"
-msgstr "ESPERANDO AL OTRO PICCOLO"
-
-msgctxt "menu_invite"
-msgid "INVITE"
-msgstr "INVITAR"
-
-msgctxt "net_invite_title"
-msgid "INVITE"
-msgstr "INVITAR"
-
-msgctxt "net_invite_text"
-msgid "TYPE THE CODE THE OTHER DEVICE SHOWS (ANOTHER PICCOLO'S TOOLS > PAIR > INTERNET, OR PICCOLETTO'S PAIR), AND WHAT IT MAY DO HERE."
-msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA EL OTRO DISPOSITIVO (HERRAMIENTAS > VINCULAR > INTERNET DE OTRO PICCOLO, O VINCULAR DE PICCOLETTO) Y LO QUE PODRÁ HACER AQUÍ."
-
-msgctxt "net_invite_waiting"
-msgid "WAITING FOR IT THROUGH THE INTERNET..."
-msgstr "ESPERÁNDOLO POR INTERNET..."
-
 msgctxt "menu_guests"
-msgid "REMOTE PLAY TOGETHER..."
-msgstr "JUGAR A DISTANCIA JUNTOS..."
+msgid "REMOTE PLAY..."
+msgstr "JUGAR A DISTANCIA..."
+
+msgctxt "menu_game_dvr"
+msgid "GAME DVR..."
+msgstr "DVR DEL JUEGO..."
 
 msgctxt "guests_title"
-msgid "REMOTE PLAY TOGETHER"
-msgstr "JUGAR A DISTANCIA JUNTOS"
+msgid "REMOTE PLAY"
+msgstr "JUGAR A DISTANCIA"
 
 msgctxt "guests_game"
-msgid "GAME (ON THE CARD)"
-msgstr "JUEGO (EN LA TARJETA)"
+msgid "GAME"
+msgstr "JUEGO"
 
-msgctxt "guests_seats"
-msgid "SEATS"
-msgstr "LUGARES"
+msgctxt "guests_count"
+msgid "GUESTS"
+msgstr "INVITADOS"
 
-msgctxt "guests_access"
-msgid "ACCESS"
-msgstr "ACCESO"
+msgctxt "guests_role"
+msgid "ROLE"
+msgstr "ROL"
 
 msgctxt "guests_watch"
-msgid "WATCH"
-msgstr "MIRAR"
+msgid "SPECTATOR"
+msgstr "ESPECTADOR"
 
 msgctxt "guests_play"
-msgid "WATCH + PLAY"
-msgstr "MIRAR + JUGAR"
-
-msgctxt "guests_play_hint"
-msgid "PLAY: A FREE PORT IF THERE IS ONE, ELSE THEY WATCH."
-msgstr "JUGAR: UN PUERTO LIBRE SI HAY, SI NO MIRAN."
-
-msgctxt "guests_text"
-msgid "ANYONE WITH THE LINK TAKES A FREE SEAT, NO QUESTIONS ASKED, IN PICCOLETTO (THE APP OR THE BROWSER). THE LINK DIES WHEN THE GAME CLOSES. NOTHING IS SAVED."
-msgstr "QUIEN TENGA EL ENLACE TOMA UN LUGAR LIBRE, SIN PREGUNTAS, EN PICCOLETTO (LA APP O EL NAVEGADOR). EL ENLACE MUERE AL CERRAR EL JUEGO. NO SE GUARDA NADA."
+msgid "PLAYER"
+msgstr "JUGADOR"
 
 msgctxt "guests_no_game"
 msgid "LOAD A GAME FIRST: THE LINK IS FOR THE GAME THAT RUNS."
@@ -4016,24 +4012,32 @@ msgid "TURN ON INTERNET IN SETTINGS > NETWORK FIRST."
 msgstr "ACTIVA INTERNET EN SETTINGS > NETWORK PRIMERO."
 
 msgctxt "guests_make"
-msgid "MAKE LINK"
+msgid "CREATE LINK"
 msgstr "CREAR ENLACE"
 
 msgctxt "guests_link"
 msgid "LINK"
 msgstr "ENLACE"
 
-msgctxt "guests_copy"
-msgid "COPY"
-msgstr "COPIAR"
+msgctxt "guests_link_tip"
+msgid "CLICK TO COPY IT."
+msgstr "HAZ CLIC PARA COPIARLO."
+
+msgctxt "guests_no_link"
+msgid "NO LINK YET"
+msgstr "AÚN NO HAY ENLACE"
 
 msgctxt "guests_copied"
 msgid "COPIED"
 msgstr "COPIADO"
 
+msgctxt "guests_copied_where"
+msgid "TO THE CLIPBOARD"
+msgstr "AL PORTAPAPELES"
+
 msgctxt "guests_new"
-msgid "NEW"
-msgstr "NUEVO"
+msgid "REFRESH LINK"
+msgstr "RENOVAR ENLACE"
 
 msgctxt "guests_new_tip"
 msgid "A NEW LINK: THE OLD ONE STOPS WORKING. WHOEVER IS IN STAYS."
@@ -4044,32 +4048,16 @@ msgid "KICK"
 msgstr "ECHAR"
 
 msgctxt "guests_kick_tip"
-msgid "THE SAME APP CAN'T COME BACK. ANOTHER ONE CAN, WITH THE SAME LINK: NEW STOPS THAT."
-msgstr "LA MISMA APP NO PUEDE VOLVER. OTRA SÍ, CON EL MISMO ENLACE: NUEVO LO EVITA."
+msgid "THE SAME APP CAN'T COME BACK. ANOTHER ONE CAN, WITH THE SAME LINK: REFRESH LINK STOPS THAT."
+msgstr "LA MISMA APP NO PUEDE VOLVER. OTRA SÍ, CON EL MISMO ENLACE: RENOVAR ENLACE LO EVITA."
 
 msgctxt "guests_none"
-msgid "NOBODY YET. SEND THE LINK."
-msgstr "TODAVÍA NADIE. MANDA EL ENLACE."
+msgid "NO GUESTS CONNECTED."
+msgstr "NINGÚN INVITADO CONECTADO."
 
-msgctxt "guests_plays"
-msgid "PLAYS P"
-msgstr "JUEGA P"
-
-msgctxt "guests_watches"
-msgid "WATCHES"
-msgstr "MIRA"
-
-msgctxt "guests_no_port"
-msgid "WATCHES: NO FREE PORT"
-msgstr "MIRA: NO HAY PUERTO LIBRE"
-
-msgctxt "guests_taken"
-msgid "SEATS TAKEN:"
-msgstr "LUGARES OCUPADOS:"
-
-msgctxt "guests_full"
-msgid "FULL"
-msgstr "LLENO"
+msgctxt "guests_player_port"
+msgid "PLAYER, PORT"
+msgstr "JUGADOR, PUERTO"
 
 msgctxt "guests_failures"
 msgid "COULDN'T CONNECT:"
@@ -4079,33 +4067,17 @@ msgctxt "guests_failures_tip"
 msgid "GUESTS WHOSE NETWORK AND THIS ONE CAN'T REACH EACH OTHER DIRECTLY. NOTHING IS RELAYED, SO THEY'RE TOLD SO."
 msgstr "INVITADOS CUYA RED Y ESTA NO SE ALCANZAN DIRECTAMENTE. NADA SE RETRANSMITE, ASÍ QUE SE LES AVISA."
 
-msgctxt "guests_card_none"
-msgid "CARD: NO PICTURE (THE LINK STILL WORKS)"
-msgstr "TARJETA: SIN IMAGEN (EL ENLACE FUNCIONA IGUAL)"
-
-msgctxt "guests_card_sending"
-msgid "CARD: SENDING..."
-msgstr "TARJETA: ENVIANDO..."
-
-msgctxt "guests_card_ready"
-msgid "CARD: ON THE LINK"
-msgstr "TARJETA: EN EL ENLACE"
-
-msgctxt "guests_card_failed"
-msgid "CARD: COULDN'T SEND IT (THE LINK STILL WORKS)"
-msgstr "TARJETA: NO SE PUDO ENVIAR (EL ENLACE FUNCIONA IGUAL)"
-
 msgctxt "guests_end"
-msgid "END"
-msgstr "TERMINAR"
+msgid "STOP REMOTE PLAY"
+msgstr "DETENER JUGAR A DISTANCIA"
 
 msgctxt "guests_close"
 msgid "CLOSE"
 msgstr "CERRAR"
 
 msgctxt "status_guests_ended"
-msgid "REMOTE PLAY TOGETHER ENDED"
-msgstr "TERMINÓ JUGAR A DISTANCIA JUNTOS"
+msgid "REMOTE PLAY ENDED"
+msgstr "TERMINÓ JUGAR A DISTANCIA"
 
 msgctxt "status_guest_joined"
 msgid "JOINED:"
@@ -4116,16 +4088,28 @@ msgid "GUEST LINKS OPEN IN PICCOLETTO: OPENING IT IN THE BROWSER"
 msgstr "LOS ENLACES DE INVITADO SE ABREN EN PICCOLETTO: SE ABRE EN EL NAVEGADOR"
 
 msgctxt "menu_pair"
-msgid "PAIR"
-msgstr "VINCULAR"
+msgid "PAIR..."
+msgstr "VINCULAR..."
 
 msgctxt "pair_title"
 msgid "PAIR"
 msgstr "VINCULAR"
 
-msgctxt "pair_on_network"
-msgid "PICCOLOS ON THIS NETWORK"
-msgstr "PICCOLOS EN ESTA RED"
+msgctxt "pair_mode_host"
+msgid "PAIR WITH A HOST"
+msgstr "VINCULAR CON UN HOST"
+
+msgctxt "pair_mode_client"
+msgid "PAIR WITH A CLIENT"
+msgstr "VINCULAR CON UN CLIENTE"
+
+msgctxt "pair_detected"
+msgid "DETECTED DEVICES"
+msgstr "DISPOSITIVOS DETECTADOS"
+
+msgctxt "pair_select_help"
+msgid "SELECT A DEVICE TO PAIR WITH"
+msgstr "ELIGE UN DISPOSITIVO CON EL QUE VINCULARTE"
 
 msgctxt "pair_paired"
 msgid "PAIRED"
@@ -4136,32 +4120,72 @@ msgid "PAIR"
 msgstr "VINCULAR"
 
 msgctxt "pair_internet"
-msgid "INTERNET"
-msgstr "INTERNET"
-
-msgctxt "pair_failed"
-msgid "IT DIDN'T PAIR (REFUSED, OR NOBODY TYPED THE CODE). A NEW CODE IS SHOWN."
-msgstr "NO SE VINCULÓ (RECHAZADO, O NADIE ESCRIBIÓ EL CÓDIGO). SE MUESTRA UN CÓDIGO NUEVO."
+msgid "PAIR OVER THE INTERNET..."
+msgstr "VINCULAR POR INTERNET..."
 
 msgctxt "pair_type_code"
-msgid "TYPE THIS CODE ON THE OTHER PICCOLO: IT HAS JUST BEEN ASKED THERE."
-msgstr "ESCRIBE ESTE CÓDIGO EN EL OTRO PICCOLO: SE LO ACABA DE PEDIR."
+msgid "TYPE THIS CODE ON"
+msgstr "ESCRIBE ESTE CÓDIGO EN"
 
 msgctxt "pair_give_code"
-msgid "GIVE THIS CODE TO THE OTHER PICCOLO (CHAT, VOICE...): ITS USER TYPES IT IN TOOLS > INVITE."
-msgstr "PASA ESTE CÓDIGO AL OTRO PICCOLO (CHAT, VOZ...): SU USUARIO LO ESCRIBE EN HERRAMIENTAS > INVITAR."
+msgid "GIVE THIS CODE TO THE OTHER USER"
+msgstr "PASA ESTE CÓDIGO AL OTRO USUARIO"
+
+msgctxt "pair_waiting"
+msgid "WAITING FOR DEVICE"
+msgstr "ESPERANDO AL DISPOSITIVO"
+
+msgctxt "pair_type_other"
+msgid "TYPE THE CODE DISPLAYED ON THE OTHER DEVICE"
+msgstr "ESCRIBE EL CÓDIGO QUE MUESTRA EL OTRO DISPOSITIVO"
+
+msgctxt "pair_wants"
+msgid "WANTS TO PAIR"
+msgstr "QUIERE VINCULARSE"
+
+msgctxt "pair_wrong_code"
+msgid "WRONG CODE. TYPE THE NEW ONE ON ITS SCREEN."
+msgstr "CÓDIGO ERRÓNEO. ESCRIBE EL NUEVO DE SU PANTALLA."
+
+msgctxt "pair_code"
+msgid "CODE"
+msgstr "CÓDIGO"
+
+msgctxt "pair_role"
+msgid "ROLE"
+msgstr "ROL"
+
+msgctxt "pair_allow"
+msgid "ALLOW"
+msgstr "PERMITIR"
+
+msgctxt "pair_deny"
+msgid "DENY"
+msgstr "DENEGAR"
 
 msgctxt "pair_done"
 msgid "PAIRED WITH"
 msgstr "VINCULADO CON"
 
-msgctxt "pair_back_question"
-msgid "GIVE IT THE SAME ACCESS TO THIS PICCOLO:"
-msgstr "¿LE DAS EL MISMO ACCESO A ESTE PICCOLO?:"
+msgctxt "pair_card_accept"
+msgid "TO ACCEPT"
+msgstr "PARA ACEPTAR"
 
-msgctxt "pair_back_off"
-msgid "TO LET IT COME HERE TOO, TURN ON ALLOW CONNECTIONS (SETTINGS > NETWORK) AND PAIR FROM THE OTHER SIDE."
-msgstr "PARA QUE TAMBIÉN PUEDA VENIR AQUÍ, ACTIVA PERMITIR CONEXIONES (AJUSTES > RED) Y VINCULA DESDE EL OTRO LADO."
+msgctxt "pair_timed_out"
+msgid "PAIRING TIMED OUT"
+msgstr "SE AGOTÓ EL TIEMPO PARA VINCULAR"
+
+msgctxt "pair_failed"
+msgid "PAIRING FAILED"
+msgstr "NO SE PUDO VINCULAR"
+
+msgctxt "pair_back_before"
+msgid "LET"
+msgstr "¿DEJAR QUE"
+
+msgctxt "pair_back_after"
+msgid "CONNECT TO THIS DEVICE, WITH THE SAME ROLE?"
+msgstr "SE CONECTE A ESTE DISPOSITIVO, CON EL MISMO ROL?"
 
 msgctxt "pair_yes"
 msgid "YES"
@@ -4171,21 +4195,29 @@ msgctxt "pair_no"
 msgid "NO"
 msgstr "NO"
 
-msgctxt "pair_ok"
-msgid "OK"
-msgstr "OK"
+msgctxt "pair_close"
+msgid "CLOSE"
+msgstr "CERRAR"
 
 msgctxt "net_section_hosts"
-msgid "PICCOLOS I CONNECT TO"
-msgstr "PICCOLOS A LOS QUE ME CONECTO"
+msgid "PAIRED HOSTS"
+msgstr "HOSTS VINCULADOS"
 
 msgctxt "net_no_hosts"
-msgid "NONE YET (TOOLS > PAIR)"
-msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
+msgid "NONE YET (TOOLS > PAIR...)"
+msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR...)"
 
 msgctxt "net_host_forget_help"
 msgid "Forgets this piccolo here (and there too, if connected now)."
 msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."
+
+msgctxt "net_host_connect"
+msgid "CONNECT"
+msgstr "CONECTAR"
+
+msgctxt "net_host_connect_help"
+msgid "Connects to this piccolo and opens FILE TRANSFER with it."
+msgstr "Se conecta a este piccolo y abre TRANSFERIR ARCHIVOS con él."
 
 msgctxt "net_online"
 msgid "ONLINE"

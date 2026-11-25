@@ -25,8 +25,9 @@ static void draw_hud(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
     hud_view_draw(view->hud, &view->hud_area, pixel_font, scale, view->hud_now_ms);
 }
 
-// INTERFACE > BACKDROP: the whole game covered by black at that opacity,
-// behind every window (the menu bar stays on top of it).
+// INTERFACE > BACKDROP: the whole screen covered by black at that opacity,
+// behind every window (the menu bar stays on top of it). The only one: drawn
+// once a frame, here; widgets and modals don't dim the screen themselves.
 static void draw_menu_backdrop(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
 {
     if (view->backdrop_alpha == 0)
@@ -90,19 +91,10 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     {
         share_window_draw(windows->share, &view->share, pixel_font, scale, &actions->share);
     }
+    // TOOLS > PAIR..., also a device asking to pair (over anything).
     if (view->pair_shown)
     {
         pair_window_draw(windows->pair, &view->pair, pixel_font, scale, &actions->pair);
-    }
-    // A device asking to pair: over anything. TOOLS > INVITE too.
-    if (view->pairing_shown)
-    {
-        net_pairing_request_draw(&windows->network->request, &view->request, pixel_font, scale, &actions->request);
-        net_invite_draw(&windows->network->invite, &view->invite, pixel_font, scale, &actions->invite);
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_draw(&windows->network->invite, &view->invite, pixel_font, scale, &actions->invite);
     }
     if (view->guest_shown)
     {
@@ -126,6 +118,9 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     {
         text_input_window_draw(windows->text_input, &view->text_input, pixel_font, scale, &actions->text_input);
     }
+    about_window_draw(windows->about, &view->about, pixel_font, scale, &actions->about);
+    // The debug window's preview of a window (never up with the real one).
+    debug_preview_draw(windows->previews, &view->preview, pixel_font, scale, &actions->preview);
     if (view->debug_shown)
     {
         debug_window_draw(&view->debug, pixel_font, scale, &actions->debug);

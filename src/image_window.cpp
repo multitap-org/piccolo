@@ -1,5 +1,6 @@
 #include "image_window.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -146,14 +147,43 @@ void image_window_draw(bool* open, const ImageWindowState* state, RetroUiFont* p
     rows.settings = state->settings;
     rows.strings = state->strings;
     rows.scope = state->scope;
-    rows.label_width = settings_ui_label_width(state->settings, state->strings);
+    // The label column fits this window's own labels, not every setting's
+    // (SETTINGS' widest): in the narrow column the sliders kept about 30
+    // pixels with it (Andrés, testing round 1).
+    constexpr uint32_t KEY_MAX = static_cast<uint32_t>(CROP_KEY_COUNT) + 2 + PICCOLO_PASS0_CONTROL_COUNT;
+    const char* keys[KEY_MAX] = {};
+    uint32_t key_count = 0;
+    for (int32_t i = 0; i < CROP_KEY_COUNT; i++)
+    {
+        keys[key_count] = CROP_KEYS[i];
+        key_count++;
+    }
+    keys[key_count] = PICCOLO_IMAGE_COLOR_PROFILE;
+    key_count++;
+    keys[key_count] = PICCOLO_IMAGE_PROFILE_STRENGTH;
+    key_count++;
+    for (uint32_t i = 0; i < PICCOLO_PASS0_CONTROL_COUNT; i++)
+    {
+        keys[key_count] = PICCOLO_PASS0_CONTROLS[i].key;
+        key_count++;
+    }
+    rows.label_width = settings_ui_label_width_of(state->settings, state->strings, keys, key_count);
     rows.edit = &action->setting;
     const SettingsUiContext* context = &rows;
 
     // Layout: the picture on the left, the controls' column on the right.
     // The picture gets the biggest whole factor that fits next to the column
-    // in piccolo's window.
+    // in piccolo's window. The column is 190 retro pixels...
     float controls_width = 190.0f * block;
+    // ...wider when the rows need it, so a slider keeps at least
+    // CONTROL_MIN_WIDTH beside its label, its marker, RESET and the scroll
+    // bar (Andrés, testing round 1: they were about 30 pixels, "1.").
+    constexpr float CONTROL_MIN_WIDTH = 80.0f;   // retro pixels
+    constexpr float SCROLL_BAR_ROOM = 9.0f;      // retro pixels: retroui's bar and the gap before it
+    float row_room = retro_ui_text_width("C") + 2.0f * retro_ui_item_spacing() + rows.label_width +
+                     retro_ui_button_width(piccolo_text(context->strings, Str::reset));
+    float controls_needed = std::ceil(row_room + (CONTROL_MIN_WIDTH + SCROLL_BAR_ROOM) * block);
+    controls_width = controls_needed > controls_width ? controls_needed : controls_width;
     // Both sections' rows and headers (and the note); taller than the window
     // allows, the column scrolls.
     float controls_height = static_cast<float>(CROP_KEY_COUNT + static_cast<int32_t>(PICCOLO_PASS0_CONTROL_COUNT) + 6) *

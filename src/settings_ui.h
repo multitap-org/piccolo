@@ -90,6 +90,19 @@ const char* settings_ui_scope_name(const Localization* strings, SettingLayer sco
 // The label column's width: the widest label of the rows that have one.
 float settings_ui_label_width(const Settings* settings, const Localization* strings);
 
+// The same for the rows of these settings only: a window with a few rows
+// (IMAGE SETTINGS' narrow column) keeps the room for its controls.
+float settings_ui_label_width_of(const Settings* settings, const Localization* strings, const char* const* keys,
+                                 uint32_t key_count);
+
+// A group of rows that can be folded away (GENERAL > REWIND, INTERFACE >
+// COLORS...): a header bar across the window with `label`, and `detail` after
+// it (the mode in use now; nullptr or "": none). True while it's open (draw
+// its rows then). `open_at_first`: open the first time it's drawn; after
+// that the toolkit keeps what the user chose, while piccolo runs. The id
+// stays while the label changes (the language, the detail).
+bool settings_ui_section(const char* id, const char* label, const char* detail, bool open_at_first);
+
 // The SCOPE selector: GLOBAL / THIS CORE (name) / THIS GAME (name), only the
 // ones that exist now. With *choose_scope set (just opened) it picks the most
 // specific layer already in use, so changes keep going there, and clears it.

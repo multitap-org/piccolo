@@ -7,9 +7,16 @@
 //
 //   CORE     [ SNES9X (RUNNING)                v ]
 //   v STORED VALUES                                       any core, even one that won't start
-//     FOR THE CORE                           [DELETE SECTION]
-//       CONSOLE REGION = PAL                 [DELETE]
-//     [DELETE ALL FOR THIS CORE]
+//     v GENERAL                                           one foldable section per layer
+//       [RESET]
+//       CONSOLE REGION = PAL                 [RESET]
+//     > GAME: SUPER MARIO WORLD (USA)
+//     [RESET ALL]
+//
+// RESET removes what is stored (the core's default applies again). The
+// sections open on the running game's when it has values for the selected
+// core, GENERAL otherwise (testing round 1); folders and other games start
+// folded.
 //
 // The running core's options are edited live, at the chosen layer (core,
 // content folder, game; core_options_store.h), with C / D / G markers like
@@ -42,6 +49,8 @@ struct CoreOptionsUi
     CoreOptionLayer layer = CoreOptionLayer::core;
     bool            choose_layer = true;    // pick the most specific layer in use on the next draw
     std::string     section;                // category key shown; "" = the options without a category
+    bool            choose_sections = true; // the manager's STORED VALUES: open the sections that
+                                            // matter on the next draw (just opened, another core)
 };
 
 struct CoreOptionsUiState
@@ -73,9 +82,9 @@ struct CoreOptionsUiAction
 enum class CoreOptionsManagerPress
 {
     none,
-    delete_section,   // DELETE SECTION: `section`
-    delete_entry,     // DELETE: `key` in `section`
-    delete_all,       // DELETE ALL FOR THIS CORE (the selected one)
+    delete_section,   // RESET of a section: `section` is deleted
+    delete_entry,     // RESET of a row: `key` in `section` is deleted
+    delete_all,       // RESET ALL: everything stored for the selected core
 };
 
 struct CoreOptionsManagerAction

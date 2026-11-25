@@ -52,11 +52,11 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_MENU_BOXES);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_SHADOWS);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_THEME_CURSOR);
-    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
     for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
     {
         add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), piccolo_settings_ui_color_key(i));
     }
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
 
     uint32_t picture = text_id(Str::tab_picture);
     add_row(rows, Str::tab_video, picture, none, PICCOLO_VIDEO_ASPECT);
@@ -81,7 +81,7 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_video, display, window, PICCOLO_WINDOW_REMEMBER);
 
     uint32_t sync = text_id(Str::tab_sync);
-    uint32_t latency = text_id(Str::section_low_latency);
+    uint32_t latency = text_id(Str::section_latency);
     add_row(rows, Str::tab_video, sync, none, PICCOLO_VIDEO_TIMING);
     add_row(rows, Str::tab_video, sync, none, PICCOLO_VIDEO_CATCH_UP);
     add_row(rows, Str::tab_video, sync, latency, PICCOLO_LATENCY_FRAMES_IN_FLIGHT);

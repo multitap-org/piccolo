@@ -4,7 +4,6 @@
 
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
-#include "ui_toolkit.h"
 
 static void draw_about(const DebugWindowState* state)
 {
@@ -40,13 +39,12 @@ static void press(DebugWindowAction* action, bool pressed, DebugWindowPress what
     }
 }
 
-static void draw_widgets(const DebugWindowState* state, DebugWindowAction* action)
+static void draw_hud_widgets(DebugWindowAction* action)
 {
     static const char* const ICON_NAMES[DEBUG_WINDOW_ICON_COUNT] = {"PAUSED icon", "REWINDING icon", "PLAY icon",
                                                                     "FAST FORWARD icon"};
     static const char* const ICON_IDS[DEBUG_WINDOW_ICON_COUNT] = {"pause", "rewind", "play", "fast_forward"};
 
-    retro_ui_text("Widgets (HUD)");
     press(action, retro_ui_button("Remap card: port 1's first controller"), DebugWindowPress::remap_card);
     for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
     {
@@ -63,8 +61,19 @@ static void draw_widgets(const DebugWindowState* state, DebugWindowAction* actio
     retro_ui_same_line();
     press(action, retro_ui_button("DVR card: NOTHING YET"), DebugWindowPress::dvr_card_nothing);
     press(action, retro_ui_button("Ports' tabs rise"), DebugWindowPress::ports_rise);
+    // The cards REMOTE PLAY and PAIR leave (debug_preview.h: fake ones, the
+    // real windows don't know).
+    press(action, retro_ui_button("LINK COPIED card"), DebugWindowPress::card_link_copied);
+    retro_ui_same_line();
+    press(action, retro_ui_button("PAIRING TIMED OUT card"), DebugWindowPress::card_pair_timed_out);
+    retro_ui_same_line();
+    press(action, retro_ui_button("PAIRING FAILED card"), DebugWindowPress::card_pair_failed);
+    retro_ui_check("pair_request_card", "Pairing request card (a fake device)", &action->pair_request_card);
+    retro_ui_dim_text("In the game, START held fills its key and the card goes; nothing opens.", nullptr);
+}
 
-    retro_ui_text("Widgets (windows; a game must run)");
+static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction* action)
+{
     retro_ui_begin_disabled(!state->game_running);
     // Asked for by the user: they replace what's up, this window included.
     press(action, retro_ui_button("DEVICES") && state->devices_available, DebugWindowPress::open_devices);
@@ -79,6 +88,57 @@ static void draw_widgets(const DebugWindowState* state, DebugWindowAction* actio
     retro_ui_dim_text("Text box and KEEP / REVERT show once the menu is closed.", nullptr);
 }
 
+static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)
+{
+    if (same_line)
+    {
+        retro_ui_same_line();
+    }
+    if (retro_ui_button(label))
+    {
+        action->preview = what;
+    }
+}
+
+// Every new or rebuilt window, with fake state (debug_preview.h).
+static void draw_previews(const DebugWindowState* state, DebugWindowAction* action)
+{
+    retro_ui_dim_text("Fake state: presses do nothing; X, CLOSE or Escape ends a preview.", nullptr);
+    retro_ui_begin_disabled(state->pair_open);
+    retro_ui_text("PAIR WITH A HOST");
+    preview_button(action, "Devices", DebugPreview::pair_host_list, false);
+    preview_button(action, "Code: this network", DebugPreview::pair_host_code_lan, true);
+    preview_button(action, "Code: internet", DebugPreview::pair_host_code_internet, true);
+    preview_button(action, "Paired: YES / NO", DebugPreview::pair_host_paired, true);
+    retro_ui_text("PAIR WITH A CLIENT");
+    preview_button(action, "Type the code", DebugPreview::pair_client_type, false);
+    preview_button(action, "Waiting", DebugPreview::pair_client_waiting, true);
+    preview_button(action, "A request", DebugPreview::pair_client_request, true);
+    preview_button(action, "Paired", DebugPreview::pair_client_paired, true);
+    retro_ui_end_disabled();
+    if (state->pair_open)
+    {
+        retro_ui_dim_text("PAIR is open: close it to preview it.", nullptr);
+    }
+    retro_ui_begin_disabled(state->guest_open);
+    retro_ui_text("REMOTE PLAY");
+    preview_button(action, "No link", DebugPreview::remote_no_link, false);
+    preview_button(action, "Link, no guests", DebugPreview::remote_no_guests, true);
+    preview_button(action, "Link and guests", DebugPreview::remote_guests, true);
+    retro_ui_end_disabled();
+    if (state->guest_open)
+    {
+        retro_ui_dim_text("REMOTE PLAY is open: close it to preview it.", nullptr);
+    }
+    retro_ui_text("OTHERS");
+    retro_ui_begin_disabled(state->about_open);
+    preview_button(action, "ABOUT", DebugPreview::about, false);
+    retro_ui_end_disabled();
+    // The real QUICK MENU needs a game; this one is a fake game's, its
+    // slots without pictures.
+    preview_button(action, "QUICK MENU, SAVE STATES open", DebugPreview::quick_menu, true);
+}
+
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)
 {
     *action = {};
@@ -86,7 +146,7 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     {
         action->icons_forced[i] = state->icons_forced[i];
     }
-    action->toolkit_demo_shown = state->toolkit_demo_shown;
+    action->pair_request_card = state->pair_request_card;
 
     retro_ui_push_theme(pixel_font, scale);
     RetroUiWindow window = {};
@@ -97,16 +157,20 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     if (retro_ui_window_begin(&window, scale, &action->closed))
     {
         draw_about(state);
-        retro_ui_separator();
-        draw_widgets(state, action);
-        retro_ui_separator();
-        retro_ui_check("toolkit_demo", "GUI toolkit demo window", &action->toolkit_demo_shown);
+        // Every section after the numbers folds away (Andrés, testing round 1).
+        if (retro_ui_section_header("hud", "Widgets (HUD)", true))
+        {
+            draw_hud_widgets(action);
+        }
+        if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", true))
+        {
+            draw_window_widgets(state, action);
+        }
+        if (retro_ui_section_header("previews", "Dialogs (preview)", true))
+        {
+            draw_previews(state, action);
+        }
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
-    // Outside the theme: the toolkit's demo shows its own look.
-    if (action->toolkit_demo_shown)
-    {
-        ui_toolkit_demo_window(&action->toolkit_demo_shown);
-    }
 }

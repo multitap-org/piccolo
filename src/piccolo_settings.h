@@ -135,9 +135,9 @@ constexpr const char* PICCOLO_WINDOW_ASPECT = "window_aspect";
 constexpr const char* PICCOLO_WINDOW_HEIGHT = "window_height";
 constexpr const char* PICCOLO_WINDOW_SCALE = "window_scale";
 constexpr const char* PICCOLO_WINDOW_REMEMBER = "window_remember";
-// INTERFACE > BACKDROP: while a menu or window is up over a game, the game
-// is covered by black at this opacity (percent; 0 = not covered). Not part of
-// a theme (not ui_*): readability over any picture.
+// INTERFACE > BACKDROP: while the menu or a window is up, what is behind
+// them (the game too) is covered by black at this opacity (percent; 0 = not
+// covered). Not part of a theme (not ui_*): readability over any picture.
 constexpr const char* PICCOLO_MENU_BACKDROP = "menu_backdrop";
 // INTERFACE > EFFECTS: short effects on the game picture (screen_effects.h:
 // SNAP on the DVR's PLAY FROM HERE, SHUTTER on a screenshot). On by default;

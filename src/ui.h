@@ -15,9 +15,11 @@
 #include <cstdint>
 #include <string>
 
+#include "about_window.h"
 #include "core_config_window.h"
 #include "core_options_ui.h"
 #include "cores_window.h"
+#include "debug_preview.h"
 #include "debug_window.h"
 #include "dvr_widget.h"
 #include "file_picker.h"
@@ -51,6 +53,7 @@ struct UiSettingsText
     char audio_latency[UI_NOTE_MAX] = {};
     char frame_delay[UI_NOTE_MAX] = {};
     char run_ahead[UI_NOTE_MAX] = {};
+    char rewind_mode[UI_NOTE_MAX] = {};   // REWIND's header: the mode in use now
 };
 
 // Everything the frame shows, in drawing order. Filled by main.cpp
@@ -70,7 +73,7 @@ struct UiView
     const HudStack*  hud = nullptr;     // the App's, built this frame
     HudArea          hud_area = {};     // retro pixels
     uint64_t         hud_now_ms = 0;
-    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP over the game (0: none)
+    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP behind the windows (0: none)
 
     // The status line, alone over a paused game or with the menu bar.
     char               status[UI_STATUS_MAX] = {};
@@ -99,10 +102,6 @@ struct UiView
     ShareWindowState        share = {};
     bool                    pair_shown = false;
     PairWindowState         pair = {};
-    bool                    pairing_shown = false;   // a pairing request and INVITE, on the network
-    NetPairingRequestState  request = {};
-    bool                    invite_shown = false;    // INVITE alone (the network is off)
-    NetInviteState          invite = {};
     bool                    guest_shown = false;
     GuestWindowState        guest = {};
     InputWindowState        input = {};
@@ -120,6 +119,8 @@ struct UiView
     TextInputWindowState    text_input = {};
     bool                    debug_shown = false;
     DebugWindowState        debug = {};
+    DebugPreviewView        preview = {};   // the debug window's preview of a window, if any
+    AboutWindowState        about = {};
     bool                    fps_shown = false;
     const FpsMeter*         fps_meter = nullptr;
     double                  fps_target = 0.0;
@@ -132,7 +133,7 @@ struct UiWindows
     OnscreenPad*       pad = nullptr;
     PortsWidget*       ports = nullptr;
     SettingsWindow*    settings = nullptr;
-    NetWindow*         network = nullptr;   // SETTINGS > NETWORK, the pairing request, INVITE
+    NetWindow*         network = nullptr;   // SETTINGS > NETWORK
     FilePicker*        picker = nullptr;
     QuickMenu*         quick = nullptr;
     CoreConfigWindow*  config = nullptr;
@@ -142,11 +143,13 @@ struct UiWindows
     bool*              manager_open = nullptr;   // the CORE OPTIONS MANAGER
     CoresWindow*       cores = nullptr;
     ShareWindow*       share = nullptr;
-    PairWindow*        pair = nullptr;
+    PairWindow*        pair = nullptr;      // TOOLS > PAIR... (a pairing request too)
     GuestWindow*       guest = nullptr;
     InputWindow*       input = nullptr;
     MapWindow*         map = nullptr;
     TextInputWindow*   text_input = nullptr;
+    AboutWindow*       about = nullptr;
+    DebugPreviews*     previews = nullptr;   // the debug window's fake windows
 };
 
 // What the user did this frame, every window's action. Zeroed before
@@ -166,8 +169,6 @@ struct UiActions
     CoresWindowAction        cores = {};
     ShareWindowAction        share = {};
     PairWindowAction         pair = {};
-    NetPairingRequestAction  request = {};
-    NetInviteAction          invite = {};
     GuestWindowAction        guest = {};
     InputWindowAction        input = {};
     MapWindowAction          map = {};
@@ -175,6 +176,8 @@ struct UiActions
     ShaderCheckChoice        shader_check = ShaderCheckChoice::none;
     TextInputWindowAction    text_input = {};
     DebugWindowAction        debug = {};
+    DebugPreviewActions      preview = {};
+    AboutWindowAction        about = {};
 };
 
 // All the frame's drawing, back to front: the game, the touch gamepad, the

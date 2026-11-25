@@ -67,6 +67,7 @@
 #include "screenshot_writer.h"
 #include "state_widget.h"
 #include "debug_window.h"
+#include "debug_preview.h"
 #include "input_bindings.h"
 #include "input_config.h"
 #include "input_sdl.h"
@@ -118,7 +119,6 @@ struct App
 
     bool     running = false;
     bool     show_debug_window = false;
-    bool     show_imgui_demo = false;
 
     RetroUiFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
@@ -174,6 +174,10 @@ struct App
     bool       played_with_gamepad = false;   // the last game input came from a local gamepad (CONTROLLERS cause)
     bool       android_background = false;    // the app is in the background (BACKGROUND cause)
     bool       menus_built_paused = false;    // GAME > PAUSE read RESUME when the menus were built
+    bool       menus_built_running = false;   // a game ran when the menus were built (GAME's items, GAME DVR)
+    bool       menus_built_quick_used = false;   // the quick slot held a state then (QUICK LOAD greyed out if not)
+    bool       quick_slot_used = false;       // the quick slot holds a state for the running game...
+    bool       quick_slot_stale = true;       // ...read again at the top of the next loop (a save, a start)
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -187,7 +191,7 @@ struct App
     NetWindow      net_window;         // SETTINGS > NETWORK between frames (OWNER's confirmation)
     std::vector<NetTrustedDevice> ui_net_devices;   // SETTINGS > NETWORK's paired devices as drawn (copied
                                                     // under the network lock: drawn without it)
-    GuestWindow    guest_window;       // TOOLS > REMOTE PLAY TOGETHER (guest links)
+    GuestWindow    guest_window;       // TOOLS > REMOTE PLAY (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
     NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
     // What the devices were last told runs (game_state): sent again when it changes.
@@ -320,6 +324,8 @@ struct App
     bool             crashed_after_options = false;
     // A core's TEXT request (text_input_window.h): open while it's pending.
     TextInputWindow  text_input_window = {};
+    AboutWindow      about_window = {};       // MISC > ABOUT
+    DebugPreviews    debug_previews;          // the debug window's fake cards and windows (debug_preview.h)
 
     bool             safe_start_open = false;
     bool             safe_start_confirmed = false;    // the next start skips the check (answered)
@@ -515,20 +521,36 @@ static void update_settings_context(App* app)
 constexpr int32_t MENU_ID_RECENT = 1000;
 
 // piccolo's menus (menus.h) as retroui's menu bar takes them: RECENT first
-// (the hamburger glyph), then the menus in the current language. Built when
-// the labels change, never per frame.
+// (the hamburger glyph: the games, then CLEAR ALL), then the menus in the
+// current language, with the items that show while a game runs (or not).
+// Built when the labels change, the pause and whether a game runs, never
+// per frame.
+static bool game_running(const App* app);   // (Game control, further down)
+
+static bool menu_item_listed(int32_t menu, int32_t item, bool running)
+{
+    return running || menus_item_shown(menu, item) != MenuShown::with_game;
+}
+
 static void build_menus(App* app)
 {
     app->menu_texts.clear();
     app->menu_items.clear();
     app->menus.clear();
     app->menus_built_paused = app->ui.user_paused;
+    bool running = game_running(app);
+    app->menus_built_running = running;
+    app->menus_built_quick_used = app->quick_slot_used;
     // The labels first: the items point into them (push_back may move them).
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
         app->menu_texts.push_back(piccolo_text(&app->strings, menus_label(menu)));
         for (int32_t item = 0; item < menus_item_count(menu); item++)
         {
+            if (!menu_item_listed(menu, item, running))
+            {
+                continue;
+            }
             Str label = menus_item_label(menu, item);
             if (menus_item_action(menu, item) == MenuAction::pause && app->ui.user_paused)
             {
@@ -542,26 +564,45 @@ static void build_menus(App* app)
     {
         app->menu_items.push_back(RetroUiMenuItem{app->recent_label_pointers[i], MENU_ID_RECENT + static_cast<int32_t>(i)});
     }
+    if (!app->recent_label_pointers.empty())
+    {
+        app->menu_items.push_back(RetroUiMenuItem{"", RETRO_UI_MENU_SEPARATOR});
+        app->menu_items.push_back(RetroUiMenuItem{piccolo_text(&app->strings, Str::menu_clear_recents),
+                                                  static_cast<int32_t>(MenuAction::clear_recents)});
+    }
+    int32_t recent_count = static_cast<int32_t>(app->menu_items.size());
+    std::vector<int32_t> counts;
     size_t text = 0;
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
         text++;   // (the menu's own label)
+        int32_t count = 0;
         for (int32_t item = 0; item < menus_item_count(menu); item++)
         {
+            if (!menu_item_listed(menu, item, running))
+            {
+                continue;
+            }
             MenuAction action = menus_item_action(menu, item);
             int32_t id = action == MenuAction::separator ? RETRO_UI_MENU_SEPARATOR : static_cast<int32_t>(action);
-            app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id});
+            bool enabled = running || menus_item_shown(menu, item) != MenuShown::greyed_no_game;
+            if (action == MenuAction::quick_load && !app->quick_slot_used)
+            {
+                enabled = false;   // as QUICK MENU's QUICK LOAD and LOAD: an empty slot has nothing to load
+            }
+            app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id, enabled});
             text++;
+            count++;
         }
+        counts.push_back(count);
     }
-    int32_t recent_count = static_cast<int32_t>(app->recent_label_pointers.size());
     app->menus.push_back(RetroUiMenu{PIXEL_FONT_UTF8_MENU, app->menu_items.data(), recent_count,
                                      piccolo_text(&app->strings, Str::menu_recent_empty)});
     size_t first_item = static_cast<size_t>(recent_count);
     text = 0;
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
-        int32_t count = menus_item_count(menu);
+        int32_t count = counts[static_cast<size_t>(menu)];
         app->menus.push_back(RetroUiMenu{app->menu_texts[text].c_str(), app->menu_items.data() + first_item, count, nullptr});
         first_item += static_cast<size_t>(count);
         text += static_cast<size_t>(count) + 1;
@@ -691,7 +732,7 @@ static bool raw_screenshot(App* app, const std::string& path)
     return screenshot_writer_submit(&app->screenshot_writer, &image);
 }
 
-// --- REMOTE PLAY TOGETHER (guest links) ---------------------------------------
+// --- REMOTE PLAY (guest links) ---------------------------------------
 
 // The beacon's host name for guest links: BEACON SERVER without a UDP port
 // ("beacon.get-piccolo.app:55430" -> "beacon.get-piccolo.app"), the default
@@ -760,6 +801,33 @@ static void guest_capture(App* app)
     }
 }
 
+// The card's title: the game's name cleaned (groups in () and [] dropped).
+// A name that is all groups ("[BIOS] (World)") keeps their words instead,
+// and a core without content its own name: never empty, so a link can
+// always be made.
+static void guest_title(const App* app, char* title)
+{
+    net_guest_title_clean(app->game_name, title);
+    if (title[0] != '\0')
+    {
+        return;
+    }
+    char words[sizeof(app->game_name)] = {};
+    std::snprintf(words, sizeof(words), "%s", app->game_name);
+    for (size_t i = 0; words[i] != '\0'; i++)
+    {
+        if (words[i] == '(' || words[i] == ')' || words[i] == '[' || words[i] == ']')
+        {
+            words[i] = ' ';
+        }
+    }
+    net_guest_title_clean(words, title);
+    if (title[0] == '\0')
+    {
+        net_guest_title_clean(app->core_name[0] != '\0' ? app->core_name : "piccolo", title);
+    }
+}
+
 // The window opens with the game's name cleaned for the card and the frame
 // shown now as its picture (a link already open keeps its own).
 static void open_guest_window(App* app)
@@ -767,13 +835,13 @@ static void open_guest_window(App* app)
     GuestWindow* window = &app->guest_window;
     if (!window->live)
     {
-        net_guest_title_clean(app->game_name, window->title);
+        guest_title(app, window->title);
         guest_capture(app);
     }
     guest_window_open(window);
 }
 
-// MAKE LINK (or NEW: a fresh link, the guests in stay). Under the network lock.
+// CREATE LINK (or REFRESH LINK: a fresh link, the guests in stay). Under the network lock.
 static void guest_make_link(App* app)
 {
     GuestWindow* window = &app->guest_window;
@@ -798,7 +866,8 @@ static void guest_make_link(App* app)
     net_guest_link_wipe(&link);
     if (!window->live)
     {
-        window->game_starts = app->game_starts;
+        window->core_path = app->marker_core_path;   // the game started with these (start_game)
+        window->content_path = app->marker_content_path;
     }
     window->live = true;
     SDL_Log("Guest link: open for \"%s\", %d seats, %s", window->title, window->seats,
@@ -810,7 +879,7 @@ static void guest_make_link(App* app)
     window->prepare_started_ms = SDL_GetTicks();
 }
 
-// The session ends: END, the game closed or changed, networking off, quitting.
+// The session ends: STOP REMOTE PLAY, the game closed or changed, networking off, quitting.
 // Under the network lock (or with the network stopped: `access` nullptr).
 static void guest_end(App* app, NetAccess* access)
 {
@@ -824,11 +893,14 @@ static void guest_end(App* app, NetAccess* access)
 }
 
 // Once a frame under the network lock: the session follows its game, and
-// each guest learns its port.
+// each guest learns its port. Another game (or core) ends it, a guest can't
+// control what's shown; a hard reset starts the same files again and keeps
+// it (Andrés, 2026-11-25).
 static void guest_update_locked(App* app)
 {
     GuestWindow* window = &app->guest_window;
-    if (window->live && (!game_running(app) || app->game_starts != window->game_starts))
+    bool same_game = app->marker_core_path == window->core_path && app->marker_content_path == window->content_path;
+    if (window->live && (!game_running(app) || !same_game))
     {
         guest_end(app, &app->net_service.access);
     }
@@ -852,6 +924,7 @@ static void guest_update_locked(App* app)
         {
             window->preparing = false;
             SDL_Log("Guest link: ready (%s)", state == GuestCardState::sent ? "its card is up" : "no card");
+            guest_window_link_ready(window, now);   // CREATE / REFRESH LINK: copied now, and the card says so
         }
         return;
     }
@@ -1164,6 +1237,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     save_learned_latency(app);   // what the previous game learned
     app->game_starts++;
     auto_frame_delay_reset(&app->auto_delay);   // each game finds its own
+    app->quick_slot_stale = true;   // the new game's own quick slot
     app->marker_core_path = choice->core_path;
     app->marker_content_path = choice->content_path;
     write_running_marker(app);
@@ -1236,6 +1310,7 @@ static bool save_state_with_thumbnail(App* app)
     }
     bool saved = core_session_save_state(&app->session, &thumbnail);
     quick_menu_refresh(&app->quick_menu);
+    app->quick_slot_stale = true;
     return saved;
 }
 
@@ -1321,12 +1396,43 @@ static void pair_update(App* app)
     }
 }
 
-// TOOLS > PAIR: what was pressed, on SHARE's connection.
+// TOOLS > PAIR...: what was pressed. PAIR WITH A HOST on FILE TRANSFER's
+// connection; PAIR WITH A CLIENT on the NetAccess, so under the network lock
+// (the network thread waits meanwhile).
 static void pair_apply(App* app, const PairWindowAction* action)
 {
     NetService* service = app->net_running ? &app->net_service : nullptr;   // access back needs our listener
-    pair_window_apply(&app->pair_window, action, &app->share_link, &app->share_status,
-                      settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
+    pair_window_apply_host(&app->pair_window, action, &app->share_link, &app->share_status,
+                           settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
+    if (service != nullptr)
+    {
+        net_service_lock(service);
+        pair_window_apply_client(&app->pair_window, action, &service->access);
+        net_service_unlock(service);
+    }
+    else
+    {
+        pair_window_apply_client(&app->pair_window, action, nullptr);
+    }
+}
+
+// TOOLS > PAIR...'s waiting steps, every frame (also closed: a request in
+// the game waits as a card): 5 minutes at most (pair_window.h). Our own
+// code's wait and a request are the NetAccess's, so under the network lock.
+static void pair_expire(App* app)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    // (The lock only when a NetAccess step waits: not taken every frame for nothing.)
+    if (app->net_running && (app->pair_window.request.active || app->pair_window.invite.waiting))
+    {
+        net_service_lock(&app->net_service);
+        pair_window_expire(&app->pair_window, &app->share_link, &app->net_service.access, now_ms);
+        net_service_unlock(&app->net_service);
+    }
+    else
+    {
+        pair_window_expire(&app->pair_window, &app->share_link, nullptr, now_ms);
+    }
 }
 
 static void open_share_window(App* app)
@@ -1461,14 +1567,21 @@ static void share_update(App* app, ShareTransferLine* line)
     }
 }
 
-// SHARE's PAIR: pairing lives in TOOLS > PAIR only: it opens on that piccolo
-// and starts at once. Once paired and closed, SHARE stays connected.
+// SHARE's PAIR: pairing lives in TOOLS > PAIR... only: it opens on PAIR
+// WITH A HOST with that piccolo and starts at once (unless the window is in
+// the middle of something else). Once paired and closed, SHARE stays
+// connected.
 static void share_pair(App* app, bool internet)
 {
     pair_window_open(&app->pair_window, nullptr);
+    if (app->pair_window.mode != PairMode::host || app->pair_window.phase != PairWindowPhase::list)
+    {
+        return;
+    }
     app->pair_window.selected = app->share_window.found_selected;
     PairWindowAction pair_action = {};
     pair_action.press = internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
+    pair_action.mode = PairMode::host;
     pair_apply(app, &pair_action);
 }
 
@@ -1479,6 +1592,79 @@ static void app_leave_main_menu(App* app);
 static void net_answer_load(App* app, NetContentStatus status);
 
 static void app_open_core_config(App* app, uint32_t port, uint32_t controller);   // (the UI modes, further down)
+static void app_open_widget(App* app, UiWidget widget);
+
+// The actions on the running game that the GAME menu and QUICK MENU share,
+// each in one place. Where the UI goes afterwards is the caller's: the
+// menu goes back to the game, QUICK MENU may stay.
+
+// QUICK SAVE / QUICK LOAD: the quick slot, whatever slot is selected.
+static bool quick_save(App* app)
+{
+    uint32_t selected = app->session.state_slot;
+    app->session.state_slot = QUICK_SLOT;
+    bool saved = save_state_with_thumbnail(app);
+    app->session.state_slot = selected;
+    set_status(app, app->session.message);
+    return saved;
+}
+
+static bool quick_load(App* app)
+{
+    uint32_t selected = app->session.state_slot;
+    app->session.state_slot = QUICK_SLOT;
+    bool loaded = core_session_load_state(&app->session);
+    app->session.state_slot = selected;
+    set_status(app, app->session.message);
+    return loaded;
+}
+
+// SOFT RESET: the core's own reset (the console's reset button).
+static bool soft_reset(App* app)
+{
+    if (!game_running(app))
+    {
+        return false;
+    }
+    libretro_host_reset(app->session.host);
+    set_status(app, piccolo_text(&app->strings, Str::status_reset));
+    return true;
+}
+
+// HARD RESET: the core and the game loaded again, as LOAD GAME would load
+// them (the same files the game was started from), at the top of the next
+// loop (see pending_start). The start stops the running game first.
+static bool hard_reset(App* app)
+{
+    if (!game_running(app) || app->has_pending_start)
+    {
+        return false;
+    }
+    app->pending_start = FilePickerChoice{};
+    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
+                  app->marker_core_path.c_str());
+    std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
+                  app->marker_content_path.c_str());
+    app->has_pending_start = true;
+    return true;
+}
+
+// CLOSE GAME: at the top of the next loop (the game's texture may be in this
+// frame already).
+static void close_game(App* app)
+{
+    if (game_running(app))
+    {
+        app->pending_close_game = true;
+    }
+}
+
+// TOOLS > GAME DVR, QUICK MENU's GAME DVR: the rewind DVR, a window widget
+// (it refuses, its HUD saying why, with nothing to go back to).
+static void open_game_dvr(App* app)
+{
+    app_open_widget(app, UiWidget::dvr);
+}
 
 static void handle_menu_action(App* app, MenuAction action)
 {
@@ -1501,13 +1687,43 @@ static void handle_menu_action(App* app, MenuAction action)
             toggle_user_pause(app);
             resume_game(app);
             break;
+        case MenuAction::close_game:
+            close_game(app);
+            break;
         case MenuAction::reset:
-            if (game_running(app))
+            if (soft_reset(app))
             {
-                libretro_host_reset(app->session.host);
-                set_status(app, piccolo_text(&app->strings, Str::status_reset));
                 app_leave_main_menu(app);
             }
+            break;
+        case MenuAction::hard_reset:
+            hard_reset(app);   // the game starts again straight into play
+            break;
+        case MenuAction::quick_save:
+            if (quick_save(app))
+            {
+                app_leave_main_menu(app);
+            }
+            break;
+        case MenuAction::quick_load:
+            if (quick_load(app))
+            {
+                app_leave_main_menu(app);
+            }
+            break;
+        case MenuAction::game_dvr:
+            open_game_dvr(app);
+            break;
+        case MenuAction::clear_recents:
+            app->recent.games.clear();
+            if (!app->recent_path.empty())
+            {
+                recent_games_save(&app->recent, app->recent_path.c_str());
+            }
+            refresh_recent_labels(app);
+            break;
+        case MenuAction::about:
+            about_window_open(&app->about_window);
             break;
         case MenuAction::save_state:
             if (save_state_with_thumbnail(app))
@@ -1563,11 +1779,7 @@ static void handle_menu_action(App* app, MenuAction action)
             open_share_window(app);
             break;
         case MenuAction::pair:
-            start_share_link(app);
-            pair_window_open(&app->pair_window, nullptr);
-            break;
-        case MenuAction::invite:
-            net_invite_open(&app->net_window.invite);
+            pair_window_open(&app->pair_window, nullptr);   // app_ui_update starts FILE TRANSFER's connection
             break;
         case MenuAction::guests:
             open_guest_window(app);
@@ -1940,6 +2152,8 @@ static bool window_flag(const App* app, UiWindow window)
             return app->safe_start_open;
         case UiWindow::debug:
             return app->show_debug_window;
+        case UiWindow::about:
+            return app->about_window.open;
         case UiWindow::pad_editor:
             return app->onscreen_pad.editor.active;
         case UiWindow::none:
@@ -1992,6 +2206,9 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::debug:
             app->show_debug_window = false;
+            break;
+        case UiWindow::about:
+            app->about_window.open = false;
             break;
         case UiWindow::pad_editor:
             onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
@@ -2155,8 +2372,6 @@ static bool quick_menu_up(const App* app)
     return app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::quick_menu;
 }
 
-static void app_open_widget(App* app, UiWidget widget);
-
 static void app_open_quick_menu(App* app)
 {
     app_open_widget(app, UiWidget::quick_menu);
@@ -2316,7 +2531,9 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
-    facts.pairing_request = app->net_window.request.active;
+    // A request pauses once its window shows (in the game it's a card first:
+    // no pause until START held opens the window).
+    facts.pairing_request = app->pair_window.request.active && app->pair_window.open;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -2347,11 +2564,46 @@ static bool ui_is_up(const App* app)
     return !game_has_keyboard(app);
 }
 
+// A pairing request shows as a card, not its window (testing round 1): the
+// player is in the game with no window over it (pair_window.h).
+static bool pair_request_in_game(const App* app)
+{
+    return game_has_keyboard(app) && !app->pair_window.open && !app->guest_window.open;
+}
+
+// START held on any controller, for the pairing request's card: REMAP on a
+// gamepad (START by default, as HOLD START TO REMAP), the keyboard player's
+// START (Enter by default: the keyboard has no REMAP key).
+static bool pair_accept_held(const App* app)
+{
+    for (size_t i = 0; i < app->input.controllers.size(); i++)
+    {
+        uint32_t controller = static_cast<uint32_t>(i);
+        const InputDevice* device = input_devices_find_const(&app->input.devices, app->input.controllers[i].device_id);
+        if (device == nullptr)
+        {
+            continue;
+        }
+        InputAction action = device->kind == InputDeviceKind::keyboard ? InputAction::pad_start : InputAction::hotkey_remap;
+        if (input_controller_action_held(&app->input, controller, action))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Escape / B: back, the same in every mode (ui_back): a grab is cancelled,
 // CORE CONFIGURATION's view, the widget or MAIN MENU's top window closes,
 // then the game.
 static void ui_do_back(App* app)
 {
+    // The debug window's preview first: it's on top, and not a MAIN MENU window.
+    if (debug_preview_shown(&app->debug_previews))
+    {
+        debug_preview_end(&app->debug_previews);
+        return;
+    }
     // A view inside CORE CONFIGURATION (its shader picker, the remap view)
     // closes before the window, while it's the top one.
     bool sub_view = ui_top_window(&app->ui) == UiWindow::core_config &&
@@ -2797,6 +3049,14 @@ static void app_update_input(App* app)
     {
         app_open_core_config(app, remap.port, remap.controller);   // CONTROLS, that controller's remap
     }
+    // A pairing request's card (in GAME): START held opens its window (the
+    // game pauses then, as for a request that opens it by itself).
+    if (pair_window_hold_accept(&app->pair_window, pair_request_in_game(app), pair_accept_held(app), SDL_GetTicks()))
+    {
+        SDL_Log("Network: pairing request accepted from the game: its window opens");
+    }
+    // The debug window's fake request card: the same hold, nothing accepted.
+    debug_preview_hold_request(&app->debug_previews, game_has_keyboard(app), pair_accept_held(app), SDL_GetTicks());
     update_port_pings(app);
     // The DVR reads its buttons itself (before the hotkeys: the one that
     // opens it doesn't act in it the same frame).
@@ -3362,6 +3622,43 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
     notes.rewind_note = app->rewind_note;
     notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
+    // REWIND's header: the mode the running game records in now ("" without
+    // a game: the header shows the setting). AUTO's choice says so.
+    if (game_running(app))
+    {
+        Str mode = Str::value_rewind_off;
+        switch (app->dvr.rewind.state)
+        {
+            case CoreRewindState::off:
+            case CoreRewindState::unsupported:
+                mode = Str::value_rewind_off;
+                break;
+            case CoreRewindState::measuring:
+                mode = Str::value_rewind_auto;
+                break;
+            case CoreRewindState::scrub:
+                mode = Str::value_rewind_scrub;
+                break;
+            case CoreRewindState::snapshots:
+                mode = Str::value_rewind_snapshots;
+                break;
+        }
+        bool chosen = app->dvr.rewind.settings.mode == RewindMode::automatic &&
+                      (app->dvr.rewind.state == CoreRewindState::scrub ||
+                       app->dvr.rewind.state == CoreRewindState::snapshots);
+        char* rewind_mode = view->settings_text.rewind_mode;
+        size_t rewind_mode_max = sizeof(view->settings_text.rewind_mode);
+        if (chosen)
+        {
+            std::snprintf(rewind_mode, rewind_mode_max, "%s (%s)", piccolo_text(&app->strings, mode),
+                          piccolo_text(&app->strings, Str::value_rewind_auto));
+        }
+        else
+        {
+            std::snprintf(rewind_mode, rewind_mode_max, "%s", piccolo_text(&app->strings, mode));
+        }
+        notes.rewind_in_use = view->settings_text.rewind_mode;
+    }
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
     {
@@ -3471,6 +3768,17 @@ static bool net_devices_unchanged(const std::vector<NetTrustedDevice>* shown, co
     return true;
 }
 
+// A host's FORGET / CONNECT names it by its index in the hosts list as
+// drawn (a copy); the live list may have changed since (a pairing, a host
+// forgotten), so the press counts only if that index still holds the same
+// host. By name: FILE TRANSFER's connection doesn't tell the hosts' keys.
+static bool share_host_unchanged(App* app, uint32_t index, const char* name)
+{
+    NetShareLinkStatus live;
+    net_share_link_status(&app->share_link, &live);
+    return index < live.paired.size() && live.paired[index] == name;
+}
+
 // What was done in SETTINGS (its NETWORK tab under the network lock: it
 // changes the NetAccess, pairing, levels, FORGET).
 static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowAction* action)
@@ -3497,9 +3805,20 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
     {
         net_service_unlock(&app->net_service);
     }
-    if (action->network.forget_host && frame->hosts_known)
+    if (action->network.forget_host && frame->hosts_known &&
+        share_host_unchanged(app, action->network.forget_host_index, action->network.host_name))
     {
         net_share_link_forget_host(&app->share_link, action->network.forget_host_index);
+    }
+    // CONNECT on a paired host: FILE TRANSFER opens, connected to it (the
+    // only thing a connection to a host is for here), across the internet
+    // through BEACON SERVER as FILE TRANSFER's own CONNECT does.
+    if (action->network.connect_host && frame->hosts_known &&
+        share_host_unchanged(app, action->network.connect_host_index, action->network.host_name))
+    {
+        open_share_window(app);
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+        net_share_link_connect_paired(&app->share_link, action->network.connect_host_index);
     }
     choose_folder_start(app, action->choose_folder);
     if (action->search_frame_delay)
@@ -3602,7 +3921,10 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->devices_available = app->ports_widget.port_count > 0;
     state->text_box_allowed = state->game_running && !text_input_pending(app);
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
-    state->toolkit_demo_shown = app->show_imgui_demo;
+    state->pair_request_card = app->debug_previews.request_card;
+    state->pair_open = app->pair_window.open;
+    state->about_open = app->about_window.open;
+    state->guest_open = app->guest_window.open;
 }
 
 // What was pressed in the debug window.
@@ -3616,9 +3938,13 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
     {
         app->state_icons.debug_show[i] = action->icons_forced[i];
     }
-    app->show_imgui_demo = action->toolkit_demo_shown;
 
     uint64_t now_ms = SDL_GetTicks();
+    debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
+    if (action->preview != DebugPreview::none)
+    {
+        debug_preview_show(&app->debug_previews, action->preview);
+    }
     static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
     uint32_t dvr_card = 3;
     switch (action->press)
@@ -3681,6 +4007,15 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         app->shader_check.state = ShaderCheckState::asking;
         app->shader_check.measured_ns = 1e9 / 41.0;
         app->shader_check_asked_ms = now_ms;
+        break;
+    case DebugWindowPress::card_link_copied:
+        debug_preview_show_card(&app->debug_previews, DebugCard::link_copied, now_ms);
+        break;
+    case DebugWindowPress::card_pair_timed_out:
+        debug_preview_show_card(&app->debug_previews, DebugCard::pair_timed_out, now_ms);
+        break;
+    case DebugWindowPress::card_pair_failed:
+        debug_preview_show_card(&app->debug_previews, DebugCard::pair_failed, now_ms);
         break;
     }
     if (dvr_card < 3)
@@ -4180,11 +4515,11 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
         uint32_t slot = app->session.state_slot;
         if (*key == "slot_next")
         {
-            slot = slot >= LIBRETRO_STATE_SLOT_LAST ? LIBRETRO_STATE_SLOT_FIRST : slot + 1;
+            slot = slot >= QUICK_MENU_SLOT_LAST ? QUICK_MENU_SLOT_FIRST : slot + 1;
         }
         else
         {
-            slot = slot <= LIBRETRO_STATE_SLOT_FIRST ? LIBRETRO_STATE_SLOT_LAST : slot - 1;
+            slot = slot <= QUICK_MENU_SLOT_FIRST ? QUICK_MENU_SLOT_LAST : slot - 1;
         }
         app->session.state_slot = slot;
         app->quick_menu.slot = slot;
@@ -4730,6 +5065,9 @@ static void net_stop(App* app)
         }
         net_service_stop(&app->net_service);
         app->net_running = false;
+        // A pairing request (it pauses the game) or our code's wait can't be
+        // answered any more, and a restarted listener numbers its peers anew.
+        pair_window_network_stopped(&app->pair_window);
     }
 }
 
@@ -4860,22 +5198,15 @@ static void net_update_locked(App* app)
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
-            // The dialog that waited for it closes by itself.
-            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
-            {
-                net_pairing_request_close(&app->net_window.request);
-            }
-            if (app->net_window.invite.answered && app->net_window.invite.peer == event.peer)
-            {
-                net_invite_close(&app->net_window.invite, &app->net_service.access);
-            }
+            // PAIR WITH A CLIENT, if it waited for it: PAIRED WITH.
+            pair_window_paired(&app->pair_window, &app->net_service.access, &event, device);
             break;
         }
         case NetAccessEventType::closed:
-            if (event.device < 0 && app->net_window.request.active &&
-                app->net_window.request.peer == event.peer)
+            if (event.device < 0)
             {
-                net_pairing_request_close(&app->net_window.request);   // it cancelled, or left
+                // It cancelled, or left.
+                pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -4911,22 +5242,19 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
-            {
-                net_pairing_request_close(&app->net_window.request);
-            }
+            pair_window_request_gone(&app->pair_window, &app->net_service.access, event.peer, SDL_GetTicks());
             break;
         case NetAccessEventType::pairing_requested:
-            // A device asks (Andrés, 2026-11-22): the dialog takes its code and
-            // the level; the game pauses while it's up. One at a time: another
-            // waits until this one is done (it asks again on its own if refused).
-            if (net_invite_take_request(&app->net_window.invite, &app->net_service.access, &event))
+            // A device asks (Andrés, 2026-11-22): TOOLS > PAIR... opens on
+            // PAIR WITH A CLIENT to take its code and the role; the game pauses
+            // while it's up. One at a time: another waits until this one is
+            // done (it asks again on its own if refused).
+            if (pair_window_take_request(&app->pair_window, &app->net_service.access, &event))
             {
-                SDL_Log("Network: \"%s\" came with the invite's code", event.name);
+                SDL_Log("Network: \"%s\" came with our own code", event.name);
             }
-            else if (!app->net_window.request.active || app->net_window.request.peer == event.peer)
+            else if (app->pair_window.request.active && app->pair_window.request.peer == event.peer)
             {
-                net_pairing_request_open(&app->net_window.request, &event);
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
             }
             break;
@@ -5059,14 +5387,20 @@ static void status_line_text(const App* app, char* out, size_t size)
     }
 }
 
-// INTERFACE > BACKDROP: while a menu or a window (DEVICES too) is up over a
-// game, the whole game is covered by black at that opacity, behind every
-// window (the menu bar stays on top of it): the UI reads well over any
-// picture. Widgets don't dim the game themselves. Its alpha, 0 for none.
+// INTERFACE > BACKDROP: while the menu or any window is up (DEVICES too),
+// the whole screen is covered by black at that opacity, behind every window
+// (the menu bar stays on top of it): the UI reads well over any picture.
+// One backdrop for everything (Andrés, testing round 1): with or without a
+// game, and also for the windows that open over the game itself (a pairing
+// request, PAIR, REMOTE PLAY). Widgets and modals don't dim the
+// screen themselves. Its alpha, 0 for none.
 static uint32_t menu_backdrop_alpha(const App* app)
 {
     int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
-    if (!game_running(app) || !ui_is_up(app) || percent <= 0)
+    // (Not DEBUG: it's watched while playing.)
+    bool window_over_game = app->pair_window.open || app->guest_window.open ||
+                            (app->pair_window.request.active && !pair_request_in_game(app));
+    if ((!ui_is_up(app) && !window_over_game) || percent <= 0)
     {
         return 0;
     }
@@ -5091,6 +5425,9 @@ static void hud_fill(App* app, UiView* view)
     state_widget_add_hud(&app->state_icons, &facts, &app->hud, now_ms);
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
+    guest_window_add_hud(&app->guest_window, &app->strings, &app->hud, now_ms);
+    pair_window_add_hud(&app->pair_window, &app->strings, pair_request_in_game(app), &app->hud, now_ms);
+    debug_preview_add_hud(&app->debug_previews, &app->strings, &app->hud, now_ms);
 
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
@@ -5218,17 +5555,26 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         }
         share_window_update(&app->share_window, &app->share_folders, share_link);
     }
-    // TOOLS > PAIR (on SHARE's connection).
-    pair_update(app);
+    // TOOLS > PAIR... (PAIR WITH A HOST on SHARE's connection). Also while
+    // closed: a request opens it. However it opened (the menu, SHARE's PAIR,
+    // a request, a pairing), FILE TRANSFER's connection starts here, the one
+    // place, so PAIR WITH A HOST never finds it missing.
     if (app->pair_window.open)
+    {
+        start_share_link(app);
+    }
+    pair_update(app);
     {
         const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start
         if (net_share_link_started(&app->share_link))
         {
             pair_link = &app->share_status;
         }
-        pair_window_update(&app->pair_window, pair_link);
+        pair_window_update(&app->pair_window, pair_link, pair_request_in_game(app), SDL_GetTicks());
     }
+    // The debug window's preview of a window ends when the real one opens.
+    debug_preview_update(&app->debug_previews, app->pair_window.open, app->about_window.open, app->guest_window.open,
+                         app->quick_menu.open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();
@@ -5253,7 +5599,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 
     settings_view(app, view, frame);
     file_picker_state(&view->picker, &app->picker, &app->catalog, &app->strings);
-    quick_menu_state(&view->quick, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
+    quick_menu_state(&view->quick, &app->quick_menu, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
     core_options_state(app, &view->config_options);
     core_config_window_state(&view->config, &app->core_config, &app->strings, &view->config_options, &app->input,
                              app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
@@ -5282,22 +5628,10 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         {
             pair_link = &app->share_status;
         }
-        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running);
+        // (A request shows it over anything, the game paused: ui_derive.)
+        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running, app->net_running);
     }
-    // A device asking to pair: over anything, the game paused (ui_derive).
-    // TOOLS > INVITE too (without the network it says the network is off).
-    view->pairing_shown = app->net_running && (app->net_window.request.active || app->net_window.invite.open);
-    view->invite_shown = !view->pairing_shown && app->net_window.invite.open;
-    if (view->pairing_shown)
-    {
-        net_pairing_request_state(&view->request, &app->strings);
-        net_invite_state(&view->invite, &app->strings, &app->net_service.access);   // (only whether there is one)
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_state(&view->invite, &app->strings, nullptr);
-    }
-    // TOOLS > REMOTE PLAY TOGETHER: reads the NetAccess, so under the lock.
+    // TOOLS > REMOTE PLAY: reads the NetAccess, so under the lock.
     view->guest_shown = app->guest_window.open;
     if (view->guest_shown)
     {
@@ -5306,7 +5640,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         {
             net_service_lock(&app->net_service);
         }
-        guest_window_state(&view->guest, &app->guest_window, access, &app->input_net, &app->input, game_running(app),
+        guest_window_state(&view->guest, access, &app->input_net, &app->input, game_running(app),
                            !app->net_beacon_applied.empty(), &app->strings);
         if (access != nullptr)
         {
@@ -5352,11 +5686,13 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         text_input_window_state(&view->text_input, &app->session.host->text_input, &app->strings);
         text_input_window_update(&app->text_input_window, &view->text_input);
     }
+    about_window_state(&view->about, &app->strings, PICCOLO_VERSION);
     view->debug_shown = app->show_debug_window;
     if (view->debug_shown)
     {
         debug_window_state(app, &view->debug);
     }
+    debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION);
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {
@@ -5387,6 +5723,8 @@ static void app_ui_windows(App* app, UiWindows* windows)
     windows->input = &app->input_window;
     windows->map = &app->map_window;
     windows->text_input = &app->text_input_window;
+    windows->about = &app->about_window;
+    windows->previews = &app->debug_previews;
 }
 
 // What the user did this frame, applied in the order the windows are drawn
@@ -5473,10 +5811,12 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     ports_widget_apply(&app->ports_widget, &actions->ports, &app->input);
     dvr_widget_apply(&app->dvr, &actions->dvr, frame->dvr_now);
+    // QUICK MENU's presses: the actions it shares with the GAME menu are the
+    // same functions; what stays up afterwards is QUICK MENU's own.
     switch (actions->quick.press)
     {
     case QuickMenuPress::save:
-        save_state_with_thumbnail(app);
+        save_state_with_thumbnail(app);   // QUICK MENU stays: the slot's new picture shows
         set_status(app, app->session.message);
         break;
     case QuickMenuPress::load:
@@ -5486,20 +5826,37 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         }
         set_status(app, app->session.message);
         break;
-    case QuickMenuPress::reset:
-        libretro_host_reset(app->session.host);
-        set_status(app, piccolo_text(&app->strings, Str::status_reset));
-        app_enter_game(app);
+    case QuickMenuPress::quick_save:
+        quick_save(app);   // QUICK MENU stays, as SAVE
+        break;
+    case QuickMenuPress::quick_load:
+        if (quick_load(app))
+        {
+            app_enter_game(app);
+        }
+        break;
+    case QuickMenuPress::screenshot:
+        app_enter_game(app);   // back to the game: the shutter plays on it (as GAME > TAKE SCREENSHOT)
+        take_screenshot(app);
+        break;
+    case QuickMenuPress::soft_reset:
+        if (soft_reset(app))
+        {
+            app_enter_game(app);
+        }
+        break;
+    case QuickMenuPress::hard_reset:
+        hard_reset(app);   // the game starts again straight into play
         break;
     case QuickMenuPress::close_game:
-        app->pending_close_game = true;   // the texture may be in this frame already
+        close_game(app);
         app_enter_game(app);
         break;
     case QuickMenuPress::pause:
         toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
         break;
     case QuickMenuPress::dvr:
-        app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
+        open_game_dvr(app);   // a window widget: it replaces the QUICK MENU
         break;
     case QuickMenuPress::config:
         app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes
@@ -5534,21 +5891,8 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     {
         pair_apply(app, &actions->pair);
     }
-    // The pairing request and INVITE answer on the NetAccess: the network
-    // thread waits meanwhile.
-    if (view->pairing_shown)
-    {
-        net_service_lock(&app->net_service);
-        NetAccess* access = &app->net_service.access;
-        net_pairing_request_apply(&app->net_window.request, &actions->request, access);
-        net_invite_apply(&app->net_window.invite, &actions->invite, access);
-        net_service_unlock(&app->net_service);
-    }
-    else if (view->invite_shown)
-    {
-        net_invite_apply(&app->net_window.invite, &actions->invite, nullptr);
-    }
-    // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
+    pair_expire(app);
+    // TOOLS > REMOTE PLAY: acts on the NetAccess, so under the lock.
     if (view->guest_shown)
     {
         NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
@@ -5556,7 +5900,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         {
             net_service_lock(&app->net_service);
         }
-        GuestWindowPress press = guest_window_apply(&app->guest_window, &actions->guest, access);
+        GuestWindowPress press = guest_window_apply(&app->guest_window, &actions->guest, access, SDL_GetTicks());
         if (press == GuestWindowPress::make_link || press == GuestWindowPress::new_link)
         {
             guest_make_link(app);
@@ -5627,10 +5971,14 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         }
         text_input_window_apply(&app->text_input_window, &actions->text_input, app->session.host);
     }
+    // (Before the debug window's: a preview it starts now gets this frame's
+    // presses of the one before.)
+    debug_preview_apply(&app->debug_previews, &actions->preview);
     if (view->debug_shown)
     {
         debug_window_apply(app, &actions->debug);
     }
+    about_window_apply(&app->about_window, &actions->about);
     save_after_options_windows(app);
     onscreen_pad_end_frame(&app->onscreen_pad);   // (the fingers seen by this frame are done)
 }
@@ -5668,9 +6016,17 @@ static bool app_frame(App* app)
         }
     }
     update_pause(app);
-    if (app->menus_built_paused != app->ui.user_paused)
+    if (app->quick_slot_stale)
     {
-        build_menus(app);   // GAME > PAUSE / RESUME
+        // Read only after a save or a start, never every frame (a file check).
+        app->quick_slot_stale = false;
+        StateSlotInfo info = {};
+        app->quick_slot_used = game_running(app) && core_session_slot_info(&app->session, QUICK_SLOT, &info) && info.used;
+    }
+    if (app->menus_built_paused != app->ui.user_paused || app->menus_built_running != game_running(app) ||
+        app->menus_built_quick_used != app->quick_slot_used)
+    {
+        build_menus(app);   // GAME > PAUSE / RESUME, what shows with a game
     }
     app->session.timing.mode = piccolo_settings_timing(&app->settings);
     if (app->headless.on)
