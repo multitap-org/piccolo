@@ -3996,36 +3996,28 @@ msgid "GAME DVR..."
 msgstr "DVR DEL JUEGO..."
 
 msgctxt "guests_title"
-msgid "REMOTE PLAY TOGETHER"
-msgstr "JUGAR A DISTANCIA JUNTOS"
+msgid "REMOTE PLAY"
+msgstr "JUGAR A DISTANCIA"
 
 msgctxt "guests_game"
-msgid "GAME (ON THE CARD)"
-msgstr "JUEGO (EN LA TARJETA)"
+msgid "GAME"
+msgstr "JUEGO"
 
-msgctxt "guests_seats"
-msgid "SEATS"
-msgstr "LUGARES"
+msgctxt "guests_count"
+msgid "GUESTS"
+msgstr "INVITADOS"
 
-msgctxt "guests_access"
-msgid "ACCESS"
-msgstr "ACCESO"
+msgctxt "guests_role"
+msgid "ROLE"
+msgstr "ROL"
 
 msgctxt "guests_watch"
-msgid "WATCH"
-msgstr "MIRAR"
+msgid "SPECTATOR"
+msgstr "ESPECTADOR"
 
 msgctxt "guests_play"
-msgid "WATCH + PLAY"
-msgstr "MIRAR + JUGAR"
-
-msgctxt "guests_play_hint"
-msgid "PLAY: A FREE PORT IF THERE IS ONE, ELSE THEY WATCH."
-msgstr "JUGAR: UN PUERTO LIBRE SI HAY, SI NO MIRAN."
-
-msgctxt "guests_text"
-msgid "ANYONE WITH THE LINK TAKES A FREE SEAT, NO QUESTIONS ASKED, IN PICCOLETTO (THE APP OR THE BROWSER). THE LINK DIES WHEN THE GAME CLOSES. NOTHING IS SAVED."
-msgstr "QUIEN TENGA EL ENLACE TOMA UN LUGAR LIBRE, SIN PREGUNTAS, EN PICCOLETTO (LA APP O EL NAVEGADOR). EL ENLACE MUERE AL CERRAR EL JUEGO. NO SE GUARDA NADA."
+msgid "PLAYER"
+msgstr "JUGADOR"
 
 msgctxt "guests_no_game"
 msgid "LOAD A GAME FIRST: THE LINK IS FOR THE GAME THAT RUNS."
@@ -4036,24 +4028,28 @@ msgid "TURN ON INTERNET IN SETTINGS > NETWORK FIRST."
 msgstr "ACTIVA INTERNET EN SETTINGS > NETWORK PRIMERO."
 
 msgctxt "guests_make"
-msgid "MAKE LINK"
+msgid "CREATE LINK"
 msgstr "CREAR ENLACE"
 
 msgctxt "guests_link"
 msgid "LINK"
 msgstr "ENLACE"
 
-msgctxt "guests_copy"
-msgid "COPY"
-msgstr "COPIAR"
+msgctxt "guests_no_link"
+msgid "NO LINK YET"
+msgstr "AÚN NO HAY ENLACE"
 
 msgctxt "guests_copied"
 msgid "COPIED"
 msgstr "COPIADO"
 
+msgctxt "guests_copied_where"
+msgid "TO THE CLIPBOARD"
+msgstr "AL PORTAPAPELES"
+
 msgctxt "guests_new"
-msgid "NEW"
-msgstr "NUEVO"
+msgid "REFRESH LINK"
+msgstr "RENOVAR ENLACE"
 
 msgctxt "guests_new_tip"
 msgid "A NEW LINK: THE OLD ONE STOPS WORKING. WHOEVER IS IN STAYS."
@@ -4064,32 +4060,16 @@ msgid "KICK"
 msgstr "ECHAR"
 
 msgctxt "guests_kick_tip"
-msgid "THE SAME APP CAN'T COME BACK. ANOTHER ONE CAN, WITH THE SAME LINK: NEW STOPS THAT."
-msgstr "LA MISMA APP NO PUEDE VOLVER. OTRA SÍ, CON EL MISMO ENLACE: NUEVO LO EVITA."
+msgid "THE SAME APP CAN'T COME BACK. ANOTHER ONE CAN, WITH THE SAME LINK: REFRESH LINK STOPS THAT."
+msgstr "LA MISMA APP NO PUEDE VOLVER. OTRA SÍ, CON EL MISMO ENLACE: RENOVAR ENLACE LO EVITA."
 
 msgctxt "guests_none"
-msgid "NOBODY YET. SEND THE LINK."
-msgstr "TODAVÍA NADIE. MANDA EL ENLACE."
+msgid "NO GUESTS CONNECTED."
+msgstr "NINGÚN INVITADO CONECTADO."
 
-msgctxt "guests_plays"
-msgid "PLAYS P"
-msgstr "JUEGA P"
-
-msgctxt "guests_watches"
-msgid "WATCHES"
-msgstr "MIRA"
-
-msgctxt "guests_no_port"
-msgid "WATCHES: NO FREE PORT"
-msgstr "MIRA: NO HAY PUERTO LIBRE"
-
-msgctxt "guests_taken"
-msgid "SEATS TAKEN:"
-msgstr "LUGARES OCUPADOS:"
-
-msgctxt "guests_full"
-msgid "FULL"
-msgstr "LLENO"
+msgctxt "guests_player_port"
+msgid "PLAYER, PORT"
+msgstr "JUGADOR, PUERTO"
 
 msgctxt "guests_failures"
 msgid "COULDN'T CONNECT:"
@@ -4099,33 +4079,17 @@ msgctxt "guests_failures_tip"
 msgid "GUESTS WHOSE NETWORK AND THIS ONE CAN'T REACH EACH OTHER DIRECTLY. NOTHING IS RELAYED, SO THEY'RE TOLD SO."
 msgstr "INVITADOS CUYA RED Y ESTA NO SE ALCANZAN DIRECTAMENTE. NADA SE RETRANSMITE, ASÍ QUE SE LES AVISA."
 
-msgctxt "guests_card_none"
-msgid "CARD: NO PICTURE (THE LINK STILL WORKS)"
-msgstr "TARJETA: SIN IMAGEN (EL ENLACE FUNCIONA IGUAL)"
-
-msgctxt "guests_card_sending"
-msgid "CARD: SENDING..."
-msgstr "TARJETA: ENVIANDO..."
-
-msgctxt "guests_card_ready"
-msgid "CARD: ON THE LINK"
-msgstr "TARJETA: EN EL ENLACE"
-
-msgctxt "guests_card_failed"
-msgid "CARD: COULDN'T SEND IT (THE LINK STILL WORKS)"
-msgstr "TARJETA: NO SE PUDO ENVIAR (EL ENLACE FUNCIONA IGUAL)"
-
 msgctxt "guests_end"
-msgid "END"
-msgstr "TERMINAR"
+msgid "STOP REMOTE PLAY"
+msgstr "DETENER JUGAR A DISTANCIA"
 
 msgctxt "guests_close"
 msgid "CLOSE"
 msgstr "CERRAR"
 
 msgctxt "status_guests_ended"
-msgid "REMOTE PLAY TOGETHER ENDED"
-msgstr "TERMINÓ JUGAR A DISTANCIA JUNTOS"
+msgid "REMOTE PLAY ENDED"
+msgstr "TERMINÓ JUGAR A DISTANCIA"
 
 msgctxt "status_guest_joined"
 msgid "JOINED:"

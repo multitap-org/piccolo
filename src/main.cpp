@@ -188,7 +188,7 @@ struct App
     NetWindow      net_window;         // SETTINGS > NETWORK between frames (OWNER's confirmation)
     std::vector<NetTrustedDevice> ui_net_devices;   // SETTINGS > NETWORK's paired devices as drawn (copied
                                                     // under the network lock: drawn without it)
-    GuestWindow    guest_window;       // TOOLS > REMOTE PLAY TOGETHER (guest links)
+    GuestWindow    guest_window;       // TOOLS > REMOTE PLAY (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
     NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
     // What the devices were last told runs (game_state): sent again when it changes.
@@ -723,7 +723,7 @@ static bool raw_screenshot(App* app, const std::string& path)
     return screenshot_writer_submit(&app->screenshot_writer, &image);
 }
 
-// --- REMOTE PLAY TOGETHER (guest links) ---------------------------------------
+// --- REMOTE PLAY (guest links) ---------------------------------------
 
 // The beacon's host name for guest links: BEACON SERVER without a UDP port
 // ("beacon.get-piccolo.app:55430" -> "beacon.get-piccolo.app"), the default
@@ -805,7 +805,7 @@ static void open_guest_window(App* app)
     guest_window_open(window);
 }
 
-// MAKE LINK (or NEW: a fresh link, the guests in stay). Under the network lock.
+// CREATE LINK (or REFRESH LINK: a fresh link, the guests in stay). Under the network lock.
 static void guest_make_link(App* app)
 {
     GuestWindow* window = &app->guest_window;
@@ -842,7 +842,7 @@ static void guest_make_link(App* app)
     window->prepare_started_ms = SDL_GetTicks();
 }
 
-// The session ends: END, the game closed or changed, networking off, quitting.
+// The session ends: STOP REMOTE PLAY, the game closed or changed, networking off, quitting.
 // Under the network lock (or with the network stopped: `access` nullptr).
 static void guest_end(App* app, NetAccess* access)
 {
@@ -884,6 +884,7 @@ static void guest_update_locked(App* app)
         {
             window->preparing = false;
             SDL_Log("Guest link: ready (%s)", state == GuestCardState::sent ? "its card is up" : "no card");
+            guest_window_link_ready(window, now);   // CREATE / REFRESH LINK: copied now, and the card says so
         }
         return;
     }
@@ -5285,6 +5286,7 @@ static void hud_fill(App* app, UiView* view)
     state_widget_add_hud(&app->state_icons, &facts, &app->hud, now_ms);
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
+    guest_window_add_hud(&app->guest_window, &app->strings, &app->hud, now_ms);
 
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
@@ -5479,7 +5481,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         // (A request shows it over anything, the game paused: ui_derive.)
         pair_window_state(&view->pair, &app->strings, pair_link, app->net_running, app->net_running);
     }
-    // TOOLS > REMOTE PLAY TOGETHER: reads the NetAccess, so under the lock.
+    // TOOLS > REMOTE PLAY: reads the NetAccess, so under the lock.
     view->guest_shown = app->guest_window.open;
     if (view->guest_shown)
     {
@@ -5488,7 +5490,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         {
             net_service_lock(&app->net_service);
         }
-        guest_window_state(&view->guest, &app->guest_window, access, &app->input_net, &app->input, game_running(app),
+        guest_window_state(&view->guest, access, &app->input_net, &app->input, game_running(app),
                            !app->net_beacon_applied.empty(), &app->strings);
         if (access != nullptr)
         {
@@ -5737,7 +5739,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     {
         pair_apply(app, &actions->pair);
     }
-    // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
+    // TOOLS > REMOTE PLAY: acts on the NetAccess, so under the lock.
     if (view->guest_shown)
     {
         NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
