@@ -67,6 +67,7 @@
 #include "screenshot_writer.h"
 #include "state_widget.h"
 #include "debug_ui.h"
+#include "debug_window.h"
 #include "input_bindings.h"
 #include "input_config.h"
 #include "input_sdl.h"
@@ -3608,44 +3609,86 @@ static void debug_text_done(const char* text)
     SDL_Log("Debug text box: %s", text != nullptr ? text : "(cancelled)");
 }
 
-// WIDGETS: every widget on demand, to see and try them without the
-// situation that brings them up (Andrés, 2026-11-21).
-static void draw_debug_widgets(App* app)
+// The debug window (debug_window.h): what it shows, from the App.
+static_assert(DEBUG_WINDOW_ICON_COUNT == STATE_ICON_COUNT, "the debug window forces each state icon");
+static void debug_window_state(App* app, DebugWindowState* state)
 {
-    uint64_t now_ms = SDL_GetTicks();
-    ImGui::TextUnformatted("Widgets (HUD)");
-    if (ImGui::Button("Remap card: port 1's first controller"))
+    static AppShellGpuInfo gpu = {};   // the strings must outlive this function
+    app_shell_gpu_info(&app->shell, &gpu);
+    state->piccolo_version = PICCOLO_VERSION;
+    state->host_version = HOST_LIBRETRO_VERSION;
+    state->gpu_device = gpu.device;
+    state->gpu_api = gpu.api;
+    state->gpu_swapchain = gpu.swapchain;
+    state->gpu_validation = gpu.validation;
+    state->ui_scale = app->ui_scale;
+    state->screen_hz = app->fps_meter.screen_hz;
+    state->work_ms = app->fps_meter.work_ms;
+    state->game_running = game_running(app);
+    if (state->game_running)
     {
+        const CoreSession* session = &app->session;
+        state->core_name = session->host->system_info.library_name;
+        state->core_fps = session->host->av_info.timing.fps;
+        state->timing_mode = frame_timing_mode_name(session->timing.effective);
+        state->audio_ratio = session->audio.current_ratio;
+        state->audio_queued_ms = audio_output_queued_ms(&session->audio);
+        state->audio_target_ms = session->audio.rate.target_ms;
+        state->audio_automatic = session->audio.rate.automatic;
+        state->audio_underruns = session->audio.underruns;
+        state->missed_refreshes = session->timing.missed_total;
+        state->caught_up_frames = session->timing.caught_up_total;
+    }
+    state->frame_delay_ms = app->frame_delay_ms;
+    for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
+    {
+        state->icons_forced[i] = app->state_icons.debug_show[i];
+    }
+    state->devices_available = app->ports_widget.port_count > 0;
+    state->text_box_allowed = state->game_running && !text_input_pending(app);
+    state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
+    state->toolkit_demo_shown = app->show_imgui_demo;
+}
+
+// What was pressed in the debug window.
+static void debug_window_apply(App* app, const DebugWindowAction* action)
+{
+    if (action->closed)
+    {
+        app->show_debug_window = false;
+    }
+    for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
+    {
+        app->state_icons.debug_show[i] = action->icons_forced[i];
+    }
+    app->show_imgui_demo = action->toolkit_demo_shown;
+
+    uint64_t now_ms = SDL_GetTicks();
+    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
+    uint32_t dvr_card = 3;
+    switch (action->press)
+    {
+    case DebugWindowPress::none:
+        break;
+    case DebugWindowPress::remap_card:
         if (!remap_widget_debug_card(&app->remap, &app->input, &app->input_sdl, &app->layouts, now_ms))
         {
             SDL_Log("Debug: no controller on port 1 for a remap card");
         }
-    }
-    ImGui::Checkbox("PAUSED icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::pause)]);
-    ImGui::SameLine();
-    ImGui::Checkbox("REWINDING icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::rewind)]);
-    ImGui::Checkbox("PLAY icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::play)]);
-    ImGui::SameLine();
-    ImGui::Checkbox("FAST FORWARD icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::fast_forward)]);
-    if (ImGui::Button("PLAY icon as after PLAY FROM HERE (2.5 s)"))
-    {
+        break;
+    case DebugWindowPress::play_from_here:
         app->dvr.played_from_ms = now_ms;
-    }
-    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
-    static const char* const DVR_CARD_NAMES[3] = {"DVR card: OFF", "DVR card: NO SAVESTATES", "DVR card: NOTHING YET"};
-    for (uint32_t i = 0; i < 3; i++)
-    {
-        if (i > 0)
-        {
-            ImGui::SameLine();
-        }
-        if (ImGui::Button(DVR_CARD_NAMES[i]))
-        {
-            std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[i]));
-            app->dvr.hud_since_ms = now_ms;
-        }
-    }
-    if (ImGui::Button("Ports' tabs rise"))
+        break;
+    case DebugWindowPress::dvr_card_off:
+        dvr_card = 0;
+        break;
+    case DebugWindowPress::dvr_card_unsupported:
+        dvr_card = 1;
+        break;
+    case DebugWindowPress::dvr_card_nothing:
+        dvr_card = 2;
+        break;
+    case DebugWindowPress::ports_rise:
     {
         bool changed[PORTS_VIEW_MAX_PORTS] = {};
         for (uint32_t p = 0; p < PORTS_VIEW_MAX_PORTS; p++)
@@ -3653,23 +3696,15 @@ static void draw_debug_widgets(App* app)
             changed[p] = true;
         }
         ports_view_pop(&app->ports_widget.view, changed, now_ms);
+        break;
     }
-
-    ImGui::TextUnformatted("Widgets (windows; a game must run)");
-    ImGui::BeginDisabled(!game_running(app));
-    // Asked for by the user: they replace what's up, this window included.
-    if (ImGui::Button("DEVICES") && app->ports_widget.port_count > 0)
-    {
+    case DebugWindowPress::open_devices:
         app_open_widget(app, UiWidget::ports);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("DVR"))
-    {
+        break;
+    case DebugWindowPress::open_dvr:
         app_open_widget(app, UiWidget::dvr);
-    }
-    // Asked for by the game: they wait until the menu is closed.
-    ImGui::SameLine();
-    if (ImGui::Button("Text box") && !text_input_pending(app))
+        break;
+    case DebugWindowPress::text_box:
     {
         LibretroTextInput* request = &app->session.host->text_input;
         request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
@@ -3679,10 +3714,9 @@ static void draw_debug_widgets(App* app)
         request->max_length = 8;
         request->done = debug_text_done;
         request->serial++;
+        break;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("KEEP / REVERT") && !shader_check_asking(app))
-    {
+    case DebugWindowPress::keep_revert:
         // REVERT goes back to the preset in use now: nothing changes.
         for (uint32_t i = 0; i < 3; i++)
         {
@@ -3692,51 +3726,22 @@ static void draw_debug_widgets(App* app)
         app->shader_check.state = ShaderCheckState::asking;
         app->shader_check.measured_ns = 1e9 / 41.0;
         app->shader_check_asked_ms = now_ms;
+        break;
     }
-    ImGui::EndDisabled();
-    ImGui::TextDisabled("Text box and KEEP / REVERT show once the menu is closed.");
+    if (dvr_card < 3)
+    {
+        std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[dvr_card]));
+        app->dvr.hud_since_ms = now_ms;
+    }
 }
 
 static void app_draw_debug_ui(App* app)
 {
-    const ImGuiIO& io = ImGui::GetIO();
-    AppShellGpuInfo gpu = {};
-    app_shell_gpu_info(&app->shell, &gpu);
-
-    ImGui::SetNextWindowPos(ImVec2(40.0f, 80.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("piccolo", &app->show_debug_window);
-
-    ImGui::Text("piccolo %s, host-libretro %s", PICCOLO_VERSION, HOST_LIBRETRO_VERSION);
-    ImGui::Text("GPU: %s", gpu.device);
-    ImGui::Text("%s", gpu.api);
-    ImGui::Text("Swapchain: %s", gpu.swapchain);
-    ImGui::Text("%s", gpu.validation);
-    ImGui::Text("Retro UI scale: %dx", app->ui_scale);
-    ImGui::Separator();
-    ImGui::Text("%.3f ms/frame (%.1f FPS)", static_cast<double>(1000.0f / io.Framerate), static_cast<double>(io.Framerate));
-    if (game_running(app))
-    {
-        const CoreSession* session = &app->session;
-        ImGui::Text("Core: %s, %.3f fps, timing %s", session->host->system_info.library_name,
-                    session->host->av_info.timing.fps, frame_timing_mode_name(session->timing.effective));
-        ImGui::Text("Audio: x%.5f, %u ms queued (target %.0f ms%s), %llu underruns", session->audio.current_ratio,
-                    audio_output_queued_ms(&session->audio), session->audio.rate.target_ms,
-                    session->audio.rate.automatic ? ", auto" : "", static_cast<unsigned long long>(session->audio.underruns));
-        ImGui::Text("Frames: %llu missed refreshes, %llu caught up; frame delay %u ms",
-                    static_cast<unsigned long long>(session->timing.missed_total),
-                    static_cast<unsigned long long>(session->timing.caught_up_total), app->frame_delay_ms);
-    }
-    ImGui::Separator();
-    draw_debug_widgets(app);
-    ImGui::Separator();
-    ImGui::Checkbox("Dear ImGui demo window", &app->show_imgui_demo);
-
-    ImGui::End();
-
-    if (app->show_imgui_demo)
-    {
-        ImGui::ShowDemoWindow(&app->show_imgui_demo);
-    }
+    DebugWindowState state = {};
+    debug_window_state(app, &state);
+    DebugWindowAction action = {};
+    debug_window_draw(&state, app->pixel_font, app->ui_scale, &action);
+    debug_window_apply(app, &action);
 }
 
 // ---------------------------------------------------------------------------

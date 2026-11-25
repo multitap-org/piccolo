@@ -32,3 +32,7 @@ void ui_toolkit_clear_keys();
 
 // The size of the screen the toolkit draws on, in its units.
 void ui_toolkit_screen_size(float* width, float* height);
+
+// The toolkit's own demo window, if it has one (developers: MENU > DEBUG).
+// *open goes false when it's closed.
+void ui_toolkit_demo_window(bool* open);
