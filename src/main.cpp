@@ -1315,62 +1315,22 @@ static bool start_share_link(App* app)
     return net_share_link_started(&app->share_link);
 }
 
-// TOOLS > PAIR: its requests, on SHARE's connection (pair_window.h).
+// TOOLS > PAIR, before drawing: the connection's status, which SHARE reads
+// itself while open (pair_window.h).
 static void pair_update(App* app)
 {
-    PairWindow* window = &app->pair_window;
-    NetShareLink* link = &app->share_link;
-    if (!net_share_link_started(link))
+    if (net_share_link_started(&app->share_link) && app->pair_window.open && !app->share_window.open)
     {
-        return;
+        net_share_link_status(&app->share_link, &app->share_status);
     }
-    if (window->open && !app->share_window.open)
-    {
-        net_share_link_status(link, &app->share_status);   // SHARE reads it itself while open
-    }
-    if (window->want_pair)
-    {
-        window->want_pair = false;
-        if (window->selected >= 0 && static_cast<size_t>(window->selected) < app->share_status.found.size())
-        {
-            net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->selected)].address,
-                                   window->code);
-        }
-    }
-    if (window->want_pair_internet)
-    {
-        window->want_pair_internet = false;
-        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));   // as SHARE does
-        net_share_link_pair_beacon(link, window->code);
-    }
-    if (window->want_cancel)
-    {
-        window->want_cancel = false;
-        net_share_link_disconnect(link);
-    }
-    if (window->want_give_back)
-    {
-        window->want_give_back = false;
-        // Access back (Andrés, 2026-11-22): the host may come to us at the
-        // level it gave us. It's told on this connection, and it goes in our
-        // own devices list.
-        if (app->net_running && net_share_link_grant_back(link, window->given))
-        {
-            net_service_lock(&app->net_service);
-            net_access_add_device(&app->net_service.access, window->host_key, window->host_name.c_str(), window->given);
-            net_service_unlock(&app->net_service);
-            SDL_Log("Network: \"%s\" may come here too (%s)", window->host_name.c_str(),
-                    net_access_level_name(window->given));
-        }
-    }
-    if (window->want_close)
-    {
-        window->want_close = false;
-        if (!app->share_window.open)
-        {
-            net_share_link_disconnect(link);   // paired: SHARE connects again when it's used
-        }
-    }
+}
+
+// TOOLS > PAIR: what was pressed, on SHARE's connection.
+static void pair_apply(App* app, const PairWindowAction* action)
+{
+    NetService* service = app->net_running ? &app->net_service : nullptr;   // access back needs our listener
+    pair_window_apply(&app->pair_window, action, &app->share_link, &app->share_status,
+                      settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
 }
 
 static void open_share_window(App* app)
@@ -1436,10 +1396,9 @@ static void share_update(App* app, ShareTransferLine* line)
         // starts at once. Once paired and closed, SHARE stays connected.
         pair_window_open(&app->pair_window, nullptr);
         app->pair_window.selected = window->found_selected;
-        app->pair_window.internet = window->pair_internet;
-        app->pair_window.want_pair = window->pair;
-        app->pair_window.want_pair_internet = window->pair_internet;
-        app->pair_window.phase = PairWindowPhase::waiting;
+        PairWindowAction pair_action = {};
+        pair_action.press = window->pair_internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
+        pair_apply(app, &pair_action);
         window->pair = false;
         window->pair_internet = false;
     }
@@ -5573,11 +5532,17 @@ static bool app_frame(App* app)
         pair_update(app);
         if (app->pair_window.open)
         {
-            PairWindowContext pair_context;
-            pair_context.strings = &app->strings;
-            pair_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
-            pair_context.can_give_back = app->net_running;
-            pair_window_draw(&app->pair_window, &pair_context, app->pixel_font, app->ui_scale);
+            const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start
+            if (net_share_link_started(&app->share_link))
+            {
+                pair_link = &app->share_status;
+            }
+            pair_window_update(&app->pair_window, pair_link);
+            PairWindowState pair_state = {};
+            pair_window_state(&pair_state, &app->strings, pair_link, app->net_running);
+            PairWindowAction pair_action = {};
+            pair_window_draw(&app->pair_window, &pair_state, app->pixel_font, app->ui_scale, &pair_action);
+            pair_apply(app, &pair_action);
         }
         // A device asking to pair: over anything, the game paused (ui_derive).
         // TOOLS > INVITE too. They answer on the NetAccess: the network thread
