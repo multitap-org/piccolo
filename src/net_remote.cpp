@@ -81,7 +81,7 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_video, display, window, PICCOLO_WINDOW_REMEMBER);
 
     uint32_t sync = text_id(Str::tab_sync);
-    uint32_t latency = text_id(Str::section_low_latency);
+    uint32_t latency = text_id(Str::section_latency);
     add_row(rows, Str::tab_video, sync, none, PICCOLO_VIDEO_TIMING);
     add_row(rows, Str::tab_video, sync, none, PICCOLO_VIDEO_CATCH_UP);
     add_row(rows, Str::tab_video, sync, latency, PICCOLO_LATENCY_FRAMES_IN_FLIGHT);

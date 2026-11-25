@@ -6,16 +6,17 @@
 // (Andrés: network settings belong in SETTINGS).
 //
 //   +- NETWORK (tab) ----------------------------------------------+
-//   |   ALLOW CONNECTIONS  [x]                                      |
-//   |   NAME               [LIVING ROOM               ]             |
+//   |   [x] ENABLE NETWORKING                                       |
+//   |   DEVICE NAME        [LIVING ROOM                           ] |
 //   |   PORT               [- 55420 +]                              |
-//   |   INTERNET           [x]                                      |
-//   |   BEACON SERVER      [beacon.get-piccolo.app    ]             |
-//   |   INTERNET STATUS    READY: PAIRED DEVICES CAN CONNECT        |
-//   |   THIS DEVICE        3fa2-91c0-7d4e-b815                       |
-//   | -- PAIRED DEVICES ------------------------------------------- |
-//   |   ANA'S PHONE  9c77-3332-311c-4017  CONNECTED                 |
-//   |   [GAMEPAD][STREAM][SHARE][FULL]  [FORGET]                    |
+//   | v INTERNET                                                    |
+//   |   [x] ENABLE CONNECTIONS OVER INTERNET                        |
+//   |   BEACON SERVER      [beacon.get-piccolo.app                ] |
+//   |   DEVICE ID          [3fa2-91c0-7d4e-b815                   ] |
+//   |   STATUS             * READY: PAIRED DEVICES CAN CONNECT      |
+//   | v DEVICES                                                     |
+//   |   CONNECTED CLIENTS   PAIRED CLIENTS      PAIRED HOSTS        |
+//   |   (a card each, its actions splitting its width)              |
 //   +--------------------------------------------------------------+
 //
 // The settings rows edit piccolo's global settings; main.cpp restarts the
@@ -168,6 +169,11 @@ struct NetWindowAction
     bool           owner_yes = false;  // the confirmation said YES: confirm_level to owner_key
     bool           forget_host = false;   // FORGET host `forget_host_index` (main.cpp: SHARE's connection)
     uint32_t       forget_host_index = 0;
+    bool           disconnect = false;    // DISCONNECT connection `disconnect_peer`, if it's still the
+    uint32_t       disconnect_peer = 0;   // device with `disconnect_key`
+    uint8_t        disconnect_key[NET_KEY_SIZE] = {};
+    bool           connect_host = false;  // CONNECT host `connect_host_index` (main.cpp: FILE TRANSFER)
+    uint32_t       connect_host_index = 0;
 };
 
 // The tab's state. `access` nullptr while networking is off; `speed`: the
@@ -182,10 +188,10 @@ void net_window_state(NetWindowState* state, const Settings* settings, const Loc
 // wide like the other tabs'.
 void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float label_width,
                          NetWindowAction* action);
-// The settings row's edit, ACCESS, FORGET and the confirmation's YES, on
+// The settings row's edit, ROLE, FORGET, DISCONNECT and the confirmation's YES, on
 // `access` (nullptr while networking is off). Under the network lock. True
 // when the settings changed (SETTINGS saves when it closes). FORGET on a
-// host is main.cpp's (SHARE's connection).
+// host and CONNECT are main.cpp's (FILE TRANSFER's connection).
 bool net_window_apply(NetWindow* window, const NetWindowAction* action, Settings* settings, NetAccess* access);
 
 // The four port LEDs lit in turn, then `label`: something being waited for.

@@ -3500,6 +3500,43 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
     notes.rewind_note = app->rewind_note;
     notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
+    // REWIND's header: the mode the running game records in now ("" without
+    // a game: the header shows the setting). AUTO's choice says so.
+    if (game_running(app))
+    {
+        Str mode = Str::value_rewind_off;
+        switch (app->dvr.rewind.state)
+        {
+            case CoreRewindState::off:
+            case CoreRewindState::unsupported:
+                mode = Str::value_rewind_off;
+                break;
+            case CoreRewindState::measuring:
+                mode = Str::value_rewind_auto;
+                break;
+            case CoreRewindState::scrub:
+                mode = Str::value_rewind_scrub;
+                break;
+            case CoreRewindState::snapshots:
+                mode = Str::value_rewind_snapshots;
+                break;
+        }
+        bool chosen = app->dvr.rewind.settings.mode == RewindMode::automatic &&
+                      (app->dvr.rewind.state == CoreRewindState::scrub ||
+                       app->dvr.rewind.state == CoreRewindState::snapshots);
+        char* rewind_mode = view->settings_text.rewind_mode;
+        size_t rewind_mode_max = sizeof(view->settings_text.rewind_mode);
+        if (chosen)
+        {
+            std::snprintf(rewind_mode, rewind_mode_max, "%s (%s)", piccolo_text(&app->strings, mode),
+                          piccolo_text(&app->strings, Str::value_rewind_auto));
+        }
+        else
+        {
+            std::snprintf(rewind_mode, rewind_mode_max, "%s", piccolo_text(&app->strings, mode));
+        }
+        notes.rewind_in_use = view->settings_text.rewind_mode;
+    }
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
     {
@@ -3638,6 +3675,15 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
     if (action->network.forget_host && frame->hosts_known)
     {
         net_share_link_forget_host(&app->share_link, action->network.forget_host_index);
+    }
+    // CONNECT on a paired host: FILE TRANSFER opens, connected to it (the
+    // only thing a connection to a host is for here), across the internet
+    // through BEACON SERVER as FILE TRANSFER's own CONNECT does.
+    if (action->network.connect_host && frame->hosts_known)
+    {
+        open_share_window(app);
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+        net_share_link_connect_paired(&app->share_link, action->network.connect_host_index);
     }
     choose_folder_start(app, action->choose_folder);
     if (action->search_frame_delay)

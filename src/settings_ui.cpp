@@ -48,6 +48,43 @@ float settings_ui_label_width(const Settings* settings, const Localization* stri
     return retro_ui_label_column_width(widest);
 }
 
+float settings_ui_label_width_of(const Settings* settings, const Localization* strings, const char* const* keys,
+                                 uint32_t key_count)
+{
+    float widest = 0.0f;
+    for (uint32_t i = 0; i < settings->descriptor_count; i++)
+    {
+        const SettingDescriptor* descriptor = &settings->descriptors[i];
+        if (descriptor->type == SettingType::boolean || descriptor->label == SETTING_NO_TEXT)
+        {
+            continue;
+        }
+        bool listed = false;
+        for (uint32_t k = 0; k < key_count && !listed; k++)
+        {
+            listed = std::strcmp(descriptor->key, keys[k]) == 0;
+        }
+        if (!listed)
+        {
+            continue;
+        }
+        float width = retro_ui_text_width(piccolo_text_id(strings, descriptor->label));
+        widest = width > widest ? width : widest;
+    }
+    return retro_ui_label_column_width(widest);
+}
+
+bool settings_ui_section(const char* id, const char* label, const char* detail, bool open_at_first)
+{
+    if (detail == nullptr || detail[0] == '\0')
+    {
+        return retro_ui_section_header(id, label, open_at_first);
+    }
+    char text[300] = {};
+    std::snprintf(text, sizeof(text), "%s: %s", label, detail);
+    return retro_ui_section_header(id, text, open_at_first);
+}
+
 // ---------------------------------------------------------------------------
 // One row: its SettingRowState as a retroui row, the control for its type.
 // Nothing here reads or changes the settings: what the user did goes into a

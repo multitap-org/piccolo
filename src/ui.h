@@ -52,6 +52,7 @@ struct UiSettingsText
     char audio_latency[UI_NOTE_MAX] = {};
     char frame_delay[UI_NOTE_MAX] = {};
     char run_ahead[UI_NOTE_MAX] = {};
+    char rewind_mode[UI_NOTE_MAX] = {};   // REWIND's header: the mode in use now
 };
 
 // Everything the frame shows, in drawing order. Filled by main.cpp

@@ -80,6 +80,8 @@ struct SettingsWindowNotes
     const char*        game_mode = "";      // GameMode's state, for the General tab
     const char*        rewind_note = "";    // what AUTO chose for the running game ("" = nothing to say)
     bool               rewind_known = false;   // the running game has AUTO's verdict (MEASURE AGAIN shows)
+    const char*        rewind_in_use = "";  // the running game's rewind mode now (SCRUB, SNAPSHOTS, OFF...);
+                                            // "" = no game: REWIND's header shows the setting
 };
 
 constexpr uint32_t SETTINGS_FOLDER_COUNT = 5;   // CORES, SYSTEM, SAVES, STATES, SCREENSHOTS
@@ -104,6 +106,7 @@ struct SettingsWindowState
     bool                frame_delay_usable = false;   // WAIT FOR PRESENT is on
     bool                frame_delay_auto = false;     // FRAME DELAY AUTO is on
     bool                rate_control = false;         // RATE CONTROL is on (MAX DEVIATION usable)
+    const char*         rewind_mode = "";             // REWIND's header: the mode in use now
     const std::vector<PiccoloThemeFile>* themes = nullptr;   // themes/*.cfg, for THEME
     ImageWindowState    image;                   // IMAGE SETTINGS (and the crop shown under its button)
     const NetWindowState* network = nullptr;     // the NETWORK tab; nullptr: no tab

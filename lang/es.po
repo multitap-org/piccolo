@@ -290,9 +290,9 @@ msgctxt "window_sized_when_running"
 msgid "SIZED TO THE GAME WHEN ONE RUNS"
 msgstr "TOMA EL TAMAÑO DEL JUEGO CUANDO HAY UNO EN MARCHA"
 
-msgctxt "section_low_latency"
-msgid "LOW LATENCY"
-msgstr "BAJA LATENCIA"
+msgctxt "section_latency"
+msgid "LATENCY"
+msgstr "LATENCIA"
 
 msgctxt "frame_delay_needs_wait"
 msgid "ONLY WITH WAIT FOR PRESENT: WITHOUT IT THE LOOP WAITS FOR THE DISPLAY AFTER READING INPUT, SO A DELAY ONLY ADDS LATENCY."
@@ -2928,16 +2928,16 @@ msgid "NETWORK"
 msgstr "RED"
 
 msgctxt "setting_net_enabled"
-msgid "ALLOW CONNECTIONS"
-msgstr "PERMITIR CONEXIONES"
+msgid "ENABLE NETWORKING"
+msgstr "ACTIVAR LA RED"
 
 msgctxt "setting_net_enabled_help"
 msgid "Lets paired devices (PICCOLETTO, another PICCOLO) connect to this one over the network. Off: nothing listens."
 msgstr "Deja que los dispositivos vinculados (PICCOLETTO, otro PICCOLO) se conecten a este por la red. Apagado: nada escucha."
 
 msgctxt "setting_net_name"
-msgid "NAME"
-msgstr "NOMBRE"
+msgid "DEVICE NAME"
+msgstr "NOMBRE DEL DISPOSITIVO"
 
 msgctxt "setting_net_name_help"
 msgid "What other devices see when they look for this one."
@@ -2952,8 +2952,8 @@ msgid "The UDP port for everything network. Change it only if another program us
 msgstr "El puerto UDP para todo lo de red. Cámbialo solo si otro programa lo usa."
 
 msgctxt "setting_net_internet"
-msgid "INTERNET"
-msgstr "INTERNET"
+msgid "ENABLE CONNECTIONS OVER INTERNET"
+msgstr "ACTIVAR CONEXIONES POR INTERNET"
 
 msgctxt "setting_net_internet_help"
 msgid "Lets paired devices connect from outside this network, through the BEACON SERVER. It only introduces the two devices: the game never goes through it. Some networks don't let the connection through."
@@ -2968,8 +2968,8 @@ msgid "The server that introduces paired devices across the internet. Anyone can
 msgstr "El servidor que presenta a los dispositivos vinculados a través de internet. Cualquiera puede montar el suyo (MULTITAP-BEACON)."
 
 msgctxt "net_beacon_status"
-msgid "INTERNET STATUS"
-msgstr "ESTADO DE INTERNET"
+msgid "STATUS"
+msgstr "ESTADO"
 
 msgctxt "net_beacon_status_help"
 msgid "Whether the beacon server knows this PICCOLO, so paired devices can find it from outside."
@@ -2988,12 +2988,24 @@ msgid "READY: PAIRED DEVICES CAN CONNECT"
 msgstr "LISTO: LOS DISPOSITIVOS VINCULADOS PUEDEN CONECTARSE"
 
 msgctxt "net_beacon_symmetric"
-msgid "READY, BUT THIS NETWORK MAY BLOCK CONNECTIONS (SYMMETRIC NAT)"
-msgstr "LISTO, PERO ESTA RED PUEDE BLOQUEAR CONEXIONES (NAT SIMÉTRICO)"
+msgid "READY, BUT THIS NETWORK MAY BLOCK CONNECTIONS"
+msgstr "LISTO, PERO ESTA RED PUEDE BLOQUEAR CONEXIONES"
 
 msgctxt "net_beacon_unreachable"
 msgid "THE BEACON SERVER DOESN'T ANSWER"
 msgstr "EL SERVIDOR BEACON NO RESPONDE"
+
+msgctxt "net_beacon_symmetric_help"
+msgid "This network's router uses symmetric NAT: it gives each connection a different outside port, so a device across the internet may not reach this one. On the same network, or with the router's UPnP or a forwarded port, it works."
+msgstr "El router de esta red usa NAT simétrico: da a cada conexión un puerto externo distinto, así que un dispositivo al otro lado de internet puede no llegar a este. En la misma red, o con UPnP en el router o un puerto redirigido, funciona."
+
+msgctxt "net_section_internet"
+msgid "INTERNET"
+msgstr "INTERNET"
+
+msgctxt "net_section_network_devices"
+msgid "DEVICES"
+msgstr "DISPOSITIVOS"
 
 msgctxt "headless_show"
 msgid "SHOW PICCOLO"
@@ -3016,8 +3028,8 @@ msgid "THE DEVICE WITH THE GAME LEFT: PAUSED"
 msgstr "EL DISPOSITIVO CON EL JUEGO SE FUE: EN PAUSA"
 
 msgctxt "net_this_device"
-msgid "THIS DEVICE"
-msgstr "ESTE DISPOSITIVO"
+msgid "DEVICE ID"
+msgstr "ID DEL DISPOSITIVO"
 
 msgctxt "net_this_device_help"
 msgid "This device's key, in short. The other device shows the same when it pairs with this one."
@@ -3032,8 +3044,8 @@ msgid "THE PORT COULD NOT BE OPENED (IN USE?)"
 msgstr "NO SE PUDO ABRIR EL PUERTO (¿EN USO?)"
 
 msgctxt "net_section_devices"
-msgid "PAIRED DEVICES"
-msgstr "DISPOSITIVOS VINCULADOS"
+msgid "PAIRED CLIENTS"
+msgstr "CLIENTES VINCULADOS"
 
 msgctxt "net_no_devices"
 msgid "NO DEVICES PAIRED YET"
@@ -3052,6 +3064,18 @@ msgstr "OLVIDAR"
 msgctxt "net_device_forget_help"
 msgid "Unpairs this device: if it's connected now it forgets this piccolo too; either way it has to pair again to connect."
 msgstr "Desempareja este dispositivo: si está conectado ahora también olvida este piccolo; en todo caso tiene que emparejarse de nuevo para conectarse."
+
+msgctxt "net_device_role"
+msgid "ROLE"
+msgstr "ROL"
+
+msgctxt "net_device_disconnect"
+msgid "DISCONNECT"
+msgstr "DESCONECTAR"
+
+msgctxt "net_device_disconnect_help"
+msgid "Closes this device's connection now. It stays paired and may connect again."
+msgstr "Cierra ahora la conexión de este dispositivo. Sigue vinculado y puede volver a conectarse."
 
 msgctxt "status_net_paired"
 msgid "PAIRED WITH"
@@ -3135,8 +3159,8 @@ msgid "The round trip to this device and back, as the connection measures it."
 msgstr "El viaje de ida y vuelta hasta este dispositivo, como lo mide la conexión."
 
 msgctxt "net_section_connected"
-msgid "CONNECTED DEVICES"
-msgstr "DISPOSITIVOS CONECTADOS"
+msgid "CONNECTED CLIENTS"
+msgstr "CLIENTES CONECTADOS"
 
 msgctxt "net_no_connected"
 msgid "NO DEVICES CONNECTED"
@@ -4228,8 +4252,8 @@ msgid "OK"
 msgstr "OK"
 
 msgctxt "net_section_hosts"
-msgid "PICCOLOS I CONNECT TO"
-msgstr "PICCOLOS A LOS QUE ME CONECTO"
+msgid "PAIRED HOSTS"
+msgstr "HOSTS VINCULADOS"
 
 msgctxt "net_no_hosts"
 msgid "NONE YET (TOOLS > PAIR)"
@@ -4238,6 +4262,14 @@ msgstr "NINGUNO TODAVÍA (HERRAMIENTAS > VINCULAR)"
 msgctxt "net_host_forget_help"
 msgid "Forgets this piccolo here (and there too, if connected now)."
 msgstr "Olvida este piccolo aquí (y allá también, si está conectado ahora)."
+
+msgctxt "net_host_connect"
+msgid "CONNECT"
+msgstr "CONECTAR"
+
+msgctxt "net_host_connect_help"
+msgid "Connects to this piccolo and opens FILE TRANSFER with it."
+msgstr "Se conecta a este piccolo y abre TRANSFERIR ARCHIVOS con él."
 
 msgctxt "net_online"
 msgid "ONLINE"
