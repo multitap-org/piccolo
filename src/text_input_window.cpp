@@ -7,17 +7,37 @@
 #include "retro_ui_controls.h"
 #include "ui_toolkit.h"
 
-TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTextInput* request, RetroUiFont* pixel_font,
-                                       int32_t scale, const Localization* strings)
+// ---------------------------------------------------------------------------
+// State
+
+void text_input_window_state(TextInputWindowState* state, const LibretroTextInput* request, const Localization* strings)
 {
-    if (window->serial != request->serial)
+    state->strings = strings;
+    state->prompt = request->prompt;
+    state->initial = request->initial;
+    state->serial = request->serial;
+    state->max_characters = request->max_length;
+    state->digits_only = request->type == RETRO_EXT_TEXT_INPUT_TYPE_NUMBER;
+}
+
+void text_input_window_update(TextInputWindow* window, const TextInputWindowState* state)
+{
+    if (window->serial != state->serial)
     {
-        window->serial = request->serial;
-        std::snprintf(window->buffer, sizeof(window->buffer), "%s", request->initial);
+        window->serial = state->serial;
+        std::snprintf(window->buffer, sizeof(window->buffer), "%s", state->initial);
         window->focus_field = true;
     }
+}
 
-    TextInputChoice choice = TextInputChoice::none;
+// ---------------------------------------------------------------------------
+// Drawing
+
+void text_input_window_draw(TextInputWindow* window, const TextInputWindowState* state, RetroUiFont* pixel_font,
+                            int32_t scale, TextInputWindowAction* action)
+{
+    *action = {};
+    const Localization* strings = state->strings;
     float block = static_cast<float>(scale);
     float screen_width = 0.0f;
     float screen_height = 0.0f;
@@ -38,34 +58,48 @@ TextInputChoice text_input_window_draw(TextInputWindow* window, const LibretroTe
     {
         if (closed)
         {
-            choice = TextInputChoice::cancel;
+            action->choice = TextInputChoice::cancel;
         }
-        if (request->prompt[0] != '\0')
+        if (state->prompt[0] != '\0')
         {
-            retro_ui_text_wrapped(request->prompt);
+            retro_ui_text_wrapped(state->prompt);
         }
         // The field counts characters as the core does; numbers take digits only.
         RetroUiEditField field = {};
-        field.digits_only = request->type == RETRO_EXT_TEXT_INPUT_TYPE_NUMBER;
-        field.max_characters = request->max_length;
+        field.digits_only = state->digits_only;
+        field.max_characters = state->max_characters;
         field.focus = window->focus_field;
         window->focus_field = false;
         if (retro_ui_edit_field("text", window->buffer, sizeof(window->buffer), &field))
         {
-            choice = TextInputChoice::ok;   // Enter
+            action->choice = TextInputChoice::ok;   // Enter
         }
         retro_ui_spacing();
         if (retro_ui_button(piccolo_text(strings, Str::text_input_ok)))
         {
-            choice = TextInputChoice::ok;
+            action->choice = TextInputChoice::ok;
         }
         retro_ui_same_line();
         if (retro_ui_button(piccolo_text(strings, Str::text_input_cancel)))
         {
-            choice = TextInputChoice::cancel;
+            action->choice = TextInputChoice::cancel;
         }
     }
     retro_ui_window_end();
     retro_ui_pop_theme();
-    return choice;
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void text_input_window_apply(const TextInputWindow* window, const TextInputWindowAction* action, LibretroHost* host)
+{
+    if (action->choice == TextInputChoice::ok)
+    {
+        libretro_host_text_input_answer(host, window->buffer);
+    }
+    else if (action->choice == TextInputChoice::cancel)
+    {
+        libretro_host_text_input_answer(host, nullptr);
+    }
 }

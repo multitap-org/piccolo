@@ -5722,20 +5722,17 @@ static bool app_frame(App* app)
         }
         if (text_input_pending(app))
         {
-            TextInputChoice answer = text_input_window_draw(&app->text_input_window, &app->session.host->text_input,
-                                                            app->pixel_font, app->ui_scale, &app->strings);
+            TextInputWindowState text_input_state = {};
+            text_input_window_state(&text_input_state, &app->session.host->text_input, &app->strings);
+            text_input_window_update(&app->text_input_window, &text_input_state);
+            TextInputWindowAction text_input_action = {};
+            text_input_window_draw(&app->text_input_window, &text_input_state, app->pixel_font, app->ui_scale,
+                                   &text_input_action);
             if (app->session.host->text_input.type == RETRO_EXT_TEXT_INPUT_TYPE_NUMBER)
             {
                 text_input_ui_field_number(&app->shell.text_input);   // the OSK's number keypad
             }
-            if (answer == TextInputChoice::ok)
-            {
-                libretro_host_text_input_answer(app->session.host, app->text_input_window.buffer);
-            }
-            else if (answer == TextInputChoice::cancel)
-            {
-                libretro_host_text_input_answer(app->session.host, nullptr);
-            }
+            text_input_window_apply(&app->text_input_window, &text_input_action, app->session.host);
         }
         if (app->show_debug_window)
         {
