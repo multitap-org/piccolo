@@ -14,21 +14,56 @@
 //   RESET  shown when the scope being edited defines the value; removes it
 //          from that scope (back to the layer below).
 // Global-only settings are greyed out while a core or game scope is edited.
+//
+// Only the choice of controls is here. What a row shows (value, greyed out,
+// marker, RESET) is decided by settings_view.h, which has no GUI; the
+// controls and the row's layout are retroui's (retro_ui_controls.h), so this
+// file makes no toolkit calls. Another GUI toolkit reimplements retroui.
 
 #include "localization.h"
 #include "settings.h"
+#include "settings_view.h"
+
+constexpr uint32_t SETTINGS_UI_KEY_MAX = 128;
+
+// Two edits a frame at most: a text field reports its change when it loses
+// focus, which happens on the same frame as the click on another control
+// (an integer's +, a slider) that changes its own value at once.
+constexpr uint32_t SETTINGS_UI_EDITS_MAX = 2;
+
+struct SettingsUiEditEntry
+{
+    SettingLayer     scope  = SettingLayer::global;
+    char             key[SETTINGS_UI_KEY_MAX] = {};
+    SettingRowAction action = {};
+};
+
+// The settings the user changed this frame, in the order they were drawn,
+// for the window's apply step (settings_ui_apply_edit), so the drawing never
+// changes the settings.
+struct SettingsUiEdit
+{
+    uint32_t            count = 0;
+    SettingsUiEditEntry entries[SETTINGS_UI_EDITS_MAX] = {};
+};
 
 // Which layer edits go to: SettingLayer::global, ::core or ::game.
 struct SettingsUiContext
 {
-    Settings*           settings    = nullptr;
+    const Settings*     settings    = nullptr;
     const Localization* strings     = nullptr;   // UI text (piccolo_text.h)
     SettingLayer scope       = SettingLayer::global;
     float        label_width = 0.0f;   // width of the label column
+    SettingsUiEdit* edit     = nullptr;   // where a change goes (the window applies it after drawing)
 };
 
+// Applies the pending edits to the settings, in order, and clears them. True
+// when a value changed (as settings_view_apply).
+bool settings_ui_apply_edit(Settings* settings, SettingsUiEdit* edit);
+
 // One setting's row. `hint` is shown in an empty path field (e.g. the
-// default folder); may be nullptr. Returns true if the value changed.
+// default folder); may be nullptr. Returns true if the user changed the
+// value (the change is in context->edit, applied after drawing).
 bool settings_ui_row(const SettingsUiContext* context, const char* key, const char* hint);
 
 // A folder setting changed with CHOOSE FOLDER: the row of settings_ui_row,
@@ -36,32 +71,18 @@ bool settings_ui_row(const SettingsUiContext* context, const char* key, const ch
 // opens the picker). `hint` as in settings_ui_row; RESET as usual.
 bool settings_ui_folder_row(const SettingsUiContext* context, const char* key, const char* hint);
 
-// The field of a folder row: `value` read-only (or `hint` when empty) and
-// "..." after it, filling the row up to `reserved` pixels from its right
-// edge (room for a button after it; 0 = none). True when either was
-// clicked (the caller opens CHOOSE FOLDER).
-bool settings_ui_folder_field(const SettingsUiContext* context, const char* value, const char* hint, float reserved);
-
 // A path setting's row with a button after the field (e.g. CHOOSE, which
-// opens a picker). Sets *button_clicked. Returns true if the value changed
-// (typed in the field, or reset).
+// opens a picker). Sets *button_clicked. Returns true if the user changed
+// the value (typed in the field, or reset).
 bool settings_ui_path_row_with_button(const SettingsUiContext* context, const char* key, const char* hint,
                                       const char* button, bool* button_clicked);
 
 // A text setting picked from a list (e.g. the audio devices connected now).
 // "" shows `empty_label`; a stored value that isn't in the list is shown
 // with `missing_label` after it, and kept until something else is picked.
-// Returns true if the value changed.
+// Returns true if the user changed the value.
 bool settings_ui_text_choice_row(const SettingsUiContext* context, const char* key, const char* const* choices,
                                  uint32_t choice_count, const char* empty_label, const char* missing_label);
-
-// Just the marker (for rows drawn by hand). Takes the space of one glyph
-// even when there's no marker, so rows line up.
-void settings_ui_marker(const SettingsUiContext* context, const char* key);
-
-// Just the reset button at the right edge of the row, when the scope defines
-// the value. Returns true if it reset it.
-bool settings_ui_reset_button(const SettingsUiContext* context, const char* key);
 
 // "GLOBAL", "THIS CORE", "THIS GAME" in the current language.
 const char* settings_ui_scope_name(const Localization* strings, SettingLayer scope);
@@ -72,5 +93,5 @@ float settings_ui_label_width(const Settings* settings, const Localization* stri
 // The SCOPE selector: GLOBAL / THIS CORE (name) / THIS GAME (name), only the
 // ones that exist now. With *choose_scope set (just opened) it picks the most
 // specific layer already in use, so changes keep going there, and clears it.
-void settings_ui_scope(Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
+void settings_ui_scope(const Settings* settings, const Localization* strings, const char* core_name, const char* game_name,
                        SettingLayer* scope, bool* choose_scope);

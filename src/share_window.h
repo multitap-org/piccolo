@@ -23,8 +23,9 @@
 // (net_share_folders.h, read here directly); the other side is what its
 // list_results say, asked for and handed in by the caller
 // (share_window_remote_wants_list / share_window_set_remote_list). Copies
-// asked for go into `copies` for the caller to run; the line at the bottom
-// shows the one running (ShareTransferLine).
+// asked for go into the action's `copies`, which share_window_apply hands to
+// the connection; the line at the bottom shows the one running
+// (ShareTransferLine).
 //
 // A game selected in a game folder is looked up in that side's SAVES and
 // STATES (<core>/<game stem>.*: what the core writes); "WITH ITS SAVE AND N
@@ -33,6 +34,14 @@
 // on the other side already with the same name, size and date (copies keep
 // the date). A copy that finds another file with its name asks before
 // replacing it (`conflicts`, handed in by the caller).
+//
+// Split like every window: share_window_update lists this side and works
+// out the grey marks (no GUI), share_window_state fills what the window
+// shows from the rest of the program, share_window_draw draws it and records
+// what was pressed (CONNECT, PAIR, DISCONNECT, CANCEL, the copies, a file
+// picked), and share_window_apply acts on it (no GUI): it looks up a picked
+// game's saves and states, and connects, copies or cancels on SHARE's
+// connection. PAIR is main.cpp's: it opens TOOLS > PAIR.
 
 #include <cstdint>
 #include <string>
@@ -43,7 +52,7 @@
 #include "net_share_folders.h"
 #include "net_share_link.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 struct SharePane
 {
@@ -115,14 +124,8 @@ struct ShareWindow
     // Connecting (the other side, while no piccolo is connected with OWNER).
     int32_t found_selected = -1;     // in the link's found list
     char    code[NET_PAIR_CODE_DIGITS + 1] = {};   // ours for this CONNECT (the other piccolo types it if it doesn't know us)
-    bool    connect = false;         // CONNECT clicked: the caller connects
-    bool    pair = false;            // PAIR on a piccolo we aren't paired with: the caller opens TOOLS > PAIR on it
-    bool    pair_internet = false;   // PAIR on "another network": TOOLS > PAIR across the internet
     int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
     bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
-    bool    disconnect = false;      // DISCONNECT clicked
-    std::vector<ShareCopy> copies;   // asked for, taken by the caller
-    bool      cancel = false;        // CANCEL clicked: the caller stops the copy running
 
     ShareCompanions companions;
     bool      with_companions = true;      // WITH ITS SAVE AND N STATES
@@ -132,16 +135,54 @@ struct ShareWindow
     bool      any_same = false;            // some file is grey (the legend shows)
 };
 
-struct ShareWindowContext
+struct ShareWindowState
 {
-    const Localization*      strings = nullptr;
-    const NetShareFolders*   local_folders = nullptr;   // this piccolo's shared folders
-    const NetShareLinkStatus* link = nullptr;           // our connection to another piccolo (nullptr: none)
-    const ShareTransferLine* line = nullptr;
+    const Localization*       strings = nullptr;
+    const NetShareLinkStatus* link = nullptr;   // our connection to another piccolo (nullptr: none)
+    const ShareTransferLine*  line = nullptr;
+    bool                      connected = false;   // ready, at OWNER (SHARE) level: the other side shows
 };
 
+enum class ShareWindowPress
+{
+    none,
+    connect,         // CONNECT: to found / paired_selected, or INVITE's code across the internet
+    pair,            // PAIR on a piccolo we aren't paired with: TOOLS > PAIR on it
+    pair_internet,   // PAIR on "another network": TOOLS > PAIR across the internet
+    disconnect,      // DISCONNECT
+    cancel,          // CANCEL: stop the copy running
+};
+
+struct ShareWindowAction
+{
+    ShareWindowPress       press = ShareWindowPress::none;
+    bool                   picked_local = false;    // a file selected on this side: look up its saves and states
+    bool                   picked_remote = false;   // the same on the other side
+    std::vector<ShareCopy> copies;                  // asked for (the arrows, REPLACE)
+};
+
+// What main.cpp does itself after share_window_apply.
+enum class ShareWindowRequest
+{
+    none,
+    pair,            // open TOOLS > PAIR on found_selected (on the LAN)
+    pair_internet,   // open TOOLS > PAIR across the internet
+};
+
+// Before the state, every frame the window is open: this side listed again
+// when it's stale, and the grey marks worked out (`link` nullptr: none).
+void share_window_update(ShareWindow* window, const NetShareFolders* local_folders, const NetShareLinkStatus* link);
+void share_window_state(ShareWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
+                        const ShareTransferLine* line);
+void share_window_draw(ShareWindow* window, const ShareWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       ShareWindowAction* action);
 void share_window_open(ShareWindow* window);
-void share_window_draw(ShareWindow* window, const ShareWindowContext* context, ImFont* pixel_font, int32_t scale);
+// `local_folders`: this piccolo's shared folders; `link` not started: only
+// the window changes; `status`: the connection's last status (the found
+// list); `beacon`: BEACON SERVER.
+ShareWindowRequest share_window_apply(ShareWindow* window, const ShareWindowAction* action,
+                                      const NetShareFolders* local_folders, NetShareLink* link,
+                                      const NetShareLinkStatus* status, const char* beacon);
 
 // The other side's folder to list, one at a time: the folder open there, or
 // one where the selected game's saves and states may be (the caller sends a

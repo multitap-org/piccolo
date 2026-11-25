@@ -8,19 +8,22 @@
 #include <cstring>
 #include <string>
 
-#include "imgui.h"
 #include "pad_picture.h"
 #include "piccolo_text.h"
-#include "pixel_font_imgui.h"
+#include "pixel_font.h"
 #include "piccolo_settings.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "settings_ui.h"
+#include "ui_toolkit.h"
 
 // SET gives up after this long without a key or button.
 // BIND ALL waits this long before taking the next control, so one press
 // doesn't land on two.
 constexpr uint64_t BIND_ALL_COOL_OFF_MS = 500;
 constexpr uint16_t HID_ESCAPE = 41;
+constexpr uint32_t YELLOW = 0xFFFFDC50u;     // like the lit pad
+constexpr uint32_t CLASH_RED = 0xFFE04F4Fu;   // an action sharing a control with another
 
 // The label of each InputAction, in its order.
 static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
@@ -45,11 +48,8 @@ static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
     Str::input_action_hotkey_dvr, Str::input_action_hotkey_remap, Str::input_action_hotkey_screenshot,
 };
 
-static const char* with_id(char* buffer, size_t size, const char* text, const char* id)
-{
-    std::snprintf(buffer, size, "%s###%s", text, id);
-    return buffer;
-}
+// ---------------------------------------------------------------------------
+// State
 
 static void upper(char* text)
 {
@@ -224,14 +224,6 @@ void input_window_source_label(const InputSdl* sdl, const InputDevice* device, c
     std::snprintf(out, out_size, "%s", text);
 }
 
-void input_window_open(InputWindow* window)
-{
-    window->open = true;
-    window->choose_scope = true;
-    window->mapping = UINT32_MAX;   // port 1's controller comes up
-    window->mapping_picked = false;
-}
-
 void input_window_controller_defaults(const InputSystem* input, uint32_t controller, InputBindingSet* set)
 {
     *set = InputBindingSet{};
@@ -251,35 +243,10 @@ void input_window_controller_defaults(const InputSystem* input, uint32_t control
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-static float button_width(const char* label)
-{
-    return ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-}
-
 static bool is_keyboard(const InputSystem* input, uint32_t controller)
 {
     const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
     return device != nullptr && device->kind == InputDeviceKind::keyboard;
-}
-
-static void controller_label(const InputWindowContext* context, uint32_t controller, char* out, size_t out_size)
-{
-    const InputSystem* input = context->input;
-    const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
-    const char* state = "";
-    if (device == nullptr || !device->connected)
-    {
-        state = piccolo_text(context->strings, Str::input_device_disconnected);
-    }
-    else if (input_devices_ignored(device))
-    {
-        state = piccolo_text(context->strings, Str::input_device_ignored);
-    }
-    std::snprintf(out, out_size, state[0] != '\0' ? "%s (%s)" : "%s%s", input_controller_label(input, controller).c_str(), state);
 }
 
 // The same sources, in any order?
@@ -304,111 +271,194 @@ static bool same_sources(const InputSource* a, const InputSource* b)
     return count_a == count_b;
 }
 
-// The NAME field of a controller (written when the field is left).
-static void name_field(InputWindow* window, const InputWindowContext* context, uint32_t controller, float width)
+static void start_capture(InputWindow* window, InputSystem* input, uint64_t now_ms, uint32_t controller,
+                          InputAction action, uint32_t row)
 {
-    InputSystem* input = context->input;
-    if (window->names.size() != input->controllers.size())
+    if (!window->capturing)
     {
-        window->names.resize(input->controllers.size());
+        window->capture_backup = input->controllers[controller].bindings;   // a new pass: CANCEL goes back to this
     }
-    char buffer[64] = {};
-    std::snprintf(buffer, sizeof(buffer), "%s", window->names[controller].c_str());
-    ImGui::SetNextItemWidth(width);
-    retro_ui_push_field_text();
-    if (ImGui::InputText("##name", buffer, sizeof(buffer)))
+    window->capturing = true;
+    window->capture_action = action;
+    window->capture_row = row;
+    window->capture_controller = controller;
+    window->capture_started_ms = now_ms;
+    input_capture_begin(input, input->controllers[controller].device_id);
+}
+
+// The next action of a BIND ALL, or the end of it.
+static void next_or_stop(InputWindow* window, InputSystem* input, uint64_t now_ms)
+{
+    if (window->bind_all && window->capture_action != window->bind_all_last)
     {
-        window->names[controller] = buffer;
+        start_capture(window, input, now_ms, window->capture_controller,
+                      static_cast<InputAction>(static_cast<uint32_t>(window->capture_action) + 1), 0);
+        return;
     }
-    retro_ui_pop_field_text();
-    if (ImGui::IsItemDeactivatedAfterEdit() && !window->names[controller].empty())
+    window->bind_all = false;
+    input_capture_cancel(input);
+    window->capturing = false;
+}
+
+// A SET / BIND ALL in progress: the next key or button binds; Escape stops;
+// 5 s without one skips (BIND ALL) or gives up (SET).
+void input_window_update(InputWindow* window, InputSystem* input, uint64_t now_ms)
+{
+    if (!window->capturing)
     {
-        input->controllers[controller].name = window->names[controller];
+        return;
+    }
+    if (window->capture_controller >= input->controllers.size() || !window->open)
+    {
+        window->bind_all = false;
+        input_capture_cancel(input);
+        window->capturing = false;
+        return;
+    }
+    uint64_t since = now_ms - window->capture_started_ms;
+    InputSource source = {};
+    if ((!window->bind_all || since >= BIND_ALL_COOL_OFF_MS) && input_capture_poll(input, now_ms, &source))
+    {
+        if (source.type == InputSourceType::key && source.code == HID_ESCAPE)
+        {
+            window->bind_all = false;
+            window->capturing = false;
+            return;
+        }
+        InputBindingSet* bindings = &input->controllers[window->capture_controller].bindings;
+        if (window->bind_all)
+        {
+            input_unbind_all(bindings, window->capture_action);   // BIND ALL: this one, alone
+            input_bind(bindings, window->capture_action, source);
+        }
+        else
+        {
+            input_sources_set(bindings->sources[static_cast<uint32_t>(window->capture_action)], window->capture_row, source);
+        }
         window->dirty = true;
+        next_or_stop(window, input, now_ms);
+        return;
     }
-    if (!ImGui::IsItemActive())
+    InputSource held = {};
+    bool holding = input_capture_candidate(input, &held);   // no time-out while a control is being held
+    if (!input->capture.active || (!holding && since > input->settings.press_ms + (window->bind_all ? BIND_ALL_COOL_OFF_MS : 0)))
     {
-        window->names[controller] = input->controllers[controller].name;
+        next_or_stop(window, input, now_ms);
     }
 }
 
+void input_window_state(InputWindowState* state, const InputSystem* input, const InputSdl* sdl,
+                        const Localization* strings, const Settings* settings, const char* core_name,
+                        const char* game_name, const InputLayouts* layouts, uint64_t now_ms)
+{
+    state->input = input;
+    state->sdl = sdl;
+    state->strings = strings;
+    state->settings = settings;
+    state->core_name = core_name;
+    state->game_name = game_name;
+    state->layouts = layouts;
+    state->now_ms = now_ms;
+    state->press_ms = input->settings.press_ms;
+    state->holding = input_capture_candidate(input, &state->held);
+    state->hold_progress = input_capture_hold_progress(input, now_ms);
+}
+
 // ---------------------------------------------------------------------------
+// Drawing
+
+static void controller_label(const InputWindowState* state, uint32_t controller, char* out, size_t out_size)
+{
+    const InputSystem* input = state->input;
+    const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
+    const char* status = "";
+    if (device == nullptr || !device->connected)
+    {
+        status = piccolo_text(state->strings, Str::input_device_disconnected);
+    }
+    else if (input_devices_ignored(device))
+    {
+        status = piccolo_text(state->strings, Str::input_device_ignored);
+    }
+    std::snprintf(out, out_size, status[0] != '\0' ? "%s (%s)" : "%s%s", input_controller_label(input, controller).c_str(), status);
+}
+
+// The NAME field of a controller (written when the field is left; the
+// field keeps the text while it's typed).
+static void name_field(const InputWindowState* state, uint32_t controller, float width, InputWindowAction* action)
+{
+    char edited[INPUT_WINDOW_NAME_MAX] = {};
+    retro_ui_next_width(width);
+    if (retro_ui_text_field("name", "", state->input->controllers[controller].name.c_str(), edited, sizeof(edited)) &&
+        edited[0] != '\0')
+    {
+        action->rename = true;
+        action->rename_controller = controller;
+        std::snprintf(action->name, sizeof(action->name), "%s", edited);
+    }
+}
+
 // SETTINGS
-// ---------------------------------------------------------------------------
 
 // The SCOPE and one or more settings rows (the settings of SETTINGS and of
-// HOTKEYS share the window's scope).
-static void draw_scoped_settings(InputWindow* window, const InputWindowContext* context, const char* const* keys,
-                                 uint32_t count)
+// HOTKEYS share the window's scope). The rows hand their edit out
+// (input_window_apply).
+static void draw_scoped_settings(InputWindow* window, const InputWindowState* state, const char* const* keys,
+                                 uint32_t count, InputWindowAction* action)
 {
-    settings_ui_scope(context->settings, context->strings, context->core_name, context->game_name, &window->scope,
+    settings_ui_scope(state->settings, state->strings, state->core_name, state->game_name, &window->scope,
                       &window->choose_scope);
     SettingsUiContext ui = {};
-    ui.settings = context->settings;
-    ui.strings = context->strings;
+    ui.settings = state->settings;
+    ui.strings = state->strings;
     ui.scope = window->scope;
-    ui.label_width = settings_ui_label_width(context->settings, context->strings);
+    ui.label_width = settings_ui_label_width(state->settings, state->strings);
+    ui.edit = &action->setting;
     for (uint32_t k = 0; k < count; k++)
     {
         settings_ui_row(&ui, keys[k], nullptr);
     }
 }
 
-static void draw_settings(InputWindow* window, const InputWindowContext* context)
+static void draw_settings(InputWindow* window, const InputWindowState* state, InputWindowAction* action)
 {
     static const char* const KEYS[] = {PICCOLO_INPUT_SHARE_PORT1, PICCOLO_INPUT_PORTS, PICCOLO_INPUT_PRESS_TIME,
                                        PICCOLO_INPUT_HOLD_TIME, PICCOLO_INPUT_OSK};
-    draw_scoped_settings(window, context, KEYS, sizeof(KEYS) / sizeof(KEYS[0]));
+    draw_scoped_settings(window, state, KEYS, sizeof(KEYS) / sizeof(KEYS[0]), action);
     // The on-screen gamepad (onscreen_pad.h): its settings and EDIT LAYOUT.
-    ImGui::Spacing();
-    retro_ui_separator_text(piccolo_text(context->strings, Str::input_section_touch_pad));
+    retro_ui_spacing();
+    retro_ui_separator_text(piccolo_text(state->strings, Str::input_section_touch_pad));
     static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
-    draw_scoped_settings(window, context, TOUCH_KEYS, sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]));
+    draw_scoped_settings(window, state, TOUCH_KEYS, sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]), action);
     // STYLE: the controller layouts (layouts/), by name; "" = RETROPAD.
-    if (context->layouts != nullptr)
+    if (state->layouts != nullptr)
     {
         constexpr uint32_t MAX_STYLES = 64;
         const char* names[MAX_STYLES] = {};
         uint32_t name_count = 0;
-        for (size_t i = 0; i < context->layouts->layouts.size() && name_count < MAX_STYLES; i++)
+        for (size_t i = 0; i < state->layouts->layouts.size() && name_count < MAX_STYLES; i++)
         {
-            names[name_count] = context->layouts->layouts[i].name.c_str();
+            names[name_count] = state->layouts->layouts[i].name.c_str();
             name_count++;
         }
         SettingsUiContext ui = {};
-        ui.settings = context->settings;
-        ui.strings = context->strings;
+        ui.settings = state->settings;
+        ui.strings = state->strings;
         ui.scope = window->scope;
-        ui.label_width = settings_ui_label_width(context->settings, context->strings);
+        ui.label_width = settings_ui_label_width(state->settings, state->strings);
+        ui.edit = &action->setting;
         settings_ui_text_choice_row(&ui, PICCOLO_TOUCH_PAD_STYLE, names, name_count,
-                                    piccolo_text(context->strings, Str::touch_pad_style_retropad),
-                                    piccolo_text(context->strings, Str::touch_pad_style_missing));
+                                    piccolo_text(state->strings, Str::touch_pad_style_retropad),
+                                    piccolo_text(state->strings, Str::touch_pad_style_missing));
     }
-    if (retro_ui_button(piccolo_text(context->strings, Str::input_touch_pad_edit)))
+    if (retro_ui_button(piccolo_text(state->strings, Str::input_touch_pad_edit)))
     {
-        window->edit_touch_layout = true;
+        action->press = InputWindowPress::edit_touch_layout;
     }
-    retro_ui_item_tooltip(piccolo_text(context->strings, Str::input_touch_pad_edit_help));
+    retro_ui_item_tooltip(piccolo_text(state->strings, Str::input_touch_pad_edit_help));
 }
 
-// ---------------------------------------------------------------------------
 // INTERFACE / HOTKEYS
-// ---------------------------------------------------------------------------
-
-static void start_capture(InputWindow* window, const InputWindowContext* context, uint32_t controller, InputAction action,
-                          uint32_t row)
-{
-    if (!window->capturing)
-    {
-        window->capture_backup = context->input->controllers[controller].bindings;   // a new pass: CANCEL goes back to this
-    }
-    window->capturing = true;
-    window->capture_action = action;
-    window->capture_row = row;
-    window->capture_controller = controller;
-    window->capture_started_ms = context->now_ms;
-    input_capture_begin(context->input, context->input->controllers[controller].device_id);
-}
 
 void input_window_draw_sources(const InputSdl* sdl, const InputDevice* device, const InputLayout* layout,
                                const InputProfile* profile, const InputSource* sources, float width, const Localization* strings)
@@ -425,7 +475,7 @@ void input_window_draw_sources(const InputSdl* sdl, const InputDevice* device, c
     }
     if (count == 0)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::input_none));
+        retro_ui_dim_text(piccolo_text(strings, Str::input_none), nullptr);
         return;
     }
     std::string all;
@@ -434,32 +484,21 @@ void input_window_draw_sources(const InputSdl* sdl, const InputDevice* device, c
         all += s == 0 ? "" : ", ";
         all += names[s];
     }
-    if (ImGui::CalcTextSize(all.c_str()).x <= width)
+    if (retro_ui_text_width(all.c_str()) <= width)
     {
-        ImGui::TextUnformatted(all.c_str());
+        retro_ui_text(all.c_str());
         return;
     }
     if (count == 1)
     {
         // One that doesn't fit: cut short with "…" (whole characters), all of it in the tooltip.
-        const char* ellipsis = "\xE2\x80\xA6";
-        std::string cut = all;
-        while (!cut.empty() && ImGui::CalcTextSize((cut + ellipsis).c_str()).x > width)
-        {
-            cut.pop_back();
-            while (!cut.empty() && (static_cast<unsigned char>(cut.back()) & 0xC0u) == 0x80u)
-            {
-                cut.pop_back();   // the rest of a UTF-8 character
-            }
-        }
-        ImGui::TextUnformatted((cut + ellipsis).c_str());
-        retro_ui_item_tooltip(all.c_str());
+        retro_ui_text_fit(all.c_str(), width);
         return;
     }
     // Doesn't fit: the first one and how many more; all of them in the tooltip.
     char shortened[80] = {};
     std::snprintf(shortened, sizeof(shortened), "%s +%u", names[0], static_cast<unsigned>(count - 1));
-    ImGui::TextUnformatted(shortened);
+    retro_ui_text(shortened);
     retro_ui_item_tooltip(all.c_str());
 }
 
@@ -469,34 +508,39 @@ void input_window_draw_waiting(bool keyboard, uint64_t seconds_left, float hold_
     std::snprintf(text, sizeof(text), piccolo_text(strings, keyboard ? Str::input_press_key : Str::input_press_button),
                   static_cast<int>(seconds_left));
     retro_ui_push_section_text();
-    ImGui::TextUnformatted(text);
+    retro_ui_text(text);
     retro_ui_pop_section_text();
     // A gamepad's control is taken once held: a ring closes next to it.
-    char spinner[4] = {};
-    pixel_font_imgui_spinner(hold_progress, spinner);
-    if (spinner[0] != '\0')
-    {
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 220.0f / 255.0f, 80.0f / 255.0f, 1.0f), "%s", spinner);   // yellow, like the lit pad
-    }
+    retro_ui_hold_ring(hold_progress, YELLOW);
+}
+
+// Records a SET / + / BIND ALL ... press on one action of a controller.
+static void press_on(InputWindowAction* action, InputWindowPress press, uint32_t controller, InputAction input_action,
+                     uint32_t row)
+{
+    action->press = press;
+    action->controller = controller;
+    action->input_action = input_action;
+    action->row = row;
 }
 
 // One action: a row per source (its label on the first only), each with
 // SET and CLEAR; the first also has + (one more source for it: a new row)
 // and RESET when it differs from the defaults.
-static void binding_row(InputWindow* window, const InputWindowContext* context, uint32_t controller_index,
-                        const InputBindingSet* defaults, InputAction action, float label_width)
+static void binding_row(InputWindow* window, const InputWindowState* state, uint32_t controller_index,
+                        const InputBindingSet* defaults, InputAction input_action, float label_width,
+                        InputWindowAction* action)
 {
-    InputSystem* input = context->input;
-    InputController* controller = &input->controllers[controller_index];
+    const InputSystem* input = state->input;
+    const InputController* controller = &input->controllers[controller_index];
     const InputDevice* device = input_devices_find_const(&input->devices, controller->device_id);
-    const InputLayout* layout = input_window_layout(input, context->layouts, device);
-    const Localization* strings = context->strings;
-    uint32_t index = static_cast<uint32_t>(action);
-    InputSource* sources = controller->bindings.sources[index];
+    const InputLayout* layout = input_window_layout(input, state->layouts, device);
+    const Localization* strings = state->strings;
+    uint32_t index = static_cast<uint32_t>(input_action);
+    const InputSource* sources = controller->bindings.sources[index];
     bool changed = !same_sources(sources, defaults->sources[index]);
-    InputAction clash = input_binding_conflict_with(&controller->bindings, action);
-    bool waiting = window->capturing && window->capture_action == action && window->capture_controller == controller_index;
+    InputAction clash = input_binding_conflict_with(&controller->bindings, input_action);
+    bool waiting = window->capturing && window->capture_action == input_action && window->capture_controller == controller_index;
     uint32_t count = input_sources_count(sources);
     uint32_t rows = count > 0 ? count : 1;   // an action with nothing still has its row
     if (waiting && window->capture_row >= rows)
@@ -508,28 +552,28 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
     const char* clear = piccolo_text(strings, Str::input_clear);
     const char* reset = piccolo_text(strings, Str::input_reset);
     const char* add = "+";
-    float spacing = ImGui::GetStyle().ItemSpacing.x;
-    float row_buttons = button_width(set) + button_width(clear) + spacing;
-    float first_buttons = row_buttons + button_width(add) + spacing + (changed ? button_width(reset) + spacing : 0.0f);
+    float spacing = retro_ui_item_spacing();
+    float row_buttons = retro_ui_button_width(set) + retro_ui_button_width(clear) + spacing;
+    float first_buttons = row_buttons + retro_ui_button_width(add) + spacing +
+                          (changed ? retro_ui_button_width(reset) + spacing : 0.0f);
 
-    ImGui::PushID(static_cast<int>(index));
+    retro_ui_push_index(index);
     for (uint32_t r = 0; r < rows; r++)
     {
-        ImGui::PushID(static_cast<int>(r));
-        ImGui::AlignTextToFramePadding();
+        retro_ui_push_index(r);
         if (r == 0)
         {
             if (waiting)
             {
                 retro_ui_push_section_text();   // the one being bound stands out
-                ImGui::TextUnformatted(piccolo_text(strings, ACTION_LABELS[index]));
+                retro_ui_label(piccolo_text(strings, ACTION_LABELS[index]));
                 retro_ui_pop_section_text();
             }
             else if (clash != InputAction::count)
             {
                 // Shares a control with an action that fires with it
                 // (input_binding_conflicts): red, and the other one named.
-                ImGui::TextColored(ImVec4(0.88f, 0.31f, 0.31f, 1.0f), "%s", piccolo_text(strings, ACTION_LABELS[index]));
+                retro_ui_label_colored(CLASH_RED, piccolo_text(strings, ACTION_LABELS[index]));
                 char also[160] = {};
                 std::snprintf(also, sizeof(also), piccolo_text(strings, Str::input_conflict_also),
                               piccolo_text(strings, ACTION_LABELS[static_cast<uint32_t>(clash)]));
@@ -538,100 +582,91 @@ static void binding_row(InputWindow* window, const InputWindowContext* context, 
             else if (changed)
             {
                 // Changed from the defaults: highlighted, like an override.
-                ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive), "%s", piccolo_text(strings, ACTION_LABELS[index]));
+                retro_ui_label_colored(retro_ui_palette()->highlight, piccolo_text(strings, ACTION_LABELS[index]));
             }
             else
             {
-                ImGui::TextUnformatted(piccolo_text(strings, ACTION_LABELS[index]));
+                retro_ui_label(piccolo_text(strings, ACTION_LABELS[index]));
             }
         }
         else
         {
-            ImGui::TextUnformatted("");   // more sources of the same action: no label
+            retro_ui_label("");   // more sources of the same action: no label
         }
 
         // The buttons at the right end; the binding gets the room before them.
-        float buttons_x = ImGui::GetWindowContentRegionMax().x - (r == 0 ? first_buttons : row_buttons);
-        ImGui::SameLine(label_width);
+        float buttons_x = retro_ui_right_edge() - (r == 0 ? first_buttons : row_buttons);
+        retro_ui_same_line_at(label_width);
         if (waiting && window->capture_row == r)
         {
-            uint64_t elapsed = context->now_ms - window->capture_started_ms;
-            uint64_t total = context->input->settings.press_ms + (window->bind_all ? BIND_ALL_COOL_OFF_MS : 0);
+            uint64_t elapsed = state->now_ms - window->capture_started_ms;
+            uint64_t total = state->press_ms + (window->bind_all ? BIND_ALL_COOL_OFF_MS : 0);
             uint64_t left = elapsed < total ? (total - elapsed + 999) / 1000 : 0;
             input_window_draw_waiting(device != nullptr && device->kind == InputDeviceKind::keyboard, left,
-                                      input_capture_hold_progress(input, context->now_ms), strings);
-            ImGui::SetScrollHereY(0.5f);   // BIND ALL: keep it in view
+                                      state->hold_progress, strings);
+            retro_ui_scroll_here();   // BIND ALL: keep it in view
         }
         else
         {
             InputSource one[INPUT_SOURCES_PER_ACTION] = {};
             one[0] = r < count ? sources[r] : InputSource{};
-            input_window_draw_sources(context->sdl, device, layout,
+            input_window_draw_sources(state->sdl, device, layout,
                                       input_profile(input, input_controller_profile_id(input, controller_index)), one,
-                                      buttons_x - ImGui::GetCursorPosX() - spacing, strings);
+                                      buttons_x - retro_ui_cursor_x() - spacing, strings);
         }
-        ImGui::SameLine(buttons_x > ImGui::GetCursorPosX() ? buttons_x : 0.0f);
+        retro_ui_same_line_at(buttons_x > retro_ui_cursor_x() ? buttons_x : 0.0f);
         bool usable = !window->capturing && device != nullptr && device->connected;
         if (r == 0)
         {
             if (changed)
             {
-                ImGui::BeginDisabled(window->capturing);
+                retro_ui_begin_disabled(window->capturing);
                 if (retro_ui_button(reset))
                 {
-                    input_unbind_all(&controller->bindings, action);
-                    for (uint32_t s = 0; s < INPUT_SOURCES_PER_ACTION; s++)
-                    {
-                        input_bind(&controller->bindings, action, defaults->sources[index][s]);
-                    }
-                    window->dirty = true;
+                    press_on(action, InputWindowPress::reset, controller_index, input_action, 0);
                 }
-                ImGui::EndDisabled();
-                ImGui::SameLine();
+                retro_ui_end_disabled();
+                retro_ui_same_line();
             }
-            ImGui::BeginDisabled(!usable || count == 0 || count >= INPUT_SOURCES_PER_ACTION);
+            retro_ui_begin_disabled(!usable || count == 0 || count >= INPUT_SOURCES_PER_ACTION);
             if (retro_ui_button(add))
             {
-                window->bind_all = false;
-                start_capture(window, context, controller_index, action, count);   // a new row
+                press_on(action, InputWindowPress::set, controller_index, input_action, count);   // a new row
             }
             retro_ui_item_tooltip(piccolo_text(strings, Str::input_add_help));
-            ImGui::EndDisabled();
-            ImGui::SameLine();
+            retro_ui_end_disabled();
+            retro_ui_same_line();
         }
-        ImGui::BeginDisabled(!usable);
+        retro_ui_begin_disabled(!usable);
         if (retro_ui_button(set))
         {
-            window->bind_all = false;
-            start_capture(window, context, controller_index, action, r < count ? r : count);
+            press_on(action, InputWindowPress::set, controller_index, input_action, r < count ? r : count);
         }
         // The floating pad shows the row under the mouse, or the one in focus
         // while navigating with a gamepad or keys.
-        if (ImGui::IsItemHovered() || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+        if (retro_ui_item_pointed())
         {
-            window->pad_action = action;   // shown on the next frame
+            window->pad_action = input_action;   // shown on the next frame
             window->pad_row = r;
         }
-        ImGui::SameLine();
-        ImGui::BeginDisabled(r >= count);
+        retro_ui_same_line();
+        retro_ui_begin_disabled(r >= count);
         if (retro_ui_button(clear))
         {
-            input_sources_remove(sources, r);
-            window->dirty = true;
+            press_on(action, InputWindowPress::clear, controller_index, input_action, r);
         }
-        ImGui::EndDisabled();
-        ImGui::EndDisabled();
-        ImGui::PopID();
+        retro_ui_end_disabled();
+        retro_ui_end_disabled();
+        retro_ui_pop_id();
     }
-    ImGui::PopID();
+    retro_ui_pop_id();
 }
 
 // The controller mapped: picked by the user (it stays), else port 1's (the
 // last that joined it that isn't the keyboard or the mouse put there: a
 // gamepad pressing START takes over at once), else the keyboard.
-static uint32_t mapped_controller(InputWindow* window, const InputWindowContext* context)
+static uint32_t mapped_controller(InputWindow* window, const InputSystem* input)
 {
-    InputSystem* input = context->input;
     if (window->mapping_picked && window->mapping < input->controllers.size())
     {
         return window->mapping;
@@ -660,26 +695,24 @@ static uint32_t mapped_controller(InputWindow* window, const InputWindowContext*
     return window->mapping;
 }
 
-static void draw_bindings(InputWindow* window, const InputWindowContext* context, InputAction first, InputAction last,
-                          Str left_title, float label_width)
+static void draw_bindings(InputWindow* window, const InputWindowState* state, InputAction first, InputAction last,
+                          Str left_title, float label_width, InputWindowAction* action)
 {
-    InputSystem* input = context->input;
-    const Localization* strings = context->strings;
+    const InputSystem* input = state->input;
+    const Localization* strings = state->strings;
     if (input->controllers.empty())
     {
         return;
     }
-    uint32_t controller = mapped_controller(window, context);
+    uint32_t controller = mapped_controller(window, input);
 
     // MAPPING [ controller v ]
     char label[200] = {};
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::input_mapping));
-    ImGui::SameLine(label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    controller_label(context, controller, label, sizeof(label));
-    ImGui::BeginDisabled(window->capturing);
-    if (retro_ui_begin_combo("##mapping", label))
+    retro_ui_label(piccolo_text(strings, Str::input_mapping));
+    retro_ui_same_line_at(label_width);
+    controller_label(state, controller, label, sizeof(label));
+    retro_ui_begin_disabled(window->capturing);
+    if (retro_ui_begin_choice("mapping", label))
     {
         for (uint32_t c = 0; c < input->controllers.size(); c++)
         {
@@ -688,18 +721,16 @@ static void draw_bindings(InputWindow* window, const InputWindowContext* context
             {
                 continue;   // ignored devices aren't mapped
             }
-            ImGui::PushID(static_cast<int>(c));
-            controller_label(context, c, label, sizeof(label));
-            if (ImGui::Selectable(label, c == controller))
+            controller_label(state, c, label, sizeof(label));
+            if (retro_ui_choice_item_repick(c, label, c == controller))
             {
                 window->mapping = c;
                 window->mapping_picked = true;
             }
-            ImGui::PopID();
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    controller = mapped_controller(window, context);
+    controller = mapped_controller(window, input);
     InputBindingSet defaults = {};
     input_window_controller_defaults(input, controller, &defaults);
 
@@ -708,77 +739,67 @@ static void draw_bindings(InputWindow* window, const InputWindowContext* context
     {
         static const Str MODE_NAMES[] = {Str::hotkey_mode_hold, Str::hotkey_mode_one, Str::hotkey_mode_stays};
         static const InputHotkeyMode MODES[] = {InputHotkeyMode::hold, InputHotkeyMode::one_hotkey, InputHotkeyMode::stays_on};
-        InputController* mapped = &input->controllers[controller];
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(piccolo_text(strings, Str::input_hotkey_mode));
+        const InputController* mapped = &input->controllers[controller];
+        retro_ui_label(piccolo_text(strings, Str::input_hotkey_mode));
         retro_ui_item_tooltip(piccolo_text(strings, Str::input_hotkey_mode_help));
-        ImGui::SameLine(label_width);
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        if (retro_ui_begin_combo("##hotkey_mode", piccolo_text(strings, MODE_NAMES[static_cast<int>(mapped->hotkey_mode)])))
+        retro_ui_same_line_at(label_width);
+        if (retro_ui_begin_choice("hotkey_mode", piccolo_text(strings, MODE_NAMES[static_cast<int>(mapped->hotkey_mode)])))
         {
-            for (int m = 0; m < 3; m++)
+            for (uint32_t m = 0; m < 3; m++)
             {
-                if (ImGui::Selectable(piccolo_text(strings, MODE_NAMES[m]), mapped->hotkey_mode == MODES[m]))
+                if (retro_ui_choice_item_repick(m, piccolo_text(strings, MODE_NAMES[m]), mapped->hotkey_mode == MODES[m]))
                 {
-                    mapped->hotkey_mode = MODES[m];
-                    window->dirty = true;
+                    action->press = InputWindowPress::hotkey_mode;
+                    action->controller = controller;
+                    action->hotkey_mode = MODES[m];
                 }
             }
-            ImGui::EndCombo();
+            retro_ui_end_choice();
         }
     }
 
     // BIND ALL, DEFAULTS
     const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
-    ImGui::BeginDisabled(device == nullptr || !device->connected);
+    retro_ui_begin_disabled(device == nullptr || !device->connected);
     if (retro_ui_button(piccolo_text(strings, Str::input_bind_all)))
     {
-        window->bind_all = true;
-        window->bind_all_last = last;
-        start_capture(window, context, controller, first, 0);
+        press_on(action, InputWindowPress::bind_all, controller, first, 0);
+        action->last = last;
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::input_bind_all_help));
-    ImGui::EndDisabled();
-    ImGui::SameLine();
+    retro_ui_end_disabled();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::input_defaults)))
     {
-        for (uint32_t a = static_cast<uint32_t>(first); a <= static_cast<uint32_t>(last); a++)
-        {
-            for (uint32_t s = 0; s < INPUT_SOURCES_PER_ACTION; s++)
-            {
-                input->controllers[controller].bindings.sources[a][s] = defaults.sources[a][s];
-            }
-        }
-        window->dirty = true;
+        press_on(action, InputWindowPress::defaults, controller, first, 0);
+        action->last = last;
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::input_defaults_help));
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     // CANCEL: stops a SET / BIND ALL and puts back what it changed.
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!window->capturing || window->capture_controller != controller);
+    retro_ui_same_line();
+    retro_ui_begin_disabled(!window->capturing || window->capture_controller != controller);
     if (retro_ui_button(piccolo_text(strings, Str::input_cancel_binding)))
     {
-        input->controllers[controller].bindings = window->capture_backup;
-        input_capture_cancel(input);
-        window->capturing = false;
-        window->bind_all = false;
+        action->press = InputWindowPress::cancel;
+        action->controller = controller;
     }
     retro_ui_item_tooltip(piccolo_text(strings, Str::input_cancel_binding_help));
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
 
     // GAME / GAMEPAD (or KEY), then the rows, which scroll under the titles.
-    ImGui::TextDisabled("%s", piccolo_text(strings, left_title));
-    ImGui::SameLine(label_width);
-    ImGui::TextDisabled("%s", piccolo_text(strings, is_keyboard(input, controller) ? Str::input_column_key : Str::input_column_pad));
+    retro_ui_dim_text(piccolo_text(strings, left_title), nullptr);
+    retro_ui_same_line_at(label_width);
+    retro_ui_dim_text(piccolo_text(strings, is_keyboard(input, controller) ? Str::input_column_key : Str::input_column_pad),
+                      nullptr);
     // A gamepad's pad floats in the screen's corner: the control being bound
     // while it is held, else where the row in focus is now.
     InputMapControl lit = InputMapControl::count;
     bool minus = false;
-    InputSource held = {};
-    if (window->capturing && window->capture_controller == controller && input_capture_candidate(input, &held))
+    if (window->capturing && window->capture_controller == controller && state->holding)
     {
-        lit = input_map_control_for_source(held);
-        minus = held.type == InputSourceType::axis_minus;
+        lit = input_map_control_for_source(state->held);
+        minus = state->held.type == InputSourceType::axis_minus;
     }
     else
     {
@@ -792,50 +813,46 @@ static void draw_bindings(InputWindow* window, const InputWindowContext* context
         }
     }
     window->pad_action = InputAction::count;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::BeginChild("rows", ImVec2(0.0f, 0.0f));
+    retro_ui_begin_scroll_area("rows", 0.0f, 0.0f);
     for (uint32_t a = static_cast<uint32_t>(first); a <= static_cast<uint32_t>(last); a++)
     {
-        binding_row(window, context, controller, &defaults, static_cast<InputAction>(a), label_width);
+        binding_row(window, state, controller, &defaults, static_cast<InputAction>(a), label_width, action);
     }
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    retro_ui_end_scroll_area();
     if (device != nullptr && device->kind == InputDeviceKind::gamepad)
     {
-        float block = ImGui::GetFontSize() / PIXEL_FONT_IMGUI_UNIT;
-        pad_picture_draw_floating(input_window_layout(input, context->layouts, device), lit, minus, 1.25f * block);
+        float block = retro_ui_font_size() / static_cast<float>(PIXEL_FONT_LINE_HEIGHT);   // the font is a line tall per block
+        pad_picture_draw_floating(input_window_layout(input, state->layouts, device), lit, minus, 1.25f * block);
     }
 }
 
-// ---------------------------------------------------------------------------
 // DEVICES
-// ---------------------------------------------------------------------------
 
-static void draw_device(InputWindow* window, const InputWindowContext* context, InputDevice* device, float label_width,
-                        bool open_by_default);
+static void draw_device(const InputWindowState* state, const InputDevice* device, float label_width,
+                        bool open_by_default, InputWindowAction* action);
 
-static void draw_devices(InputWindow* window, const InputWindowContext* context, float label_width)
+static void draw_devices(const InputWindowState* state, float label_width, InputWindowAction* action)
 {
-    InputSystem* input = context->input;
-    const Localization* strings = context->strings;
+    const InputSystem* input = state->input;
+    const Localization* strings = state->strings;
     // Controllers SDL doesn't know as gamepads: unusable until mapped.
-    if (!context->sdl->unmapped.empty())
+    if (!state->sdl->unmapped.empty())
     {
         retro_ui_separator_text(piccolo_text(strings, Str::input_map_unmapped));
-        for (size_t u = 0; u < context->sdl->unmapped.size(); u++)
+        for (size_t u = 0; u < state->sdl->unmapped.size(); u++)
         {
-            uint32_t joystick = context->sdl->unmapped[u];
-            ImGui::PushID(static_cast<int>(10000 + joystick));
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(input_sdl_joystick_name(joystick).c_str());
+            uint32_t joystick = state->sdl->unmapped[u];
+            retro_ui_push_index(10000 + joystick);
+            retro_ui_label(input_sdl_joystick_name(joystick).c_str());
             const char* map = piccolo_text(strings, Str::input_map);
-            float x = ImGui::GetWindowContentRegionMax().x - button_width(map);
-            ImGui::SameLine(x > ImGui::GetCursorPosX() ? x : 0.0f);
+            float x = retro_ui_right_edge() - retro_ui_button_width(map);
+            retro_ui_same_line_at(x > retro_ui_cursor_x() ? x : 0.0f);
             if (retro_ui_button(map))
             {
-                window->map_request = joystick;
+                action->press = InputWindowPress::map;
+                action->joystick = joystick;
             }
-            ImGui::PopID();
+            retro_ui_pop_id();
         }
     }
     // ENABLED (connected and used) open; DETECTED (ignored, or not
@@ -845,13 +862,13 @@ static void draw_devices(InputWindow* window, const InputWindowContext* context,
         retro_ui_separator_text(piccolo_text(strings, section == 0 ? Str::input_section_enabled : Str::input_section_detected));
         for (size_t d = 0; d < input->devices.devices.size(); d++)
         {
-            InputDevice* candidate = &input->devices.devices[d];
+            const InputDevice* candidate = &input->devices.devices[d];
             bool enabled = candidate->connected && !input_devices_ignored(candidate);
             if (enabled != (section == 0))
             {
                 continue;
             }
-            draw_device(window, context, candidate, label_width, enabled);
+            draw_device(state, candidate, label_width, enabled, action);
         }
     }
 }
@@ -859,22 +876,22 @@ static void draw_devices(InputWindow* window, const InputWindowContext* context,
 // The extra buttons this gamepad has (MISC, paddles, touchpad: what MAP
 // CONTROLLER's STEP 4 adds), each with a name of the user's own ("VOLUME
 // UP"), kept in its profile and shown wherever its buttons are listed.
-static void extra_button_names(InputWindow* window, const InputWindowContext* context, const InputDevice* device,
-                               uint32_t controller, float label_width)
+static void extra_button_names(const InputWindowState* state, const InputDevice* device, uint32_t controller,
+                               float label_width, InputWindowAction* action)
 {
     static const InputButton EXTRAS[] = {
         InputButton::misc1, InputButton::misc2, InputButton::misc3, InputButton::misc4, InputButton::misc5,
         InputButton::misc6, InputButton::right_paddle1, InputButton::left_paddle1, InputButton::right_paddle2,
         InputButton::left_paddle2, InputButton::touchpad,
     };
-    InputSystem* input = context->input;
-    SDL_Gamepad* gamepad = input_sdl_gamepad(context->sdl, device->id);
+    const InputSystem* input = state->input;
+    SDL_Gamepad* gamepad = input_sdl_gamepad(state->sdl, device->id);
     if (gamepad == nullptr)
     {
         return;
     }
     std::string id = input_controller_profile_id(input, controller);
-    const InputLayout* layout = input_window_layout(input, context->layouts, device);
+    const InputLayout* layout = input_window_layout(input, state->layouts, device);
     bool any = false;
     for (size_t e = 0; e < sizeof(EXTRAS) / sizeof(EXTRAS[0]); e++)
     {
@@ -884,31 +901,33 @@ static void extra_button_names(InputWindow* window, const InputWindowContext* co
         }
         if (!any)
         {
-            ImGui::TextUnformatted(piccolo_text(context->strings, Str::input_extra_names));
-            retro_ui_item_tooltip(piccolo_text(context->strings, Str::input_extra_names_help));
+            retro_ui_text(piccolo_text(state->strings, Str::input_extra_names));
+            retro_ui_item_tooltip(piccolo_text(state->strings, Str::input_extra_names_help));
             any = true;
         }
         InputSource source = {};
         source.type = InputSourceType::button;
         source.code = static_cast<uint16_t>(EXTRAS[e]);
         char own[48] = {};
-        input_window_source_label(context->sdl, device, layout, nullptr, source, own, sizeof(own));   // its own name
-        ImGui::PushID(static_cast<int>(EXTRAS[e]));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(own);
-        ImGui::SameLine(label_width);
+        input_window_source_label(state->sdl, device, layout, nullptr, source, own, sizeof(own));   // its own name
+        retro_ui_push_index(static_cast<uint32_t>(EXTRAS[e]));
+        retro_ui_label(own);
+        retro_ui_same_line_at(label_width);
         const InputProfile* profile = input_profile(input, id);
-        char buffer[48] = {};
+        char buffer[INPUT_WINDOW_LABEL_MAX] = {};
         std::snprintf(buffer, sizeof(buffer), "%s", profile != nullptr ? profile->button_labels[source.code].c_str() : "");
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        retro_ui_push_field_text();
-        if (ImGui::InputText("##label", buffer, sizeof(buffer)))
+        char before[INPUT_WINDOW_LABEL_MAX] = {};
+        std::snprintf(before, sizeof(before), "%s", buffer);
+        RetroUiEditField field = {};
+        retro_ui_edit_field("label", buffer, sizeof(buffer), &field);
+        if (std::strcmp(buffer, before) != 0)   // written as it's typed
         {
-            input_profile_for(input, id)->button_labels[source.code] = buffer;
-            window->dirty = true;
+            action->button_label = true;
+            action->label_controller = controller;
+            action->label_button = source.code;
+            std::snprintf(action->label, sizeof(action->label), "%s", buffer);
         }
-        retro_ui_pop_field_text();
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
 }
 
@@ -1005,9 +1024,9 @@ static std::string element_words(const std::string& element)
 // The SDL mapping this gamepad uses now, read only: each control by the
 // name the rest of the window gives it, and the joystick's own input behind
 // it. (To check what MAP CONTROLLER made, or that its CANCEL put it back.)
-static void sdl_mapping_view(const InputWindowContext* context, const InputDevice* device, uint32_t controller, float label_width)
+static void sdl_mapping_view(const InputWindowState* state, const InputDevice* device, uint32_t controller, float label_width)
 {
-    SDL_Gamepad* gamepad = input_sdl_gamepad(context->sdl, device->id);
+    SDL_Gamepad* gamepad = input_sdl_gamepad(state->sdl, device->id);
     if (gamepad == nullptr)
     {
         return;
@@ -1017,10 +1036,10 @@ static void sdl_mapping_view(const InputWindowContext* context, const InputDevic
     {
         return;
     }
-    InputSystem* input = context->input;
-    const InputLayout* layout = input_window_layout(input, context->layouts, device);
+    const InputSystem* input = state->input;
+    const InputLayout* layout = input_window_layout(input, state->layouts, device);
     const InputProfile* profile = input_profile(input, input_controller_profile_id(input, controller));
-    if (retro_ui_collapsing_header(piccolo_text(context->strings, Str::input_sdl_mapping), 0))
+    if (retro_ui_section_header("sdl_mapping", piccolo_text(state->strings, Str::input_sdl_mapping), false))
     {
         // "<guid>,<name>,field:value,...": past the GUID and the name.
         const char* field = mapping;
@@ -1059,7 +1078,7 @@ static void sdl_mapping_view(const InputWindowContext* context, const InputDevic
                     InputSource source = {};
                     source.type = SDL_FIELDS[f].type;
                     source.code = SDL_FIELDS[f].code;
-                    input_window_source_label(context->sdl, device, layout, profile, source, label, sizeof(label));
+                    input_window_source_label(state->sdl, device, layout, profile, source, label, sizeof(label));
                     known = true;
                 }
             }
@@ -1067,88 +1086,84 @@ static void sdl_mapping_view(const InputWindowContext* context, const InputDevic
             {
                 std::snprintf(label, sizeof(label), "%s", name.c_str());   // a field piccolo doesn't know: as SDL names it
             }
-            ImGui::TextUnformatted(label);
-            ImGui::SameLine(label_width);
-            ImGui::TextDisabled("%s", element_words(value).c_str());
+            retro_ui_text(label);
+            retro_ui_same_line_at(label_width);
+            retro_ui_dim_text(element_words(value).c_str(), nullptr);
         }
     }
     SDL_free(mapping);
 }
 
-static void draw_device(InputWindow* window, const InputWindowContext* context, InputDevice* device, float label_width,
-                        bool open_by_default)
+static void draw_device(const InputWindowState* state, const InputDevice* device, float label_width,
+                        bool open_by_default, InputWindowAction* action)
 {
-    InputSystem* input = context->input;
-    const Localization* strings = context->strings;
+    const InputSystem* input = state->input;
+    const Localization* strings = state->strings;
     {
         int32_t first = input_first_controller(input, device->id);
-        ImGui::PushID(static_cast<int>(device->id));
-        char header[200] = {};
-        std::snprintf(header, sizeof(header), "%s###device", device->name.c_str());
-        if (!retro_ui_collapsing_header(header, open_by_default ? ImGuiTreeNodeFlags_DefaultOpen : 0))
+        retro_ui_push_index(static_cast<uint32_t>(device->id));
+        if (!retro_ui_section_header("device", device->name.c_str(), open_by_default))
         {
-            ImGui::PopID();
+            retro_ui_pop_id();
             return;
         }
         if (!device->connected || input_devices_ignored(device))
         {
-            Str state = !device->connected ? Str::input_device_disconnected
-                        : device->ignore == InputIgnore::yes ? Str::input_device_ignored : Str::input_device_ignored_auto;
-            ImGui::TextDisabled("%s", piccolo_text(strings, state));
+            Str status = !device->connected ? Str::input_device_disconnected
+                         : device->ignore == InputIgnore::yes ? Str::input_device_ignored : Str::input_device_ignored_auto;
+            retro_ui_dim_text(piccolo_text(strings, status), nullptr);
         }
 
         if (device->kind == InputDeviceKind::gamepad && first >= 0)
         {
-            InputController* controller = &input->controllers[static_cast<size_t>(first)];
-            uint32_t joystick = input_sdl_joystick_of(context->sdl, device->id);
+            const InputController* controller = &input->controllers[static_cast<size_t>(first)];
+            uint32_t joystick = input_sdl_joystick_of(state->sdl, device->id);
             if (joystick != 0)
             {
                 // Map it again as it is (its buttons by position, its appearance).
                 if (retro_ui_button(piccolo_text(strings, Str::input_map)))
                 {
-                    window->map_request = joystick;
+                    action->press = InputWindowPress::map;
+                    action->joystick = joystick;
                 }
             }
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(piccolo_text(strings, Str::input_name));
-            ImGui::SameLine(label_width);
-            name_field(window, context, static_cast<uint32_t>(first), ImGui::GetContentRegionAvail().x);
+            retro_ui_label(piccolo_text(strings, Str::input_name));
+            retro_ui_same_line_at(label_width);
+            name_field(state, static_cast<uint32_t>(first), retro_ui_width_left(), action);
 
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(piccolo_text(strings, Str::input_deadzone));
+            retro_ui_label(piccolo_text(strings, Str::input_deadzone));
             retro_ui_item_tooltip(piccolo_text(strings, Str::input_deadzone_help));
-            ImGui::SameLine(label_width);
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            int percent = static_cast<int>(controller->deadzone * 100.0f + 0.5f);
+            retro_ui_same_line_at(label_width);
+            int32_t percent = static_cast<int32_t>(controller->deadzone * 100.0f + 0.5f);
             retro_ui_push_field_text();
-            if (ImGui::SliderInt("##deadzone", &percent, 0, 50, "%d%%"))
+            if (retro_ui_slider_int("deadzone", &percent, 0, 50, "%d%%"))
             {
-                controller->deadzone = static_cast<float>(percent) / 100.0f;
-                window->dirty = true;
+                action->press = InputWindowPress::deadzone;
+                action->controller = static_cast<uint32_t>(first);
+                action->deadzone = static_cast<float>(percent) / 100.0f;
             }
             retro_ui_pop_field_text();
 
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(piccolo_text(strings, Str::input_ignore));
+            retro_ui_label(piccolo_text(strings, Str::input_ignore));
             retro_ui_item_tooltip(piccolo_text(strings, Str::input_ignore_help));
-            ImGui::SameLine(label_width);
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            retro_ui_same_line_at(label_width);
             static const Str CHOICES[] = {Str::input_ignore_auto, Str::input_ignore_yes, Str::input_ignore_no};
             static const InputIgnore VALUES[] = {InputIgnore::automatic, InputIgnore::yes, InputIgnore::no};
-            if (retro_ui_begin_combo("##ignore", piccolo_text(strings, CHOICES[static_cast<int>(device->ignore)])))
+            if (retro_ui_begin_choice("ignore", piccolo_text(strings, CHOICES[static_cast<int>(device->ignore)])))
             {
-                for (int i = 0; i < 3; i++)
+                for (uint32_t i = 0; i < 3; i++)
                 {
-                    if (ImGui::Selectable(piccolo_text(strings, CHOICES[i]), device->ignore == VALUES[i]))
+                    if (retro_ui_choice_item_repick(i, piccolo_text(strings, CHOICES[i]), device->ignore == VALUES[i]))
                     {
-                        device->ignore = VALUES[i];
-                        window->dirty = true;
+                        action->press = InputWindowPress::ignore;
+                        action->device_id = device->id;
+                        action->ignore = VALUES[i];
                     }
                 }
-                ImGui::EndCombo();
+                retro_ui_end_choice();
             }
-            extra_button_names(window, context, device, static_cast<uint32_t>(first), label_width);
-            sdl_mapping_view(context, device, static_cast<uint32_t>(first), label_width);
+            extra_button_names(state, device, static_cast<uint32_t>(first), label_width, action);
+            sdl_mapping_view(state, device, static_cast<uint32_t>(first), label_width);
         }
 
         if (device->kind == InputDeviceKind::keyboard)
@@ -1163,195 +1178,257 @@ static void draw_device(InputWindow* window, const InputWindowContext* context, 
                     continue;
                 }
                 number++;
-                ImGui::PushID(static_cast<int>(c));
-                ImGui::AlignTextToFramePadding();
-                ImGui::Text("%s %u", piccolo_text(strings, Str::input_player), static_cast<unsigned>(number));
-                ImGui::SameLine(label_width);
+                retro_ui_push_index(c);
+                char player[96] = {};
+                std::snprintf(player, sizeof(player), "%s %u", piccolo_text(strings, Str::input_player), static_cast<unsigned>(number));
+                retro_ui_label(player);
+                retro_ui_same_line_at(label_width);
                 bool removable = static_cast<int32_t>(c) != first;
-                float width = ImGui::GetContentRegionAvail().x - (removable ? button_width(remove) + ImGui::GetStyle().ItemSpacing.x : 0.0f);
-                name_field(window, context, c, width);
+                float width = retro_ui_width_left() - (removable ? retro_ui_button_width(remove) + retro_ui_item_spacing() : 0.0f);
+                name_field(state, c, width, action);
                 if (removable)
                 {
-                    ImGui::SameLine();
+                    retro_ui_same_line();
                     if (retro_ui_button(remove))
                     {
-                        input_remove_controller(input, c);
-                        window->mapping = UINT32_MAX;   // indices moved
-                        window->mapping_picked = false;
-                        window->names.clear();
-                        window->dirty = true;
-                        ImGui::PopID();
-                        break;
+                        action->press = InputWindowPress::remove_player;
+                        action->controller = c;
+                        retro_ui_pop_id();
+                        break;   // the players after it move up (input_window_apply)
                     }
                 }
-                ImGui::PopID();
+                retro_ui_pop_id();
             }
             if (retro_ui_button(piccolo_text(strings, Str::input_add_part)))
             {
-                char name[64] = {};
-                const char* base = first >= 0 ? input->controllers[static_cast<size_t>(first)].name.c_str() : device->name.c_str();
-                std::snprintf(name, sizeof(name), "%s %u", base, static_cast<unsigned>(number + 1));
-                InputBindingSet empty = {};
-                window->mapping = input_add_controller(input, device->id, name, &empty);   // ready to map
-                window->mapping_picked = true;
-                window->dirty = true;
+                action->press = InputWindowPress::add_player;
+                action->device_id = device->id;
             }
             retro_ui_item_tooltip(piccolo_text(strings, Str::input_add_part_help));
         }
-        ImGui::PopID();
+        retro_ui_pop_id();
     }
 }
 
-// ---------------------------------------------------------------------------
-// The window
-// ---------------------------------------------------------------------------
-
-// The next action of a BIND ALL, or the end of it.
-static void next_or_stop(InputWindow* window, const InputWindowContext* context)
-{
-    if (window->bind_all && window->capture_action != window->bind_all_last)
-    {
-        start_capture(window, context, window->capture_controller,
-                      static_cast<InputAction>(static_cast<uint32_t>(window->capture_action) + 1), 0);
-        return;
-    }
-    window->bind_all = false;
-    input_capture_cancel(context->input);
-    window->capturing = false;
-}
-
-// A SET / BIND ALL in progress: the next key or button binds; Escape stops;
-// 5 s without one skips (BIND ALL) or gives up (SET).
-static void run_capture(InputWindow* window, const InputWindowContext* context)
-{
-    InputSystem* input = context->input;
-    if (!window->capturing)
-    {
-        return;
-    }
-    if (window->capture_controller >= input->controllers.size() || !window->open)
-    {
-        window->bind_all = false;
-        input_capture_cancel(input);
-        window->capturing = false;
-        return;
-    }
-    uint64_t since = context->now_ms - window->capture_started_ms;
-    InputSource source = {};
-    if ((!window->bind_all || since >= BIND_ALL_COOL_OFF_MS) && input_capture_poll(input, context->now_ms, &source))
-    {
-        if (source.type == InputSourceType::key && source.code == HID_ESCAPE)
-        {
-            window->bind_all = false;
-            window->capturing = false;
-            return;
-        }
-        InputBindingSet* bindings = &input->controllers[window->capture_controller].bindings;
-        if (window->bind_all)
-        {
-            input_unbind_all(bindings, window->capture_action);   // BIND ALL: this one, alone
-            input_bind(bindings, window->capture_action, source);
-        }
-        else
-        {
-            input_sources_set(bindings->sources[static_cast<uint32_t>(window->capture_action)], window->capture_row, source);
-        }
-        window->dirty = true;
-        next_or_stop(window, context);
-        return;
-    }
-    InputSource held = {};
-    bool holding = input_capture_candidate(input, &held);   // no time-out while a control is being held
-    if (!input->capture.active || (!holding && since > context->input->settings.press_ms + (window->bind_all ? BIND_ALL_COOL_OFF_MS : 0)))
-    {
-        next_or_stop(window, context);
-    }
-}
-
-static bool begin_tab(const InputWindow* window, const char* text, const char* id, int index, int target)
-{
-    char label[200] = {};
-    (void)window;
-    return ImGui::BeginTabItem(with_id(label, sizeof(label), text, id), nullptr,
-                               target == index ? ImGuiTabItemFlags_SetSelected : 0);
-}
-
+// The tabs' contents scroll under the tab bar (the window itself never does).
 static void begin_content()
 {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::BeginChild("content", ImVec2(0.0f, 0.0f));
+    retro_ui_begin_scroll_area("content", 0.0f, 0.0f);
 }
 
 static void end_content()
 {
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    retro_ui_end_scroll_area();
 }
 
-void input_window_draw(InputWindow* window, const InputWindowContext* context, ImFont* pixel_font, int32_t scale)
+void input_window_draw(InputWindow* window, const InputWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                       InputWindowAction* action)
 {
-    run_capture(window, context);
     if (!window->open)
     {
         return;
     }
-    const Localization* strings = context->strings;
+    const Localization* strings = state->strings;
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     retro_ui_push_theme(pixel_font, scale);
-    ImVec2 size(360.0f * block, 240.0f * block);
-    size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-    size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-    char label[200] = {};
-    if (ImGui::Begin(with_id(label, sizeof(label), piccolo_text(strings, Str::input_title), "input"), nullptr, flags))
+    float width = 360.0f * block;
+    float height = 240.0f * block;
+    width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+    height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+    RetroUiWindow frame = {};
+    frame.id = "input";
+    frame.title = piccolo_text(strings, Str::input_title);
+    frame.width = width;
+    frame.height = height;
+    frame.centered_on_open = true;
+    frame.scrolls = false;
+    bool closed = false;
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        retro_ui_begin_window(scale);
-        if (retro_ui_close_button())
+        if (closed)
         {
             window->open = false;
         }
         float label_width = 110.0f * block;
-        if (ImGui::BeginTabBar("input_tabs"))
+        if (retro_ui_begin_tabs("input_tabs"))
         {
             int target = window->capturing ? -1 : retro_ui_tab_switch(window->tab, 4);
-            if (begin_tab(window, piccolo_text(strings, Str::input_tab_settings), "settings", 0, target))
+            if (retro_ui_begin_tab("settings", piccolo_text(strings, Str::input_tab_settings), target == 0))
             {
                 window->tab = 0;
                 begin_content();
-                draw_settings(window, context);
+                draw_settings(window, state, action);
                 end_content();
-                ImGui::EndTabItem();
+                retro_ui_end_tab();
             }
-            if (begin_tab(window, piccolo_text(strings, Str::input_section_interface), "interface", 1, target))
+            if (retro_ui_begin_tab("interface", piccolo_text(strings, Str::input_section_interface), target == 1))
             {
                 window->tab = 1;
-                draw_bindings(window, context, InputAction::ui_up, InputAction::ui_open_menu, Str::input_column_action,
-                              label_width);
-                ImGui::EndTabItem();
+                draw_bindings(window, state, InputAction::ui_up, InputAction::ui_open_menu, Str::input_column_action,
+                              label_width, action);
+                retro_ui_end_tab();
             }
-            if (begin_tab(window, piccolo_text(strings, Str::input_section_hotkeys), "hotkeys", 2, target))
+            if (retro_ui_begin_tab("hotkeys", piccolo_text(strings, Str::input_section_hotkeys), target == 2))
             {
                 window->tab = 2;
-                draw_bindings(window, context, InputAction::hotkey_enable, InputAction::hotkey_screenshot,
-                              Str::input_column_action, label_width);
-                ImGui::EndTabItem();
+                draw_bindings(window, state, InputAction::hotkey_enable, InputAction::hotkey_screenshot,
+                              Str::input_column_action, label_width, action);
+                retro_ui_end_tab();
             }
-            if (begin_tab(window, piccolo_text(strings, Str::input_tab_devices), "devices", 3, target))
+            if (retro_ui_begin_tab("devices", piccolo_text(strings, Str::input_tab_devices), target == 3))
             {
                 window->tab = 3;
                 begin_content();
-                draw_devices(window, context, label_width);
+                draw_devices(state, label_width, action);
                 end_content();
-                ImGui::EndTabItem();
+                retro_ui_end_tab();
             }
-            ImGui::EndTabBar();
+            retro_ui_end_tabs();
         }
-        retro_ui_end_window();
     }
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void input_window_open(InputWindow* window)
+{
+    window->open = true;
+    window->choose_scope = true;
+    window->mapping = UINT32_MAX;   // port 1's controller comes up
+    window->mapping_picked = false;
+}
+
+// The keyboard's ADD: one more player on it, with no keys yet, named after
+// the first ("Keyboard 2"), and picked in MAPPING, ready to map.
+static void add_player(InputWindow* window, InputSystem* input, uint32_t device_id)
+{
+    const InputDevice* device = input_devices_find_const(&input->devices, device_id);
+    if (device == nullptr)
+    {
+        return;
+    }
+    int32_t first = input_first_controller(input, device_id);
+    uint32_t number = 0;
+    for (uint32_t c = 0; c < input->controllers.size(); c++)
+    {
+        number += input->controllers[c].device_id == device_id ? 1u : 0u;
+    }
+    char name[64] = {};
+    const char* base = first >= 0 ? input->controllers[static_cast<size_t>(first)].name.c_str() : device->name.c_str();
+    std::snprintf(name, sizeof(name), "%s %u", base, static_cast<unsigned>(number + 1));
+    InputBindingSet empty = {};
+    window->mapping = input_add_controller(input, device_id, name, &empty);   // ready to map
+    window->mapping_picked = true;
+}
+
+InputWindowRequest input_window_apply(InputWindow* window, const InputWindowAction* action, InputSystem* input,
+                                      Settings* settings, uint64_t now_ms)
+{
+    SettingsUiEdit edit = action->setting;
+    settings_ui_apply_edit(settings, &edit);   // piccolo saves the settings when the window closes
+    if (action->rename && action->rename_controller < input->controllers.size())
+    {
+        input->controllers[action->rename_controller].name = action->name;
+        window->dirty = true;
+    }
+    if (action->button_label)
+    {
+        std::string id = input_controller_profile_id(input, action->label_controller);
+        input_profile_for(input, id)->button_labels[action->label_button] = action->label;
+        window->dirty = true;
+    }
+
+    uint32_t controller = action->controller;
+    uint32_t index = static_cast<uint32_t>(action->input_action);
+    switch (action->press)
+    {
+    case InputWindowPress::none:
+        break;
+    case InputWindowPress::set:
+        window->bind_all = false;
+        start_capture(window, input, now_ms, controller, action->input_action, action->row);
+        break;
+    case InputWindowPress::bind_all:
+        window->bind_all = true;
+        window->bind_all_last = action->last;
+        start_capture(window, input, now_ms, controller, action->input_action, 0);
+        break;
+    case InputWindowPress::reset:
+    {
+        InputBindingSet defaults = {};
+        input_window_controller_defaults(input, controller, &defaults);
+        InputBindingSet* bindings = &input->controllers[controller].bindings;
+        input_unbind_all(bindings, action->input_action);
+        for (uint32_t s = 0; s < INPUT_SOURCES_PER_ACTION; s++)
+        {
+            input_bind(bindings, action->input_action, defaults.sources[index][s]);
+        }
+        window->dirty = true;
+        break;
+    }
+    case InputWindowPress::clear:
+        input_sources_remove(input->controllers[controller].bindings.sources[index], action->row);
+        window->dirty = true;
+        break;
+    case InputWindowPress::defaults:
+    {
+        InputBindingSet defaults = {};
+        input_window_controller_defaults(input, controller, &defaults);
+        for (uint32_t a = index; a <= static_cast<uint32_t>(action->last); a++)
+        {
+            for (uint32_t s = 0; s < INPUT_SOURCES_PER_ACTION; s++)
+            {
+                input->controllers[controller].bindings.sources[a][s] = defaults.sources[a][s];
+            }
+        }
+        window->dirty = true;
+        break;
+    }
+    case InputWindowPress::cancel:
+        input->controllers[controller].bindings = window->capture_backup;
+        input_capture_cancel(input);
+        window->capturing = false;
+        window->bind_all = false;
+        break;
+    case InputWindowPress::hotkey_mode:
+        input->controllers[controller].hotkey_mode = action->hotkey_mode;
+        window->dirty = true;
+        break;
+    case InputWindowPress::deadzone:
+        input->controllers[controller].deadzone = action->deadzone;
+        window->dirty = true;
+        break;
+    case InputWindowPress::ignore:
+    {
+        InputDevice* device = input_devices_find(&input->devices, action->device_id);
+        if (device != nullptr)
+        {
+            device->ignore = action->ignore;
+            window->dirty = true;
+        }
+        break;
+    }
+    case InputWindowPress::map:
+        window->map_request = action->joystick;
+        break;
+    case InputWindowPress::remove_player:
+        input_remove_controller(input, controller);
+        window->mapping = UINT32_MAX;   // indices moved
+        window->mapping_picked = false;
+        window->dirty = true;
+        break;
+    case InputWindowPress::add_player:
+        add_player(window, input, action->device_id);
+        window->dirty = true;
+        break;
+    case InputWindowPress::edit_touch_layout:
+        return InputWindowRequest::edit_touch_layout;
+    }
+    return InputWindowRequest::none;
 }

@@ -39,6 +39,13 @@
 //
 // A controller SDL doesn't know can't drive the interface: any button on it
 // is the main button on OFFER, STEP 1 and the steps' first pages.
+//
+// Split like every window: map_window_update follows the mapper (a step's
+// inputs done, the controller gone) and polls the controller's own buttons,
+// map_window_state fills what the window shows (no GUI), map_window_draw
+// draws the page and records the button pressed, and map_window_apply acts
+// on it, on the countdowns and on the controller's press (no GUI): SDL's
+// mapping, the mapper, the profile on FINISH.
 
 #include <cstdint>
 #include <string>
@@ -49,7 +56,7 @@
 #include "input_sdl_mapping.h"
 #include "localization.h"
 
-struct ImFont;
+#include "retro_ui_font.h"
 
 enum class MapStage
 {
@@ -105,14 +112,39 @@ struct MapWindow
     bool           profiles_dirty = false;   // FINISH (or NOT NOW) changed a profile: save input.cfg
     std::string    result;                   // "<name>: MAPPED" for the status line, once
     bool           take_focus = false;       // just opened: come to the front once (every frame would close its lists)
+    bool           pressed = false;          // this frame, any button on it (map_window_update, on pages it answers)
 };
 
-struct MapWindowContext
+struct MapWindowState
 {
-    InputSystem*        input = nullptr;
     const Localization* strings = nullptr;
-    const InputLayouts* layouts = nullptr;
-    uint64_t            now_ms = 0;
+    const InputLayouts* layouts = nullptr;   // LABELS and LAYOUT's lists, the drawing's layout
+    uint64_t            now_ms = 0;          // the countdowns
+    bool                is_gamepad = false;  // SDL knows it: SKIP allowed (STEP 1, STEP 2)
+};
+
+enum class MapWindowPress
+{
+    none,
+    map,          // OFFER: MAP
+    not_now,      // OFFER: NOT NOW
+    start,        // a first page's START
+    skip,         // a first page's SKIP
+    back,         // a page's BACK (the previous step)
+    yes,          // a STEP 4 question: YES
+    no,           // a STEP 4 question: NO
+    step_back,    // while a step takes its inputs: BACK (the previous input)
+    step_reset,   // RESET (the step's first input)
+    step_skip,    // SKIP (this input)
+    restart,      // SUMMARY: RESTART
+    finish,       // SUMMARY: FINISH
+    cancel,       // CANCEL (any page): nothing kept
+};
+
+struct MapWindowAction
+{
+    MapWindowPress press = MapWindowPress::none;
+    bool           drawn = false;   // the page showed (its countdowns and the controller's press count only then)
 };
 
 // The OFFER for a controller (by its SDL joystick id). `needed`: SDL doesn't
@@ -130,4 +162,13 @@ void map_window_close(MapWindow* window, InputSystem* input);
 
 bool map_window_open_now(const MapWindow* window);
 
-void map_window_draw(MapWindow* window, const MapWindowContext* context, ImFont* pixel_font, int32_t scale);
+// Before the state, every frame: the mapper followed, the controller's own
+// press polled.
+void map_window_update(MapWindow* window, InputSystem* input, uint64_t now_ms);
+void map_window_state(MapWindowState* state, const MapWindow* window, const Localization* strings,
+                      const InputLayouts* layouts, uint64_t now_ms);
+void map_window_draw(MapWindow* window, const MapWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                     MapWindowAction* action);
+// The press, the countdowns and the controller's press, on the page shown.
+void map_window_apply(MapWindow* window, const MapWindowAction* action, InputSystem* input,
+                      const Localization* strings, const InputLayouts* layouts, uint64_t now_ms);

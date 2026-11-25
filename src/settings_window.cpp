@@ -2,57 +2,98 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 
 #include <SDL3/SDL.h>
 
 #include "game_mode.h"
-#include "imgui.h"
 #include "libretro_host.h"   // LIBRETRO_PATH_MAX
 
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "settings_ui.h"
+#include "settings_view.h"
+#include "ui_toolkit.h"
 
-void settings_window_open(SettingsWindow* window, SettingsTab tab)
+// ---------------------------------------------------------------------------
+// State
+
+void settings_window_update(SettingsWindow* window, const Settings* settings, const char* core_name,
+                            const char* game_name)
 {
     if (!window->open)
     {
-        window->choose_scope = true;   // needs the settings: done on the next draw
+        return;   // as before, the scope is checked while the window shows
     }
-    window->open = true;
-    window->tab = tab;
-    window->select_tab = true;
+    bool has_core = core_name[0] != '\0';
+    bool has_game = has_core && game_name[0] != '\0';
+    settings_view_scope(settings, has_core, has_game, &window->scope, &window->choose_scope);
 }
 
-// A label in the current language with a fixed ImGui ID ("###"), so a
-// window or tab keeps its state when the language changes.
-static const char* with_id(char* buffer, size_t size, const char* text, const char* id)
+// A boolean setting as it resolves at `scope` ("true").
+static bool true_at_scope(const Settings* settings, SettingLayer scope, const char* key)
 {
-    std::snprintf(buffer, size, "%s###%s", text, id);
-    return buffer;
+    const char* value = settings_get_at(settings, scope, key, nullptr);
+    return value != nullptr && std::strcmp(value, "true") == 0;
 }
+
+void settings_window_state(SettingsWindowState* state, const SettingsWindow* window, const Settings* settings,
+                           const Localization* strings, const AppPaths* paths, const char* core_name,
+                           const char* game_name, const SettingsWindowNotes* notes,
+                           const std::vector<PiccoloThemeFile>* themes, const ImageWindowSource* image,
+                           const NetWindowState* network)
+{
+    SettingLayer scope = window->scope;
+    state->settings = settings;
+    state->strings = strings;
+    state->core_name = core_name;
+    state->game_name = game_name;
+    state->notes = *notes;
+    state->folder_hints[0] = paths->cores.c_str();
+    state->folder_hints[1] = paths->system.c_str();
+    state->folder_hints[2] = paths->saves.c_str();
+    state->folder_hints[3] = paths->states.c_str();
+    state->folder_hints[4] = paths->screenshots.c_str();
+    state->game_folder_count = 0;
+    while (state->game_folder_count < PICCOLO_GAME_FOLDER_MAX &&
+           settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count])[0] != '\0')
+    {
+        state->game_folders[state->game_folder_count] =
+            settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count]);
+        state->game_folder_count++;
+    }
+    state->game_mode_supported = game_mode_supported();
+    state->window_fixed = settings_get_enum(settings, PICCOLO_WINDOW_MODE) == PICCOLO_WINDOW_FIXED;
+    state->latency_preset = piccolo_settings_latency_preset(settings, scope);
+    state->frame_delay_usable = true_at_scope(settings, scope, PICCOLO_LATENCY_WAIT_FOR_PRESENT);
+    state->frame_delay_auto = true_at_scope(settings, scope, PICCOLO_LATENCY_FRAME_DELAY_AUTO);
+    state->rate_control = true_at_scope(settings, scope, PICCOLO_AUDIO_RATE_CONTROL);
+    state->themes = themes;
+    image_window_state(&state->image, settings, strings, scope, image);
+    state->network = network;
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
 
 // GLOBAL / THIS CORE / THIS GAME (settings_ui_scope).
-static void draw_scope(SettingsWindow* window, const SettingsWindowContext* context)
+static void draw_scope(SettingsWindow* window, const SettingsWindowState* state)
 {
-    settings_ui_scope(context->settings, context->strings, context->core_name, context->game_name, &window->scope,
+    settings_ui_scope(state->settings, state->strings, state->core_name, state->game_name, &window->scope,
                       &window->choose_scope);
 }
 
 // GAME FOLDERS: one row per folder, then "+". Clicking a row's field or
-// "+" asks piccolo for CHOOSE FOLDER (choose_game_folder); "-" removes the
-// row. Global only, like the other folders (greyed out in other scopes).
+// "+" asks piccolo for CHOOSE FOLDER (action->choose_folder); "-" removes the
+// row (settings_window_apply). Global only, like the other folders (greyed out in other scopes).
 // FOLDERS and GAME FOLDERS: one open at a time (opening one closes the
 // other; Andrés: their rows needn't line up then). True if `section` is open.
 static bool folder_section(SettingsWindow* window, FolderSection section, const char* label, const char* id)
 {
-    char header[200] = {};
-    ImGui::SetNextItemOpen(window->folder_section == section, ImGuiCond_Always);
-    bool open = retro_ui_collapsing_header(with_id(header, sizeof(header), label, id), 0);
+    bool open = retro_ui_section_header_open(id, label, window->folder_section == section);
     if (open)
     {
         window->folder_section = section;
@@ -64,7 +105,8 @@ static bool folder_section(SettingsWindow* window, FolderSection section, const 
     return open;
 }
 
-static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* ui)
+static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowState* state,
+                              SettingsWindowAction* action)
 {
     if (!folder_section(window, FolderSection::game_folders, piccolo_text(ui->strings, Str::section_game_folders),
                         "game_folders"))
@@ -72,79 +114,67 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
         return;
     }
     bool global = ui->scope == SettingLayer::global;
-    if (!global)
-    {
-        ImGui::BeginDisabled();
-    }
-    uint32_t set = 0;
-    while (set < PICCOLO_GAME_FOLDER_MAX && settings_get_text(ui->settings, PICCOLO_PATH_GAMES[set])[0] != '\0')
-    {
-        set++;
-    }
-    // The field up to "-" at the right edge.
-    float remove_width = ImGui::CalcTextSize("-").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    retro_ui_begin_disabled(!global);
+    uint32_t set = state->game_folder_count;
+    // The field up to "-" at the right edge, lined up with the setting rows.
     const char* label = piccolo_text(ui->strings, Str::setting_path_games);
     int32_t remove = -1;
     for (uint32_t i = 0; i < set; i++)
     {
-        ImGui::PushID(PICCOLO_PATH_GAMES[i]);
-        ImGui::Dummy(ImGui::CalcTextSize("C"));   // the marker column, so rows line up with the others
-        ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
-        float start = ImGui::GetCursorPosX();
-        ImGui::TextUnformatted(label);
-        retro_ui_item_tooltip(piccolo_text(ui->strings, Str::setting_path_games_help));
-        ImGui::SameLine(start + ui->label_width);
-
-        if (settings_ui_folder_field(ui, settings_get_text(ui->settings, PICCOLO_PATH_GAMES[i]), nullptr,
-                                     remove_width + ImGui::GetStyle().ItemSpacing.x))
+        RetroUiRow row = {};
+        row.id = PICCOLO_PATH_GAMES[i];
+        row.label = label;
+        row.help = piccolo_text(ui->strings, Str::setting_path_games_help);
+        row.label_width = ui->label_width;
+        row.end_button = "-";
+        row.end_button_help = piccolo_text(ui->strings, Str::game_folder_remove_help);
+        retro_ui_row_begin(&row);
+        if (retro_ui_picker_field("value", nullptr, state->game_folders[i],
+                                  piccolo_text(ui->strings, Str::game_folder_choose_help)))
         {
-            window->choose_folder_key = PICCOLO_PATH_GAMES[i];
+            action->choose_folder = PICCOLO_PATH_GAMES[i];
         }
-        ImGui::SameLine(ImGui::GetContentRegionMax().x - remove_width);
-        if (retro_ui_button("-"))
+        if (retro_ui_row_end(&row))
         {
             remove = static_cast<int32_t>(i);
         }
-        retro_ui_item_tooltip(piccolo_text(ui->strings, Str::game_folder_remove_help));
-        ImGui::PopID();
     }
     if (remove >= 0)
     {
-        piccolo_settings_remove_game_folder(ui->settings, static_cast<uint32_t>(remove));
+        action->remove_game_folder = true;
+        action->game_folder = static_cast<uint32_t>(remove);
     }
-    ImGui::Dummy(ImGui::CalcTextSize("C"));
-    ImGui::SameLine();
-    ImGui::BeginDisabled(set >= PICCOLO_GAME_FOLDER_MAX);
-    ImGui::PushID("add_game_folder");
+    // "+" in the label column, after the marker's room.
+    RetroUiRow add = {};
+    add.id = "add_game_folder";
+    retro_ui_row_begin(&add);
+    retro_ui_begin_disabled(set >= PICCOLO_GAME_FOLDER_MAX);
     if (retro_ui_button("+"))
     {
-        window->choose_folder_key = PICCOLO_PATH_GAMES[set];
+        action->choose_folder = PICCOLO_PATH_GAMES[set];
     }
-    ImGui::PopID();
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     retro_ui_item_tooltip(piccolo_text(ui->strings, Str::game_folder_add_help));
+    retro_ui_row_end(&add);
+    retro_ui_end_disabled();
     if (!global)
     {
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        {
-            retro_ui_tooltip(piccolo_text(ui->strings, Str::global_only_help));
-        }
+        retro_ui_disabled_item_tooltip(piccolo_text(ui->strings, Str::global_only_help));
     }
 }
 
-static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowState* state,
+                         SettingsWindowAction* action)
 {
     settings_ui_row(ui, PICCOLO_LANGUAGE, nullptr);
     settings_ui_row(ui, PICCOLO_PAUSE_IN_MENU, nullptr);
     settings_ui_row(ui, PICCOLO_PAUSE_ON_FOCUS_LOSS, nullptr);
     settings_ui_row(ui, PICCOLO_PAUSE_ON_DISCONNECT, nullptr);
     settings_ui_row(ui, PICCOLO_SCREENSAVER_WHEN_PAUSED, nullptr);
-    if (game_mode_supported())   // Linux only: nothing to turn on elsewhere
+    if (state->game_mode_supported)   // Linux only: nothing to turn on elsewhere
     {
         settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);
-        ImGui::TextDisabled("%s", context->game_mode);
+        retro_ui_dim_text(state->notes.game_mode, nullptr);
     }
     settings_ui_row(ui, PICCOLO_SHOW_FPS, nullptr);
     settings_ui_row(ui, PICCOLO_SCREENSHOT_MODE, nullptr);
@@ -154,15 +184,15 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
     settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_EVERY, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOTS_KEPT, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_MEMORY, nullptr);
-    if (context->rewind_note != nullptr && context->rewind_note[0] != '\0')
+    if (state->notes.rewind_note != nullptr && state->notes.rewind_note[0] != '\0')
     {
-        ImGui::TextDisabled("%s", context->rewind_note);
+        retro_ui_dim_text(state->notes.rewind_note, nullptr);
     }
-    if (context->rewind_known)
+    if (state->notes.rewind_known)
     {
         if (retro_ui_button(piccolo_text(ui->strings, Str::rewind_measure_again)))
         {
-            window->rewind_measure_again = true;
+            action->rewind_measure_again = true;
         }
         retro_ui_item_tooltip(piccolo_text(ui->strings, Str::rewind_measure_again_help));
     }
@@ -170,11 +200,8 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
     // opens CHOOSE FOLDER (piccolo); RESET goes back to the default shown.
     if (folder_section(window, FolderSection::folders, piccolo_text(ui->strings, Str::section_folders), "folders"))
     {
-        const char* keys[5] = {PICCOLO_PATH_CORES, PICCOLO_PATH_SYSTEM, PICCOLO_PATH_SAVES, PICCOLO_PATH_STATES,
-                               PICCOLO_PATH_SCREENSHOTS};
-        const char* hints[5] = {context->paths->cores.c_str(), context->paths->system.c_str(),
-                                context->paths->saves.c_str(), context->paths->states.c_str(),
-                                context->paths->screenshots.c_str()};
+        const char* keys[SETTINGS_FOLDER_COUNT] = {PICCOLO_PATH_CORES, PICCOLO_PATH_SYSTEM, PICCOLO_PATH_SAVES,
+                                                   PICCOLO_PATH_STATES, PICCOLO_PATH_SCREENSHOTS};
         // Android: no CORES row. Cores load only from the app's private
         // storage (shared storage is noexec); main.cpp ignores the setting.
         // The browser: no CORES or SYSTEM rows either (the core is linked in).
@@ -183,24 +210,19 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
 #else
         uint32_t first = PICCOLO_BROWSER ? 2 : 0;
 #endif
-        for (uint32_t i = first; i < 5; i++)
+        for (uint32_t i = first; i < SETTINGS_FOLDER_COUNT; i++)
         {
-            if (settings_ui_folder_row(ui, keys[i], hints[i]))
+            if (settings_ui_folder_row(ui, keys[i], state->folder_hints[i]))
             {
-                window->choose_folder_key = keys[i];
+                action->choose_folder = keys[i];
             }
         }
-        ImGui::TextDisabled("%s", piccolo_text(ui->strings, Str::folders_next_game));
+        retro_ui_dim_text(piccolo_text(ui->strings, Str::folders_next_game), nullptr);
     }
-    draw_game_folders(window, ui);
+    draw_game_folders(window, ui, state, action);
 }
 
-static long crop_at_scope(const SettingsUiContext* ui, const char* key)
-{
-    return std::strtol(settings_get_at(ui->settings, ui->scope, key, nullptr), nullptr, 10);
-}
-
-static void draw_picture(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_picture(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowState* state)
 {
     settings_ui_row(ui, PICCOLO_VIDEO_ASPECT, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_SCALING, nullptr);
@@ -211,29 +233,30 @@ static void draw_picture(SettingsWindow* window, const SettingsUiContext* ui, co
 
     // The crop (and more image settings later) live in their own window.
     char crop[200] = {};
-    std::snprintf(crop, sizeof(crop), "%s: %ld, %ld, %ld, %ld", piccolo_text(ui->strings, Str::crop_summary),
-                  crop_at_scope(ui, PICCOLO_VIDEO_CROP_TOP), crop_at_scope(ui, PICCOLO_VIDEO_CROP_BOTTOM),
-                  crop_at_scope(ui, PICCOLO_VIDEO_CROP_LEFT), crop_at_scope(ui, PICCOLO_VIDEO_CROP_RIGHT));
-    ImGui::Spacing();
-    char button[200] = {};
-    if (retro_ui_button(with_id(button, sizeof(button), piccolo_text(ui->strings, Str::image_settings_button), "image")))
+    // The crop at the scope being edited, as IMAGE SETTINGS reads it: top, bottom, left, right.
+    const float* at_scope = state->image.crop;
+    std::snprintf(crop, sizeof(crop), "%s: %d, %d, %d, %d", piccolo_text(ui->strings, Str::crop_summary),
+                  static_cast<int32_t>(at_scope[0]), static_cast<int32_t>(at_scope[1]),
+                  static_cast<int32_t>(at_scope[2]), static_cast<int32_t>(at_scope[3]));
+    retro_ui_spacing();
+    if (retro_ui_id_button("image", piccolo_text(ui->strings, Str::image_settings_button)))
     {
         window->image_open = true;
     }
-    if (context->image == nullptr || context->image->texture_id == 0)
+    if (state->image.source.texture_id == 0)
     {
         retro_ui_item_tooltip(piccolo_text(ui->strings, Str::image_settings_button_help));
     }
-    ImGui::TextDisabled("%s", crop);
+    retro_ui_dim_text(crop, nullptr);
 }
 
-static void draw_display(const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_display(const SettingsUiContext* ui, const SettingsWindowState* state)
 {
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN, nullptr);
     settings_ui_row(ui, PICCOLO_DISPLAY_FULLSCREEN_TYPE, nullptr);
     retro_ui_separator_text(piccolo_text(ui->strings, Str::section_window));
     settings_ui_row(ui, PICCOLO_WINDOW_MODE, nullptr);
-    if (settings_get_enum(ui->settings, PICCOLO_WINDOW_MODE) == PICCOLO_WINDOW_FIXED)
+    if (state->window_fixed)
     {
         settings_ui_row(ui, PICCOLO_WINDOW_ASPECT, nullptr);
         settings_ui_row(ui, PICCOLO_WINDOW_HEIGHT, nullptr);
@@ -242,43 +265,41 @@ static void draw_display(const SettingsUiContext* ui, const SettingsWindowContex
     {
         settings_ui_row(ui, PICCOLO_WINDOW_SCALE, nullptr);
     }
-    ImGui::TextDisabled("%s", context->window_size);
+    retro_ui_dim_text(state->notes.window_size, nullptr);
     settings_ui_row(ui, PICCOLO_WINDOW_REMEMBER, nullptr);
 }
 
 // PRESET: sets the three latency settings below at the edited scope. Not a
 // setting itself: it shows the preset the values match, or CUSTOM.
-static void draw_latency_preset(const SettingsUiContext* ui)
+static void draw_latency_preset(const SettingsUiContext* ui, const SettingsWindowState* state,
+                                SettingsWindowAction* action)
 {
-    uint32_t current = piccolo_settings_latency_preset(ui->settings, ui->scope);
-    ImGui::PushID("latency_preset");
-    ImGui::Dummy(ImGui::CalcTextSize("C"));   // the marker column
-    ImGui::SameLine();
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(ui->strings, Str::latency_preset));
-    retro_ui_item_tooltip(piccolo_text(ui->strings, Str::latency_preset_help));
-    ImGui::SameLine(start + ui->label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (retro_ui_begin_combo("##preset", piccolo_text(ui->strings, piccolo_settings_latency_preset_name(current))))
+    uint32_t current = state->latency_preset;
+    RetroUiRow row = {};
+    row.id = "latency_preset";
+    row.label = piccolo_text(ui->strings, Str::latency_preset);
+    row.help = piccolo_text(ui->strings, Str::latency_preset_help);
+    row.label_width = ui->label_width;
+    retro_ui_row_begin(&row);
+    if (retro_ui_begin_choice("preset", piccolo_text(ui->strings, piccolo_settings_latency_preset_name(current))))
     {
         for (uint32_t i = 0; i < PICCOLO_LATENCY_PRESET_COUNT; i++)
         {
-            ImGui::PushID(static_cast<int>(i));
-            bool picked = ImGui::Selectable(piccolo_text(ui->strings, piccolo_settings_latency_preset_name(i)),
-                                            i == current);
-            ImGui::PopID();
-            if (picked)
+            // The preset shown, picked again, sets its values again.
+            if (retro_ui_choice_item_repick(i, piccolo_text(ui->strings, piccolo_settings_latency_preset_name(i)),
+                                            i == current))
             {
-                piccolo_settings_apply_latency_preset(ui->settings, ui->scope, i);
+                action->set_latency_preset = true;
+                action->latency_preset = i;
+                action->latency_scope = ui->scope;
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    ImGui::PopID();
+    retro_ui_row_end(&row);
 }
 
-static void draw_sync(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_sync(const SettingsUiContext* ui, const SettingsWindowState* state, SettingsWindowAction* action)
 {
     settings_ui_row(ui, PICCOLO_VIDEO_TIMING, nullptr);
     settings_ui_row(ui, PICCOLO_VIDEO_CATCH_UP, nullptr);
@@ -288,66 +309,61 @@ static void draw_sync(SettingsWindow* window, const SettingsUiContext* ui, const
         // The browser paces presents itself and never waits: frames in
         // flight, waiting for present and frame delay mean nothing there.
         settings_ui_row(ui, PICCOLO_LATENCY_RUN_AHEAD, nullptr);
-        ImGui::TextDisabled("%s", context->run_ahead);
+        retro_ui_dim_text(state->notes.run_ahead, nullptr);
         return;
     }
-    draw_latency_preset(ui);
+    draw_latency_preset(ui, state, action);
     settings_ui_row(ui, PICCOLO_LATENCY_FRAMES_IN_FLIGHT, nullptr);
     settings_ui_row(ui, PICCOLO_LATENCY_WAIT_FOR_PRESENT, nullptr);
 
     // Frame delay only helps after waiting for present (see frame_delay() in
     // main.cpp): greyed out without it, the stored value kept.
-    const char* waits = settings_get_at(ui->settings, ui->scope, PICCOLO_LATENCY_WAIT_FOR_PRESENT, nullptr);
-    bool usable = waits != nullptr && std::strcmp(waits, "true") == 0;
+    bool usable = state->frame_delay_usable;
     // AUTO ignores the manual value: greyed out then (kept for turning AUTO off).
-    const char* automatic = settings_get_at(ui->settings, ui->scope, PICCOLO_LATENCY_FRAME_DELAY_AUTO, nullptr);
-    bool is_automatic = automatic != nullptr && std::strcmp(automatic, "true") == 0;
-    ImGui::BeginDisabled(!usable);
-    ImGui::BeginDisabled(is_automatic);
+    bool is_automatic = state->frame_delay_auto;
+    retro_ui_begin_disabled(!usable);
+    retro_ui_begin_disabled(is_automatic);
     settings_ui_row(ui, PICCOLO_LATENCY_FRAME_DELAY, nullptr);
-    ImGui::EndDisabled();
-    if (!usable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    retro_ui_end_disabled();
+    if (!usable)
     {
-        retro_ui_tooltip(piccolo_text(ui->strings, Str::frame_delay_needs_wait));
+        retro_ui_disabled_item_tooltip(piccolo_text(ui->strings, Str::frame_delay_needs_wait));
     }
     settings_ui_row(ui, PICCOLO_LATENCY_FRAME_DELAY_AUTO, nullptr);
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     if (usable && is_automatic)
     {
-        ImGui::TextDisabled("%s", context->frame_delay);
-        if (context->frame_delay_found)
+        retro_ui_dim_text(state->notes.frame_delay, nullptr);
+        if (state->notes.frame_delay_found)
         {
-            char button[200] = {};
-            if (retro_ui_button(with_id(button, sizeof(button), piccolo_text(ui->strings, Str::frame_delay_search_again),
-                                      "search_delay")))
+            if (retro_ui_id_button("search_delay", piccolo_text(ui->strings, Str::frame_delay_search_again)))
             {
-                window->search_frame_delay = true;
+                action->search_frame_delay = true;
             }
             retro_ui_item_tooltip(piccolo_text(ui->strings, Str::frame_delay_search_again_help));
         }
     }
-    ImGui::TextDisabled("%s", context->present_wait);
+    retro_ui_dim_text(state->notes.present_wait, nullptr);
     settings_ui_row(ui, PICCOLO_LATENCY_RUN_AHEAD, nullptr);
-    ImGui::TextDisabled("%s", context->run_ahead);
+    retro_ui_dim_text(state->notes.run_ahead, nullptr);
 }
 
-static void draw_sound(const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_sound(const SettingsUiContext* ui, const SettingsWindowState* state)
 {
-    settings_ui_text_choice_row(ui, PICCOLO_AUDIO_DEVICE, context->audio_devices, context->audio_device_count,
+    settings_ui_text_choice_row(ui, PICCOLO_AUDIO_DEVICE, state->notes.audio_devices, state->notes.audio_device_count,
                                 piccolo_text(ui->strings, Str::audio_device_default),
                                 piccolo_text(ui->strings, Str::audio_device_missing));
     settings_ui_row(ui, PICCOLO_AUDIO_VOLUME, nullptr);
     settings_ui_row(ui, PICCOLO_AUDIO_MUTE, nullptr);
     settings_ui_row(ui, PICCOLO_AUDIO_LATENCY, nullptr);
-    ImGui::TextDisabled("%s", context->audio_latency);
+    retro_ui_dim_text(state->notes.audio_latency, nullptr);
 
     retro_ui_separator_text(piccolo_text(ui->strings, Str::section_advanced));
     settings_ui_row(ui, PICCOLO_AUDIO_RATE_CONTROL, nullptr);
     // The limit only matters with rate control on: greyed out without it, the stored value kept.
-    const char* drc = settings_get_at(ui->settings, ui->scope, PICCOLO_AUDIO_RATE_CONTROL, nullptr);
-    ImGui::BeginDisabled(drc == nullptr || std::strcmp(drc, "true") != 0);
+    retro_ui_begin_disabled(!state->rate_control);
     settings_ui_row(ui, PICCOLO_AUDIO_MAX_DEVIATION, nullptr);
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     settings_ui_row(ui, PICCOLO_AUDIO_QUALITY, nullptr);
 }
 
@@ -387,17 +403,15 @@ static int32_t matching_theme(const Settings* settings, const std::vector<ThemeC
     return found;
 }
 
-// A theme row's label, then the value column's width for its combo.
-static void theme_row_label(const SettingsUiContext* ui, Str label, Str help)
+// A theme row: its label lined up with the setting rows, its list after it.
+static RetroUiRow theme_row(const SettingsUiContext* ui, const char* id, Str label, Str help)
 {
-    ImGui::Dummy(ImGui::CalcTextSize("C"));   // the marker column
-    ImGui::SameLine();
-    ImGui::AlignTextToFramePadding();
-    float start = ImGui::GetCursorPosX();
-    ImGui::TextUnformatted(piccolo_text(ui->strings, label));
-    retro_ui_item_tooltip(piccolo_text(ui->strings, help));
-    ImGui::SameLine(start + ui->label_width);
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    RetroUiRow row = {};
+    row.id = id;
+    row.label = piccolo_text(ui->strings, label);
+    row.help = piccolo_text(ui->strings, help);
+    row.label_width = ui->label_width;
+    return row;
 }
 
 // THEME and CUSTOM THEME: they set every interface color. Not settings
@@ -410,7 +424,7 @@ static void theme_row_label(const SettingsUiContext* ui, Str label, Str help)
 //                  UNSAVED.
 // The interface is global only.
 static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* ui,
-                              const std::vector<PiccoloThemeFile>* files)
+                              const std::vector<PiccoloThemeFile>* files, SettingsWindowAction* action)
 {
     const Localization* strings = ui->strings;
     std::vector<ThemeChoice> shipped;
@@ -445,33 +459,36 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
     const char* custom_label = piccolo_text(strings, Str::preset_custom);
 
     bool global = ui->scope == SettingLayer::global;
-    ImGui::PushID("ui_theme");
-    ImGui::BeginDisabled(!global);
+    retro_ui_push_id("ui_theme");
+    retro_ui_begin_disabled(!global);
 
-    theme_row_label(ui, Str::ui_theme, Str::ui_theme_help);
+    // A theme picked again applies its colors again (they may have been changed since).
+    RetroUiRow row = theme_row(ui, "theme", Str::ui_theme, Str::ui_theme_help);
+    retro_ui_row_begin(&row);
     const char* theme_label = on_custom ? custom_label : shipped[static_cast<size_t>(shipped_current)].label.c_str();
-    if (retro_ui_begin_combo("##theme", theme_label))
+    if (retro_ui_begin_choice("theme", theme_label))
     {
         for (size_t i = 0; i < shipped.size(); i++)
         {
-            ImGui::PushID(static_cast<int>(i));
-            bool picked = ImGui::Selectable(shipped[i].label.c_str(), !on_custom && static_cast<int32_t>(i) == shipped_current);
-            ImGui::PopID();
-            if (picked)
+            if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), shipped[i].label.c_str(),
+                                            !on_custom && static_cast<int32_t>(i) == shipped_current))
             {
-                piccolo_settings_apply_ui_palette(ui->settings, shipped[i].palette);
+                action->set_palette = true;
+                action->palette = *shipped[i].palette;
                 window->theme_choice = shipped[i].label;
                 window->theme_custom = false;
             }
         }
-        if (ImGui::Selectable(custom_label, on_custom))
+        if (retro_ui_choice_item_repick(static_cast<uint32_t>(shipped.size()), custom_label, on_custom))
         {
             window->theme_custom = true;   // the colors stay; CUSTOM THEME picks one
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
+    retro_ui_row_end(&row);
 
-    theme_row_label(ui, Str::ui_custom_theme, Str::ui_custom_theme_help);
+    row = theme_row(ui, "custom_theme", Str::ui_custom_theme, Str::ui_custom_theme_help);
+    retro_ui_row_begin(&row);
     const char* custom_theme_label = "-";
     if (on_custom)
     {
@@ -479,38 +496,39 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
                              : custom.empty()    ? piccolo_text(strings, Str::ui_custom_theme_none)
                                                  : piccolo_text(strings, Str::ui_custom_theme_unsaved);
     }
-    ImGui::BeginDisabled(!on_custom || custom.empty());
-    if (retro_ui_begin_combo("##custom_theme", custom_theme_label))
+    retro_ui_begin_disabled(!on_custom || custom.empty());
+    if (retro_ui_begin_choice("custom_theme", custom_theme_label))
     {
         for (size_t i = 0; i < custom.size(); i++)
         {
-            ImGui::PushID(static_cast<int>(i));
-            bool picked = ImGui::Selectable(custom[i].label.c_str(), static_cast<int32_t>(i) == custom_current);
-            ImGui::PopID();
-            if (picked)
+            if (retro_ui_choice_item_repick(static_cast<uint32_t>(i), custom[i].label.c_str(),
+                                            static_cast<int32_t>(i) == custom_current))
             {
-                piccolo_settings_apply_ui_palette(ui->settings, custom[i].palette);
+                action->set_palette = true;
+                action->palette = *custom[i].palette;
                 window->theme_choice = custom[i].label;
                 window->theme_custom = true;
             }
         }
-        ImGui::EndCombo();
+        retro_ui_end_choice();
     }
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
+    retro_ui_row_end(&row);
 
-    ImGui::EndDisabled();
-    if (!global && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    retro_ui_end_disabled();
+    if (!global)
     {
-        retro_ui_tooltip(piccolo_text(strings, Str::global_only_help));
+        retro_ui_disabled_item_tooltip(piccolo_text(strings, Str::global_only_help));
     }
-    ImGui::PopID();
+    retro_ui_pop_id();
 }
 
 // SAVE THEME...: a button under CUSTOM THEME, then a popup: THEME picks
 // which of the user's own themes to replace, or NEW, which asks for a NAME.
-// SAVE leaves the name in window->save_theme_request for piccolo to write
-// the file (a custom theme: it never replaces a shipped one).
-static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui, const std::vector<PiccoloThemeFile>* files)
+// SAVE leaves the name in action->save_theme_name for piccolo to write the
+// file (a custom theme: it never replaces a shipped one).
+static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui, const std::vector<PiccoloThemeFile>* files,
+                            SettingsWindowAction* action)
 {
     const Localization* strings = ui->strings;
     bool global = ui->scope == SettingLayer::global;
@@ -526,12 +544,11 @@ static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui,
     }
     std::sort(custom.begin(), custom.end());
 
-    ImGui::PushID("ui_theme_save");
-    ImGui::Dummy(ImGui::CalcTextSize("C"));   // the marker column
-    ImGui::SameLine();
-    float start = ImGui::GetCursorPosX();
-    ImGui::SameLine(start + ui->label_width);
-    ImGui::BeginDisabled(!global);
+    retro_ui_push_id("ui_theme_save");
+    retro_ui_space(retro_ui_text_width("C"), retro_ui_font_size());   // the marker column
+    retro_ui_same_line();
+    retro_ui_same_line_at(retro_ui_cursor_x() + ui->label_width);   // in the value column
+    retro_ui_begin_disabled(!global);
     if (retro_ui_button(piccolo_text(strings, Str::ui_theme_save)))
     {
         window->save_theme_open = true;
@@ -546,26 +563,26 @@ static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui,
             }
         }
     }
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
     retro_ui_item_tooltip(piccolo_text(strings, Str::ui_theme_save_help));
 
-    char title[128] = {};
-    std::snprintf(title, sizeof(title), "%s###save_theme", piccolo_text(strings, Str::ui_theme_save_title));
-    if (window->save_theme_open && !ImGui::IsPopupOpen(title))
-    {
-        ImGui::OpenPopup(title);
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     // One size, tall enough for everything it may show: the title, THEME,
     // NAME, the REPLACES line and the buttons.
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float width = static_cast<float>(static_cast<int>(viewport->Size.x * 0.4f));
-    float height = ImGui::GetFrameHeight() + style.WindowPadding.y * 2.0f + ImGui::GetFrameHeightWithSpacing() * 4.5f;   // half a row to spare for the edges
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(width, static_cast<float>(static_cast<int>(height))), ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove))
+    float chrome_width = 0.0f;
+    float chrome_height = 0.0f;
+    retro_ui_window_chrome(&chrome_width, &chrome_height);
+    float height = chrome_height + retro_ui_line_step() * 4.5f;   // half a row to spare for the edges
+    RetroUiModal modal = {};
+    modal.id = "save_theme";
+    modal.title = piccolo_text(strings, Str::ui_theme_save_title);
+    modal.width = static_cast<float>(static_cast<int>(screen_width * 0.4f));
+    modal.height = static_cast<float>(static_cast<int>(height));
+    if (retro_ui_begin_modal(&modal, window->save_theme_open))
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        if (retro_ui_key_pressed(RetroUiKey::escape, true))
         {
             window->save_theme_open = false;   // (B on a gamepad sends Escape while a popup is up)
         }
@@ -583,29 +600,27 @@ static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui,
         const char* new_label = piccolo_text(strings, Str::ui_theme_save_new);
         const char* theme_label = piccolo_text(strings, Str::ui_theme);
         const char* name_label = piccolo_text(strings, Str::ui_theme_save_name);
-        float label_width = std::max(ImGui::CalcTextSize(theme_label).x, ImGui::CalcTextSize(name_label).x) +
-                            ImGui::GetStyle().ItemSpacing.x * 2.0f;
+        float label_width =
+            retro_ui_label_column_width(std::max(retro_ui_text_width(theme_label), retro_ui_text_width(name_label)));
 
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(theme_label);
-        ImGui::SameLine(label_width);
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        if (retro_ui_begin_combo("##target", is_new ? new_label : window->save_theme_target.c_str()))
+        retro_ui_label(theme_label);
+        retro_ui_same_line_at(label_width);
+        if (retro_ui_begin_choice("target", is_new ? new_label : window->save_theme_target.c_str()))
         {
-            if (ImGui::Selectable(new_label, is_new))
+            // NEW first (index 0), then the user's themes.
+            if (retro_ui_choice_item(0, new_label, is_new))
             {
                 window->save_theme_target.clear();
             }
             for (size_t i = 0; i < custom.size(); i++)
             {
-                ImGui::PushID(static_cast<int>(i));
-                if (ImGui::Selectable(custom[i].c_str(), custom[i] == window->save_theme_target))
+                if (retro_ui_choice_item(static_cast<uint32_t>(i + 1), custom[i].c_str(),
+                                         custom[i] == window->save_theme_target))
                 {
                     window->save_theme_target = custom[i];
                 }
-                ImGui::PopID();
             }
-            ImGui::EndCombo();
+            retro_ui_end_choice();
         }
         is_new = window->save_theme_target.empty();
 
@@ -613,18 +628,12 @@ static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui,
         bool enter = false;
         if (is_new)
         {
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(name_label);
-            ImGui::SameLine(label_width);
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            if (ImGui::IsWindowAppearing())
-            {
-                ImGui::SetKeyboardFocusHere();
-            }
-            retro_ui_push_field_text();
-            enter = ImGui::InputText("##name", window->save_theme_name, sizeof(window->save_theme_name),
-                                     ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_EnterReturnsTrue);
-            retro_ui_pop_field_text();
+            retro_ui_label(name_label);
+            retro_ui_same_line_at(label_width);
+            RetroUiEditField field = {};
+            field.uppercase = true;
+            field.focus = retro_ui_window_appearing();   // typing starts at once
+            enter = retro_ui_edit_field("name", window->save_theme_name, sizeof(window->save_theme_name), &field);
             // The name without spaces around it.
             name = window->save_theme_name;
             size_t first = name.find_first_not_of(' ');
@@ -638,42 +647,43 @@ static void draw_save_theme(SettingsWindow* window, const SettingsUiContext* ui,
         }
         if (replaces)
         {
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::ui_theme_save_replaces));
+            retro_ui_dim_text(piccolo_text(strings, Str::ui_theme_save_replaces), nullptr);
         }
 
         bool can_save = !name.empty();
-        ImGui::BeginDisabled(!can_save);
+        retro_ui_begin_disabled(!can_save);
         if ((retro_ui_button(piccolo_text(strings, Str::ui_theme_save_button)) || enter) && can_save)
         {
-            window->save_theme_request = name;
+            action->save_theme = true;
+            action->save_theme_name = name;
             window->save_theme_open = false;
         }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
+        retro_ui_end_disabled();
+        retro_ui_same_line();
         if (retro_ui_button(piccolo_text(strings, Str::map_cancel)))
         {
             window->save_theme_open = false;
         }
         if (!window->save_theme_open)
         {
-            ImGui::CloseCurrentPopup();
+            retro_ui_close_modal();
         }
-        ImGui::EndPopup();
+        retro_ui_end_modal();
     }
-    ImGui::PopID();
+    retro_ui_pop_id();
 }
 
 // The interface settings are global only, so this tab edits the global
 // layer whatever the scope (on a core or game scope everything here would
 // be disabled).
-static void draw_interface(SettingsWindow* window, const SettingsUiContext* context,
-                           const SettingsWindowContext* window_context)
+static void draw_interface(SettingsWindow* window, const SettingsUiContext* context, const SettingsWindowState* state,
+                           SettingsWindowAction* action)
 {
     SettingsUiContext global = *context;
     global.scope = SettingLayer::global;
     const SettingsUiContext* ui = &global;
-    draw_theme_preset(window, ui, window_context->themes);
-    draw_save_theme(window, ui, window_context->themes);
+    draw_theme_preset(window, ui, state->themes, action);
+    draw_save_theme(window, ui, state->themes, action);
     settings_ui_row(ui, PICCOLO_UI_MENU_BOXES, nullptr);
     settings_ui_row(ui, PICCOLO_UI_SHADOWS, nullptr);
     settings_ui_row(ui, PICCOLO_UI_THEME_CURSOR, nullptr);
@@ -692,21 +702,19 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
 // jumped back to the top, as the core options list in the quick menu did).
 static void begin_tab_content()
 {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ImGui::BeginChild("content", ImVec2(0.0f, 0.0f));
+    retro_ui_begin_scroll_area("content", 0.0f, 0.0f);
 }
 
 static void end_tab_content()
 {
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
+    retro_ui_end_scroll_area();
 }
 
-static void draw_tabs(SettingsWindow* window, const SettingsUiContext* ui, const SettingsWindowContext* context)
+static void draw_tabs(SettingsWindow* window, NetWindow* network_window, const SettingsUiContext* ui,
+                      const SettingsWindowState* state, SettingsWindowAction* action)
 {
-    const Localization* strings = context->strings;
-    char label[200] = {};
-    if (!ImGui::BeginTabBar("tabs"))
+    const Localization* strings = state->strings;
+    if (!retro_ui_begin_tabs("tabs"))
     {
         return;
     }
@@ -716,92 +724,83 @@ static void draw_tabs(SettingsWindow* window, const SettingsUiContext* ui, const
         window->tab = static_cast<SettingsTab>(target);
         window->select_tab = true;
     }
-    ImGuiTabItemFlags general_flags =
-        window->select_tab && window->tab == SettingsTab::general ? ImGuiTabItemFlags_SetSelected : 0;
-    ImGuiTabItemFlags interface_flags =
-        window->select_tab && window->tab == SettingsTab::interface ? ImGuiTabItemFlags_SetSelected : 0;
-    ImGuiTabItemFlags video_flags =
-        window->select_tab && window->tab == SettingsTab::video ? ImGuiTabItemFlags_SetSelected : 0;
-    ImGuiTabItemFlags sound_flags =
-        window->select_tab && window->tab == SettingsTab::sound ? ImGuiTabItemFlags_SetSelected : 0;
-    ImGuiTabItemFlags network_flags =
-        window->select_tab && window->tab == SettingsTab::network ? ImGuiTabItemFlags_SetSelected : 0;
+    // Which tab is chosen now, decided before any tab is drawn (a tab shown
+    // becomes window->tab).
+    bool select_general = window->select_tab && window->tab == SettingsTab::general;
+    bool select_interface = window->select_tab && window->tab == SettingsTab::interface;
+    bool select_video = window->select_tab && window->tab == SettingsTab::video;
+    bool select_sound = window->select_tab && window->tab == SettingsTab::sound;
+    bool select_network = window->select_tab && window->tab == SettingsTab::network;
     window->select_tab = false;
-    if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_general), "general"), nullptr,
-                            general_flags))
+    if (retro_ui_begin_tab("general", piccolo_text(strings, Str::tab_general), select_general))
     {
         window->tab = SettingsTab::general;
         begin_tab_content();
-        draw_general(window, ui, context);
+        draw_general(window, ui, state, action);
         end_tab_content();
-        ImGui::EndTabItem();
+        retro_ui_end_tab();
     }
-    if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_interface), "interface"), nullptr,
-                            interface_flags))
+    if (retro_ui_begin_tab("interface", piccolo_text(strings, Str::tab_interface), select_interface))
     {
         window->tab = SettingsTab::interface;
         begin_tab_content();
-        draw_interface(window, ui, context);
+        draw_interface(window, ui, state, action);
         end_tab_content();
-        ImGui::EndTabItem();
+        retro_ui_end_tab();
     }
-    if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_video), "video"), nullptr,
-                            video_flags))
+    if (retro_ui_begin_tab("video", piccolo_text(strings, Str::tab_video), select_video))
     {
         window->tab = SettingsTab::video;
-        if (ImGui::BeginTabBar("video_tabs"))
+        if (retro_ui_begin_tabs("video_tabs"))
         {
-            if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_picture), "picture")))
+            if (retro_ui_begin_tab("picture", piccolo_text(strings, Str::tab_picture), false))
             {
                 begin_tab_content();
-                draw_picture(window, ui, context);
+                draw_picture(window, ui, state);
                 end_tab_content();
-                ImGui::EndTabItem();
+                retro_ui_end_tab();
             }
             // DISPLAY (full screen, the window): the browser's page owns them.
-            if (!PICCOLO_BROWSER &&
-                ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_display), "display")))
+            if (!PICCOLO_BROWSER && retro_ui_begin_tab("display", piccolo_text(strings, Str::tab_display), false))
             {
                 begin_tab_content();
-                draw_display(ui, context);
+                draw_display(ui, state);
                 end_tab_content();
-                ImGui::EndTabItem();
+                retro_ui_end_tab();
             }
-            if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_sync), "sync")))
+            if (retro_ui_begin_tab("sync", piccolo_text(strings, Str::tab_sync), false))
             {
                 begin_tab_content();
-                draw_sync(window, ui, context);
+                draw_sync(ui, state, action);
                 end_tab_content();
-                ImGui::EndTabItem();
+                retro_ui_end_tab();
             }
-            ImGui::EndTabBar();
+            retro_ui_end_tabs();
         }
-        ImGui::EndTabItem();
+        retro_ui_end_tab();
     }
-    if (ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::tab_sound), "sound"), nullptr,
-                            sound_flags))
+    if (retro_ui_begin_tab("sound", piccolo_text(strings, Str::tab_sound), select_sound))
     {
         window->tab = SettingsTab::sound;
         begin_tab_content();
-        draw_sound(ui, context);
+        draw_sound(ui, state);
         end_tab_content();
-        ImGui::EndTabItem();
+        retro_ui_end_tab();
     }
-    if (context->network != nullptr &&
-        ImGui::BeginTabItem(with_id(label, sizeof(label), piccolo_text(strings, Str::net_title), "network"), nullptr,
-                            network_flags))
+    if (state->network != nullptr &&
+        retro_ui_begin_tab("network", piccolo_text(strings, Str::net_title), select_network))
     {
         window->tab = SettingsTab::network;
         begin_tab_content();
-        net_window_draw_tab(context->network, ui->label_width);
+        net_window_draw_tab(network_window, state->network, ui->label_width, &action->network);
         end_tab_content();
-        ImGui::EndTabItem();
+        retro_ui_end_tab();
     }
-    ImGui::EndTabBar();
+    retro_ui_end_tabs();
 }
 
-void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* context, ImFont* pixel_font,
-                          int32_t scale)
+void settings_window_draw(SettingsWindow* window, NetWindow* network_window, const SettingsWindowState* state,
+                          RetroUiFont* pixel_font, int32_t scale, SettingsWindowAction* action)
 {
     if (!window->open && !window->image_open)
     {
@@ -809,55 +808,86 @@ void settings_window_draw(SettingsWindow* window, const SettingsWindowContext* c
     }
 
     float block = static_cast<float>(scale);
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     if (window->open)
     {
         retro_ui_push_theme(pixel_font, scale);
         // 360 x 240 retro pixels, never bigger than the window.
-        ImVec2 size(360.0f * block, 240.0f * block);
-        size.x = size.x < io.DisplaySize.x - 8.0f * block ? size.x : io.DisplaySize.x - 8.0f * block;
-        size.y = size.y < io.DisplaySize.y - 24.0f * block ? size.y : io.DisplaySize.y - 24.0f * block;
-        ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
-                                ImVec2(0.5f, 0.5f));
-
-        ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-                                 ImGuiWindowFlags_NoScrollWithMouse;
-        char title[200] = {};
-        if (ImGui::Begin(with_id(title, sizeof(title), piccolo_text(context->strings, Str::settings_title), "settings"),
-                         nullptr, flags))
+        float width = 360.0f * block;
+        float height = 240.0f * block;
+        width = width < screen_width - 8.0f * block ? width : screen_width - 8.0f * block;
+        height = height < screen_height - 24.0f * block ? height : screen_height - 24.0f * block;
+        // The window itself never scrolls: each tab's contents do.
+        RetroUiWindow frame = {};
+        frame.id = "settings";
+        frame.title = piccolo_text(state->strings, Str::settings_title);
+        frame.width = width;
+        frame.height = height;
+        frame.centered_on_open = true;
+        frame.scrolls = false;
+        bool closed = false;
+        if (retro_ui_window_begin(&frame, scale, &closed))
         {
-            retro_ui_begin_window(scale);
-            if (retro_ui_close_button())
+            if (closed)
             {
                 window->open = false;
             }
-            draw_scope(window, context);
+            draw_scope(window, state);
 
+            // The rows hand their edit out (settings_window_apply).
             SettingsUiContext ui = {};
-            ui.settings = context->settings;
-            ui.strings = context->strings;
+            ui.settings = state->settings;
+            ui.strings = state->strings;
             ui.scope = window->scope;
-            ui.label_width = settings_ui_label_width(context->settings, context->strings);
-            draw_tabs(window, &ui, context);
-            retro_ui_end_window();
+            ui.label_width = settings_ui_label_width(state->settings, state->strings);
+            ui.edit = &action->setting;
+            draw_tabs(window, network_window, &ui, state, action);
         }
-        ImGui::End();
+        retro_ui_window_end();
         retro_ui_pop_theme();
     }
 
     if (window->image_open)
     {
-        SettingsUiContext ui = {};
-        ui.settings = context->settings;
-        ui.strings = context->strings;
-        ui.scope = window->scope;
-        retro_ui_push_theme(pixel_font, scale);
-        ui.label_width = settings_ui_label_width(context->settings, context->strings);
-        retro_ui_pop_theme();
-        ImageWindowSource no_picture = {};
-        image_window_draw(&window->image_open, &ui, context->image != nullptr ? context->image : &no_picture,
-                          pixel_font, scale);
+        image_window_draw(&window->image_open, &state->image, pixel_font, scale, &action->image);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+
+void settings_window_open(SettingsWindow* window, SettingsTab tab)
+{
+    if (!window->open)
+    {
+        window->choose_scope = true;   // needs the settings: done on the next update
+    }
+    window->open = true;
+    window->tab = tab;
+    window->select_tab = true;
+}
+
+bool settings_window_apply(const SettingsWindowAction* action, Settings* settings)
+{
+    SettingsUiEdit edit = action->setting;
+    bool changed = settings_ui_apply_edit(settings, &edit);
+    changed = image_window_apply(&action->image, settings) || changed;
+    if (action->remove_game_folder)
+    {
+        changed = piccolo_settings_remove_game_folder(settings, action->game_folder) || changed;
+    }
+    // The preset shown, picked again, sets its values again.
+    if (action->set_latency_preset)
+    {
+        changed = piccolo_settings_apply_latency_preset(settings, action->latency_scope, action->latency_preset) ||
+                  changed;
+    }
+    // A theme picked again applies its colors again (they may have been changed since).
+    if (action->set_palette)
+    {
+        changed = piccolo_settings_apply_ui_palette(settings, &action->palette) || changed;
+    }
+    return changed;
 }

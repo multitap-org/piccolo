@@ -1,5 +1,5 @@
 // piccolo: a libretro frontend for playing games, with a retro-style UI
-// (retro_ui.h: themed Dear ImGui widgets with piccolo's own pixel font).
+// (retro_ui.h: the retro-style widgets with piccolo's own pixel font).
 //
 // The game fills the window. The menu bar (GAME / CONFIG / MISC) is shown
 // when nothing runs; while a game runs, Esc shows and hides it, and the game
@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include "imgui.h"
 
 #include "app_icon.h"
 #include "app_links.h"
@@ -46,7 +45,9 @@
 #include "shader_check.h"
 #include "shader_check_view.h"
 #include "text_input_window.h"
+#include "ui.h"
 #include "ui_mode.h"
+#include "ui_toolkit.h"
 #include "settings_window.h"
 #include "archive.h"
 #include "host_fs.h"
@@ -65,7 +66,7 @@
 #include "screen_effects.h"
 #include "screenshot_writer.h"
 #include "state_widget.h"
-#include "debug_ui.h"
+#include "debug_window.h"
 #include "input_bindings.h"
 #include "input_config.h"
 #include "input_sdl.h"
@@ -88,7 +89,7 @@
 #include "headless.h"
 #include "pixel_font.h"
 #include "menus.h"
-#include "pixel_font_imgui.h"
+#include "pixel_font_imgui.h"   // PIXEL_FONT_UTF8_* (no ImGui in it)
 #include "retro_ui.h"
 
 // Files extracted from zip / 7z archives (content_cache.h) are kept up to
@@ -103,7 +104,7 @@ struct App
     AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     InputSystem input = {};       // controllers, ports, hotkeys (input_bindings.h)
     InputSdl    input_sdl = {};   // the keyboard and gamepads, from SDL
-    bool        ui_keys_down[5] = {};   // gamepad interface actions given to ImGui as keys (drive_ui_with_gamepads)
+    bool        ui_keys_down[5] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
     bool        ui_back_down = false;
     uint64_t    ui_back_since_ms = 0;      // BACK / SELECT held since (0 = not held)
     bool        ui_back_done = false;      // this hold already closed a window
@@ -119,9 +120,10 @@ struct App
     bool     show_debug_window = false;
     bool     show_imgui_demo = false;
 
-    ImFont* pixel_font = nullptr;   // piccolo's pixel font as an ImGui font
+    RetroUiFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
-    ImVec2  ui_display_size = ImVec2(0.0f, 0.0f);   // ImGui's display size last frame (a turn changes it)
+    float   ui_display_width  = 0.0f;   // the screen's size last frame (a turn changes it)
+    float   ui_display_height = 0.0f;
     char    status[256] = "";   // set at startup, in the chosen language
 
     CoreSession session = {};
@@ -182,7 +184,9 @@ struct App
     NetSpeedSender   net_speed_sender;     // a speed test, down (one at a time)
     NetSpeedReceiver net_speed_receiver;   // a speed test, up
     bool             net_speed_reporting = false;   // the sender finished: its report goes out
-    NetWindowState net_window_state;   // SETTINGS > NETWORK between frames (OWNER's confirmation)
+    NetWindow      net_window;         // SETTINGS > NETWORK between frames (OWNER's confirmation)
+    std::vector<NetTrustedDevice> ui_net_devices;   // SETTINGS > NETWORK's paired devices as drawn (copied
+                                                    // under the network lock: drawn without it)
     GuestWindow    guest_window;       // TOOLS > REMOTE PLAY TOGETHER (guest links)
     std::vector<NetSpeedSummary> net_speed_results;  // what devices' speed tests found (SETTINGS > NETWORK)
     NetAccessLevel   net_actions_level[NET_MAX_PEERS] = {};   // the level each device's action list was made for
@@ -323,7 +327,7 @@ struct App
 
     // The core options UI's state, shared by the quick menu (live options)
     // and the CORE OPTIONS MANAGER window (CONFIG menu).
-    CoreOptionsUiState core_options_state;
+    CoreOptionsUi      core_options_ui;
     bool               core_options_manager = false;   // the window is open
     bool               core_options_manager_was_open = false;
 
@@ -363,7 +367,6 @@ struct App
 
     bool window_focused     = true;
     bool screensaver_allowed = false;   // what we last told SDL
-    std::string imgui_ini;   // <settings>/imgui.ini; ImGui keeps a pointer to it
     char last_core[LIBRETRO_PATH_MAX]      = {};
     char last_folder[LIBRETRO_PATH_MAX]    = {};
 };
@@ -475,13 +478,6 @@ static void apply_folders(App* app)
         core_catalog_init(&app->catalog, cores.c_str(), cache_path.c_str());
         core_catalog_scan(&app->catalog, nullptr);
     }
-}
-
-// The theme's text shadows, added to what ImGui is about to draw.
-static void add_text_shadows(ImDrawData* draw_data, void* user)
-{
-    const App* app = static_cast<const App*>(user);
-    retro_ui_text_shadows(draw_data, app->ui_scale);
 }
 
 static void save_settings(App* app)
@@ -1243,20 +1239,14 @@ static bool save_state_with_thumbnail(App* app)
     return saved;
 }
 
-// What the core options UI (quick menu, manager) needs this frame.
-static CoreOptionsUiContext core_options_context(App* app)
+// What the core options UI (CORE CONFIGURATION's options, the manager) shows this frame.
+static void core_options_state(App* app, CoreOptionsUiState* state)
 {
-    CoreOptionsUiContext context = {};
-    context.strings = &app->strings;
-    context.session = &app->session;
-    context.store = &app->option_store;
-    context.cache = &app->option_cache;
-    context.running_core = game_running(app) ? app->core_name : "";
-    context.game = app->game_name;
     const std::string& folder_section = app->option_store.directory_section;
     size_t folder_at = folder_section.find("/dir:");
-    context.folder = folder_at != std::string::npos ? folder_section.c_str() + folder_at + 5 : "";
-    return context;
+    const char* folder = folder_at != std::string::npos ? folder_section.c_str() + folder_at + 5 : "";
+    core_options_ui_state(state, &app->strings, &app->session, &app->option_store, &app->option_cache,
+                          game_running(app) ? app->core_name : "", folder, app->game_name);
 }
 
 // The running core's file name ("snes9x_libretro.so"), "" when no game runs:
@@ -1321,62 +1311,22 @@ static bool start_share_link(App* app)
     return net_share_link_started(&app->share_link);
 }
 
-// TOOLS > PAIR: its requests, on SHARE's connection (pair_window.h).
+// TOOLS > PAIR, before drawing: the connection's status, which SHARE reads
+// itself while open (pair_window.h).
 static void pair_update(App* app)
 {
-    PairWindow* window = &app->pair_window;
-    NetShareLink* link = &app->share_link;
-    if (!net_share_link_started(link))
+    if (net_share_link_started(&app->share_link) && app->pair_window.open && !app->share_window.open)
     {
-        return;
+        net_share_link_status(&app->share_link, &app->share_status);
     }
-    if (window->open && !app->share_window.open)
-    {
-        net_share_link_status(link, &app->share_status);   // SHARE reads it itself while open
-    }
-    if (window->want_pair)
-    {
-        window->want_pair = false;
-        if (window->selected >= 0 && static_cast<size_t>(window->selected) < app->share_status.found.size())
-        {
-            net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->selected)].address,
-                                   window->code);
-        }
-    }
-    if (window->want_pair_internet)
-    {
-        window->want_pair_internet = false;
-        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));   // as SHARE does
-        net_share_link_pair_beacon(link, window->code);
-    }
-    if (window->want_cancel)
-    {
-        window->want_cancel = false;
-        net_share_link_disconnect(link);
-    }
-    if (window->want_give_back)
-    {
-        window->want_give_back = false;
-        // Access back (Andrés, 2026-11-22): the host may come to us at the
-        // level it gave us. It's told on this connection, and it goes in our
-        // own devices list.
-        if (app->net_running && net_share_link_grant_back(link, window->given))
-        {
-            net_service_lock(&app->net_service);
-            net_access_add_device(&app->net_service.access, window->host_key, window->host_name.c_str(), window->given);
-            net_service_unlock(&app->net_service);
-            SDL_Log("Network: \"%s\" may come here too (%s)", window->host_name.c_str(),
-                    net_access_level_name(window->given));
-        }
-    }
-    if (window->want_close)
-    {
-        window->want_close = false;
-        if (!app->share_window.open)
-        {
-            net_share_link_disconnect(link);   // paired: SHARE connects again when it's used
-        }
-    }
+}
+
+// TOOLS > PAIR: what was pressed, on SHARE's connection.
+static void pair_apply(App* app, const PairWindowAction* action)
+{
+    NetService* service = app->net_running ? &app->net_service : nullptr;   // access back needs our listener
+    pair_window_apply(&app->pair_window, action, &app->share_link, &app->share_status,
+                      settings_get_text(&app->settings, PICCOLO_NET_BEACON), service, app->share_window.open);
 }
 
 static void open_share_window(App* app)
@@ -1418,67 +1368,20 @@ static Str share_done_text(NetShareStatus status)
     }
 }
 
-// SHARE, once per loop while the window is open or the connection runs:
-// the window's clicks go to the connection, its answers to the window.
+// SHARE, once per loop while the window is open or the connection runs,
+// before drawing: the connection's answers go to the window (its clicks go
+// to the connection in share_window_apply, after drawing).
 static void share_update(App* app, ShareTransferLine* line)
 {
     ShareWindow* window = &app->share_window;
     NetShareLink* link = &app->share_link;
     if (!net_share_link_started(link))
     {
-        window->connect = false;
-        window->disconnect = false;
-        window->copies.clear();
-        window->cancel = false;
         return;
     }
     if (window->open)
     {
         net_share_link_status(link, &app->share_status);
-    }
-    if (window->pair || window->pair_internet)
-    {
-        // Pairing lives in TOOLS > PAIR only: it opens on that piccolo and
-        // starts at once. Once paired and closed, SHARE stays connected.
-        pair_window_open(&app->pair_window, nullptr);
-        app->pair_window.selected = window->found_selected;
-        app->pair_window.internet = window->pair_internet;
-        app->pair_window.want_pair = window->pair;
-        app->pair_window.want_pair_internet = window->pair_internet;
-        app->pair_window.phase = PairWindowPhase::waiting;
-        window->pair = false;
-        window->pair_internet = false;
-    }
-    if (window->connect)
-    {
-        window->connect = false;
-        // Across the internet through BEACON SERVER (whatever INTERNET says:
-        // that switch is about being reachable here, not reaching others).
-        net_share_link_set_beacon(link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        if (window->found_selected >= 0 && static_cast<size_t>(window->found_selected) < app->share_status.found.size())
-        {
-            // Always with a fresh code: a piccolo that knows us welcomes us
-            // and it's never used; one that doesn't asks its user to type it.
-            net_pair_code_generate(window->code);
-            net_share_link_connect(link, app->share_status.found[static_cast<size_t>(window->found_selected)].address,
-                                   window->code);
-        }
-        else if (window->paired_selected >= 0)
-        {
-            net_share_link_connect_paired(link, static_cast<uint32_t>(window->paired_selected));
-        }
-        else if (window->invite_selected)
-        {
-            // Across the internet to a piccolo that doesn't know us: our code,
-            // which its user types in TOOLS > INVITE.
-            net_pair_code_generate(window->code);
-            net_share_link_pair_beacon(link, window->code);
-        }
-    }
-    if (window->disconnect)
-    {
-        window->disconnect = false;
-        net_share_link_disconnect(link);
     }
     bool connected = app->share_status.state == NetShareLinkState::ready &&
                      net_access_allows(app->share_status.access, NetAccessLevel::share);
@@ -1498,21 +1401,6 @@ static void share_update(App* app, ShareTransferLine* line)
     if (connected && net_share_link_listing(link, &path, &status, &entries))
     {
         share_window_set_remote_list(window, path.c_str(), status, &entries);
-    }
-    for (size_t i = 0; i < window->copies.size(); i++)
-    {
-        const ShareCopy* copy = &window->copies[i];
-        const char* local = copy->to_remote ? copy->from.c_str() : copy->to.c_str();
-        const char* remote = copy->to_remote ? copy->to.c_str() : copy->from.c_str();
-        net_share_link_copy(link, copy->to_remote, local, remote, copy->size, copy->mtime,
-                            copy->replace ? NET_SHARE_PUT_REPLACE : 0);
-        window->message.clear();
-    }
-    window->copies.clear();
-    if (window->cancel)
-    {
-        window->cancel = false;
-        net_share_link_cancel(link);
     }
     net_share_link_take_done(link, &app->share_done);
     for (size_t i = 0; i < app->share_done.size(); i++)
@@ -1571,6 +1459,17 @@ static void share_update(App* app, ShareTransferLine* line)
         line->rate_kbps = app->share_rate_kbps;
         line->queued = queued;
     }
+}
+
+// SHARE's PAIR: pairing lives in TOOLS > PAIR only: it opens on that piccolo
+// and starts at once. Once paired and closed, SHARE stays connected.
+static void share_pair(App* app, bool internet)
+{
+    pair_window_open(&app->pair_window, nullptr);
+    app->pair_window.selected = app->share_window.found_selected;
+    PairWindowAction pair_action = {};
+    pair_action.press = internet ? PairWindowPress::pair_internet : PairWindowPress::pair;
+    pair_apply(app, &pair_action);
 }
 
 // (UI modes, further down.)
@@ -1635,7 +1534,7 @@ static void handle_menu_action(App* app, MenuAction action)
             app->running = false;
             break;
         case MenuAction::recent_game:
-            break;   // handled where the menu bar is drawn (it needs the index)
+            break;   // handled in app_apply_ui (it needs the index)
         case MenuAction::general:
             settings_window_open(&app->settings_window, SettingsTab::general);
             break;
@@ -1652,7 +1551,7 @@ static void handle_menu_action(App* app, MenuAction action)
             settings_window_open(&app->settings_window, SettingsTab::sound);
             break;
         case MenuAction::options_manager:
-            core_options_manager_open(&app->core_options_manager, &app->core_options_state);
+            core_options_manager_open(&app->core_options_manager, &app->core_options_ui);
             break;
         case MenuAction::core_config:
             app_open_core_config(app, UINT32_MAX, 0);
@@ -1668,7 +1567,7 @@ static void handle_menu_action(App* app, MenuAction action)
             pair_window_open(&app->pair_window, nullptr);
             break;
         case MenuAction::invite:
-            net_invite_open(&app->net_window_state.invite);
+            net_invite_open(&app->net_window.invite);
             break;
         case MenuAction::guests:
             open_guest_window(app);
@@ -1985,20 +1884,20 @@ static void measure_shader_check(App* app)
 }
 
 // Gamepads drive the menus and dialogs as the keyboard does: their
-// interface actions become ImGui's arrow keys and Space (activate); BACK
+// interface actions become the toolkit's move and activate keys; BACK
 // closes an open list or popup, otherwise the topmost window (as Escape).
 struct UiKey
 {
     InputAction action;
-    ImGuiKey    key;
+    UiNavKey    key;
 };
 
 static const UiKey UI_KEYS[] = {
-    {InputAction::ui_up, ImGuiKey_UpArrow},
-    {InputAction::ui_down, ImGuiKey_DownArrow},
-    {InputAction::ui_left, ImGuiKey_LeftArrow},
-    {InputAction::ui_right, ImGuiKey_RightArrow},
-    {InputAction::ui_accept, ImGuiKey_Space},
+    {InputAction::ui_up, UiNavKey::up},
+    {InputAction::ui_down, UiNavKey::down},
+    {InputAction::ui_left, UiNavKey::left},
+    {InputAction::ui_right, UiNavKey::right},
+    {InputAction::ui_accept, UiNavKey::accept},
 };
 constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
 
@@ -2142,21 +2041,20 @@ static void cancel_grabs(App* app)
 }
 
 // What changed hands: nothing held acts in the new mode (the key that did
-// it included), on the router's side and ImGui's.
+// it included), on the router's side and the toolkit's.
 static void release_input(App* app)
 {
     input_hold_until_released(&app->input);
     cancel_grabs(app);
-    ImGuiIO& io = ImGui::GetIO();
     for (size_t i = 0; i < UI_KEY_COUNT; i++)
     {
         if (app->ui_keys_down[i])
         {
-            io.AddKeyEvent(UI_KEYS[i].key, false);
+            ui_toolkit_nav_key(UI_KEYS[i].key, false);
             app->ui_keys_down[i] = false;
         }
     }
-    io.ClearInputKeys();
+    ui_toolkit_clear_keys();
     app->ui_back_since_ms = 0;
     app->ui_back_done = false;
 }
@@ -2307,7 +2205,7 @@ static void app_open_core_config(App* app, uint32_t port, uint32_t controller)
     {
         core_config_window_open(&app->core_config);
     }
-    app->core_options_state.choose_layer = true;   // SAVE TO: the most specific layer in use
+    app->core_options_ui.choose_layer = true;   // SAVE TO: the most specific layer in use
     ui_push_window(&app->ui, UiWindow::core_config);
     ui_follow_changes(app);
 }
@@ -2418,7 +2316,7 @@ static UiDerived app_derive(const App* app)
     facts.played_with_gamepad = app->played_with_gamepad;
     facts.gamepad_on_port = gamepad_on_a_port(app);
     facts.background = app->android_background;
-    facts.pairing_request = app->net_window_state.request.active;
+    facts.pairing_request = app->net_window.request.active;
     return ui_derive(&app->ui, &facts);
 }
 
@@ -2580,7 +2478,6 @@ constexpr uint64_t UI_BACK_HOLD_MS = 600;   // hold BACK (or SELECT alone) this 
 
 static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, bool ui_up)
 {
-    ImGuiIO& io = ImGui::GetIO();
     const InputFrame* frame = source_frame;
     for (size_t i = 0; i < UI_KEY_COUNT; i++)
     {
@@ -2588,7 +2485,7 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
         bool down = ui_up && frame->gamepad_held[action];
         if (down != app->ui_keys_down[i])
         {
-            io.AddKeyEvent(UI_KEYS[i].key, down);
+            ui_toolkit_nav_key(UI_KEYS[i].key, down);
             app->ui_keys_down[i] = down;
         }
     }
@@ -2601,10 +2498,10 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     uint64_t now = SDL_GetTicks();
     if (back_down && !app->ui_back_down)
     {
-        if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+        if (ui_toolkit_has_popup())
         {
-            io.AddKeyEvent(ImGuiKey_Escape, true);   // a list or popup closes first
-            io.AddKeyEvent(ImGuiKey_Escape, false);
+            ui_toolkit_nav_key(UiNavKey::back, true);   // a list or popup closes first
+            ui_toolkit_nav_key(UiNavKey::back, false);
         }
         else if (ui_top_window(&app->ui) == UiWindow::core_config && core_config_window_sub_view(&app->core_config))
         {
@@ -2631,7 +2528,7 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     // bar's first menu, when the bar is up and nothing else is open on top of it.
     // Not for the START that just joined a port.
     bool bar_alone = app->ui.mode == UiMode::main_menu && app->ui.window_count == 0 &&
-                     !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+                     !ui_toolkit_has_popup();
     if (bar_alone && frame->joined_port == INPUT_NO_PORT && frame->pressed[static_cast<uint32_t>(InputAction::ui_open_menu)])
     {
         app->open_first_menu = true;
@@ -2906,25 +2803,25 @@ static void app_update_input(App* app)
     bool dvr_was_open = app->dvr.open;
     dvr_widget_update(&app->dvr, &frame, SDL_GetTicks());
     app_handle_hotkeys(app, &frame);
-    // DEVICES reads the pads itself: they don't drive ImGui meanwhile, and
+    // DEVICES reads the pads itself: they don't drive the menus meanwhile, and
     // its BACK (Escape too) only closes it. The DVR the same.
     bool board = board_was_open || app->ports_widget.open || dvr_was_open || app->dvr.open;
     drive_ui_with_gamepads(app, &frame, ui_up && !board);
-    // Escape in the UI: back, at once (an open list or popup is ImGui's: it
-    // closes on the same key).
+    // Escape in the UI: back, at once (an open list or popup is the toolkit's:
+    // it closes on the same key).
     if (frame.keyboard_pressed[static_cast<uint32_t>(InputAction::ui_back)] && !board_was_open && !dvr_was_open &&
-        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+        !ui_toolkit_has_popup())
     {
         ui_do_back(app);
     }
     // PAGE LEFT / RIGHT change tabs (not while typing in a field).
     int page = 0;
-    if (ui_up && !ImGui::GetIO().WantTextInput)
+    if (ui_up && !ui_toolkit_wants_text())
     {
         page = frame.pressed[static_cast<uint32_t>(InputAction::ui_page_right)] ? 1
              : frame.pressed[static_cast<uint32_t>(InputAction::ui_page_left)]  ? -1 : 0;
     }
-    retro_ui_set_page_request(page);
+    ui_toolkit_page_request(page);
     core_session_set_pads(&app->session, frame.pad_buttons, frame.analog);
     bool net_fast_forward = false;
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
@@ -2991,15 +2888,17 @@ static void app_handle_events(App* app)
         {
             continue;
         }
-        // While INPUT waits for a key (SET), keys are the binding's, not ImGui's.
+        // While INPUT waits for a key (SET), keys are the binding's, not the menus'.
         bool key_event = event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_TEXT_INPUT;
         if (!(key_event && (app->input_window.capturing || app->core_config.capturing)))
         {
             app_shell_process_event(&app->shell, &event);
         }
         input_sdl_handle_event(&app->input_sdl, &app->input, &event);
-        const ImGuiIO& io = ImGui::GetIO();
-        onscreen_pad_event(&app->onscreen_pad, &event, io.DisplaySize.x, io.DisplaySize.y);
+        float screen_width = 0.0f;
+        float screen_height = 0.0f;
+        ui_toolkit_screen_size(&screen_width, &screen_height);
+        onscreen_pad_event(&app->onscreen_pad, &event, screen_width, screen_height);
 
         if ((event.type == SDL_EVENT_AUDIO_DEVICE_ADDED || event.type == SDL_EVENT_AUDIO_DEVICE_REMOVED) &&
             !event.adevice.recording)
@@ -3178,23 +3077,41 @@ static void update_shader_stages(App* app, ViewportFilter filter)
     app->pass0_stale = false;
 }
 
-static void draw_game(App* app)
+// What the frame's UI phases decided that its apply needs too: the clocks
+// the windows were updated with, and what stood before drawing.
+struct AppUiFrame
+{
+    uint64_t    config_now = 0;
+    uint64_t    dvr_now = 0;
+    uint64_t    input_now = 0;
+    uint64_t    map_now = 0;
+    std::string running_file;            // running_core_file (TOOLS > CORES never touches it)
+    bool        hosts_known = false;     // SETTINGS > NETWORK listed SHARE's hosts (its FORGET goes there)
+    bool        input_was_open = false;  // INPUT was open before drawing (closing it saves)
+};
+
+// The game's picture for this frame: placed, its shaders and screen effect
+// set, and what the game view widget shows (view->game_image), behind every
+// window. The cursors learn where it is.
+static void prepare_game_picture(App* app, UiView* view)
 {
     CoreSession* session = &app->session;
     video_output_skip(&app->video);
     app->input.view_width = 0.0f;   // (until it is drawn)
     app->shown_aspect = 0.0;
-    if (!game_running(app) || !session->texture.has_content || session->texture.imgui_id == 0)
+    if (!game_running(app) || !session->texture.has_content || session->texture.ui_texture == 0)
     {
         return;
     }
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     ViewportInput input = {};
     input.frame_width = session->texture.content_width;
     input.frame_height = session->texture.content_height;
     input.core_aspect = static_cast<double>(session->host->av_info.geometry.aspect_ratio);
-    input.window_width = static_cast<uint32_t>(io.DisplaySize.x);
-    input.window_height = static_cast<uint32_t>(io.DisplaySize.y);
+    input.window_width = static_cast<uint32_t>(screen_width);
+    input.window_height = static_cast<uint32_t>(screen_height);
     if (app->onscreen_pad.below)
     {
         // Upright with the touch gamepad under it: the picture keeps the top.
@@ -3239,18 +3156,16 @@ static void draw_game(App* app)
         {
             app->shown_aspect = static_cast<double>(viewport.width) / static_cast<double>(viewport.height);
         }
-        // The background draw list is behind every window, menu bar included.
-        video_output_draw(&app->video, ImGui::GetBackgroundDrawList(), &session->texture, 0.0f, 0.0f);
+        // The game view widget: behind every window, menu bar included.
+        view->game_shown = video_output_shown_image(&app->video, &session->texture, 0.0f, 0.0f, &view->game_image);
     }
 }
 
 // A folder field or GAME FOLDERS' "+" in SETTINGS: CHOOSE FOLDER, starting
 // at the folder the setting has (or the default one, or the first game
 // folder).
-static void choose_folder_start(App* app)
+static void choose_folder_start(App* app, const char* key)
 {
-    const char* key = app->settings_window.choose_folder_key;
-    app->settings_window.choose_folder_key = nullptr;
     if (key == nullptr)
     {
         return;
@@ -3352,11 +3267,12 @@ static void open_shader_picker(App* app, SettingLayer scope)
     file_picker_open_shader(&app->shader_picker, folder.c_str(), shader_extension(app));
 }
 
-// Drawn over the QUICK MENU.
-static void draw_shader_picker(App* app)
+// CORE CONFIGURATION > SHADER > CHOOSE's picker (drawn over that window):
+// the pick goes to the scope it was opened for, and is saved (App's).
+static void shader_picker_apply(App* app, const FilePickerAction* action)
 {
     FilePickerChoice choice = {};
-    if (!file_picker_draw(&app->shader_picker, &app->catalog, app->pixel_font, app->ui_scale, &app->strings, &choice))
+    if (!file_picker_apply(&app->shader_picker, action, &app->catalog, &choice))
     {
         return;
     }
@@ -3374,13 +3290,15 @@ static void draw_shader_picker(App* app)
     save_settings(app);
 }
 
-static void draw_settings(App* app)
+// SETTINGS' state: its notes as text, IMAGE SETTINGS' picture, and the
+// NETWORK tab (read under the network lock).
+static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
 {
     const CoreSession* session = &app->session;
     ImageWindowSource image = {};
-    if (game_running(app) && session->texture.has_content && session->texture.imgui_id != 0)
+    if (game_running(app) && session->texture.has_content && session->texture.ui_texture != 0)
     {
-        image.texture_id = session->texture.imgui_id;
+        image.texture_id = session->texture.ui_texture;
         video_texture_uv_max(&session->texture, &image.uv_max_x, &image.uv_max_y);
         image.frame_width = session->texture.content_width;
         image.frame_height = session->texture.content_height;
@@ -3390,77 +3308,60 @@ static void draw_settings(App* app)
                                    &image.processed_height);
     }
     image.controls_available = app->shader_library.loaded || app->shell.api == GpuApi::gl;
-    SettingsWindowContext context = {};
-    context.settings = &app->settings;
-    context.paths = &app->paths;
-    context.core_name = app->core_name;
-    context.game_name = app->game_name;
-    context.image = &image;
-    context.strings = &app->strings;
-    context.themes = &app->themes;
-    NetWindowContext network;
-    network.state = &app->net_window_state;
-    // The hosts list (our client side): SHARE's connection knows it.
-    NetShareLinkStatus hosts_status;
-    int32_t forget_host = -1;
-    if (app->settings_window.open && app->settings_window.tab == SettingsTab::network && start_share_link(app))
+    SettingsWindowNotes notes = {};
+    // The NETWORK tab: its state is filled under the network lock, below.
+    // The hosts list (our client side): read in app_ui_update.
+    const std::vector<std::string>* hosts = nullptr;
+    const std::vector<uint8_t>* hosts_online = nullptr;
+    if (frame->hosts_known)
     {
-        net_share_link_status(&app->share_link, &hosts_status);
-        network.hosts = &hosts_status.paired;
-        network.hosts_online = &hosts_status.paired_online;
-        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
-        network.forget_host = &forget_host;
+        hosts = &view->settings_hosts.paired;
+        hosts_online = &view->settings_hosts.paired_online;
     }
-    network.settings = &app->settings;
-    network.strings = &app->strings;
-    network.access = app->net_running ? &app->net_service.access : nullptr;
-    network.listen_failed = app->net_listen_failed;
-    network.this_device = app->net_fingerprint;
-    network.speed = &app->net_speed_results;
-    network.internet = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET);
-    context.network = &network;
     // Text with numbers: the translated part, then the numbers (no formats in translations).
     const char* window_label = piccolo_text(&app->strings, Str::section_window);
-    char window_size[200] = {};
+    char* window_size = view->settings_text.window_size;
+    size_t window_size_max = sizeof(view->settings_text.window_size);
     if (app->window.target_width == 0)
     {
-        std::snprintf(window_size, sizeof(window_size), "%s: %s", window_label,
+        std::snprintf(window_size, window_size_max, "%s: %s", window_label,
                       piccolo_text(&app->strings, Str::window_sized_when_running));
     }
     else if (app->window.target_scale > 0)
     {
-        std::snprintf(window_size, sizeof(window_size), "%s: %u X %u (X%u)", window_label, app->window.target_width,
+        std::snprintf(window_size, window_size_max, "%s: %u X %u (X%u)", window_label, app->window.target_width,
                       app->window.target_height, app->window.target_scale);
     }
     else
     {
-        std::snprintf(window_size, sizeof(window_size), "%s: %u X %u", window_label, app->window.target_width,
+        std::snprintf(window_size, window_size_max, "%s: %u X %u", window_label, app->window.target_width,
                       app->window.target_height);
     }
-    context.window_size = window_size;
-    context.present_wait = piccolo_text(&app->strings, app_shell_waits_for_screen(&app->shell)
-                                                           ? Str::present_wait_screen
-                                                           : Str::present_wait_gpu);
-    context.audio_devices = app->audio_device_pointers.data();
-    context.audio_device_count = static_cast<uint32_t>(app->audio_device_pointers.size());
-    char audio_latency[200] = {};
+    notes.window_size = window_size;
+    notes.present_wait = piccolo_text(&app->strings, app_shell_waits_for_screen(&app->shell)
+                                                         ? Str::present_wait_screen
+                                                         : Str::present_wait_gpu);
+    notes.audio_devices = app->audio_device_pointers.data();
+    notes.audio_device_count = static_cast<uint32_t>(app->audio_device_pointers.size());
+    char* audio_latency = view->settings_text.audio_latency;
+    size_t audio_latency_max = sizeof(view->settings_text.audio_latency);
     const AudioOutput* audio = &app->session.audio;
     if (audio->stream == nullptr)
     {
-        std::snprintf(audio_latency, sizeof(audio_latency), "%s",
+        std::snprintf(audio_latency, audio_latency_max, "%s",
                       piccolo_text(&app->strings, Str::audio_latency_no_game));
     }
     else
     {
-        std::snprintf(audio_latency, sizeof(audio_latency), "%s: %.0f MS%s, %s: %u MS",
+        std::snprintf(audio_latency, audio_latency_max, "%s: %.0f MS%s, %s: %u MS",
                       piccolo_text(&app->strings, Str::audio_latency_now), audio->rate.target_ms,
                       audio->rate.automatic ? " (AUTO)" : "", piccolo_text(&app->strings, Str::audio_latency_minimum),
                       audio->rate.floor_ms);
     }
-    context.audio_latency = audio_latency;
+    notes.audio_latency = audio_latency;
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
-    context.rewind_note = app->rewind_note;
-    context.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
+    notes.rewind_note = app->rewind_note;
+    notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
     {
@@ -3477,88 +3378,144 @@ static void draw_settings(App* app)
         game_mode = Str::game_mode_not_supported;
         break;
     }
-    context.game_mode = piccolo_text(&app->strings, game_mode);
-    char frame_delay_text[200] = {};
+    notes.game_mode = piccolo_text(&app->strings, game_mode);
+    char* frame_delay_text = view->settings_text.frame_delay;
+    size_t frame_delay_max = sizeof(view->settings_text.frame_delay);
     const AutoFrameDelay* auto_delay = &app->auto_delay;
     if (game_running(app) && app->session.timing.effective != TimingMode::vsync)
     {
-        std::snprintf(frame_delay_text, sizeof(frame_delay_text), "%s",
+        std::snprintf(frame_delay_text, frame_delay_max, "%s",
                       piccolo_text(&app->strings, Str::frame_delay_needs_vsync));
     }
     else if (!game_running(app) || !auto_delay->started)
     {
-        std::snprintf(frame_delay_text, sizeof(frame_delay_text), "%s",
+        std::snprintf(frame_delay_text, frame_delay_max, "%s",
                       piccolo_text(&app->strings, Str::frame_delay_needs_game));
     }
     else if (auto_delay->locked)
     {
         // While paused (this window pauses the game) the delay isn't applied:
         // what's shown is what resuming uses.
-        std::snprintf(frame_delay_text, sizeof(frame_delay_text), "%s: %u MS - %s",
+        std::snprintf(frame_delay_text, frame_delay_max, "%s: %u MS - %s",
                       piccolo_text(&app->strings, Str::frame_delay_now), auto_delay->delay_ms,
                       piccolo_text(&app->strings, Str::frame_delay_locked));
     }
     else
     {
-        std::snprintf(frame_delay_text, sizeof(frame_delay_text), "%s: %u MS - %s %.0f S",
+        std::snprintf(frame_delay_text, frame_delay_max, "%s: %u MS - %s %.0f S",
                       piccolo_text(&app->strings, Str::frame_delay_now), auto_delay->delay_ms,
                       piccolo_text(&app->strings, Str::frame_delay_searching),
                       auto_frame_delay_seconds_to_lock(auto_delay));
     }
-    context.frame_delay = frame_delay_text;
+    notes.frame_delay = frame_delay_text;
     // RUN-AHEAD: what the running core does with it.
-    char run_ahead_text[200] = {};
+    char* run_ahead_text = view->settings_text.run_ahead;
+    size_t run_ahead_max = sizeof(view->settings_text.run_ahead);
     const LibretroHost* run_ahead_host = app->session.host;
     if (!game_running(app))
     {
-        std::snprintf(run_ahead_text, sizeof(run_ahead_text), "%s", piccolo_text(&app->strings, Str::run_ahead_no_game));
+        std::snprintf(run_ahead_text, run_ahead_max, "%s", piccolo_text(&app->strings, Str::run_ahead_no_game));
     }
     else if (run_ahead_host->core_run_ahead_max == 0)
     {
-        std::snprintf(run_ahead_text, sizeof(run_ahead_text), "%s", piccolo_text(&app->strings, Str::run_ahead_none));
+        std::snprintf(run_ahead_text, run_ahead_max, "%s", piccolo_text(&app->strings, Str::run_ahead_none));
     }
     else
     {
-        std::snprintf(run_ahead_text, sizeof(run_ahead_text), "%s: %u (%s %u)",
+        std::snprintf(run_ahead_text, run_ahead_max, "%s: %u (%s %u)",
                       piccolo_text(&app->strings, Str::run_ahead_in_use), libretro_host_run_ahead_applied(run_ahead_host),
                       piccolo_text(&app->strings, Str::run_ahead_most), run_ahead_host->core_run_ahead_max);
     }
-    context.run_ahead = run_ahead_text;
-    context.frame_delay_found = game_running(app) && auto_delay->locked;
-    // The NETWORK tab reads and changes the NetAccess (pairing, levels,
-    // FORGET): the network thread waits meanwhile.
+    notes.run_ahead = run_ahead_text;
+    notes.frame_delay_found = game_running(app) && auto_delay->locked;
+    // The NETWORK tab reads the NetAccess: the network thread waits
+    // meanwhile. The paired devices are copied (it's drawn without the lock).
     bool network_locked = app->net_running;
     if (network_locked)
     {
         net_service_lock(&app->net_service);
     }
-    settings_window_draw(&app->settings_window, &context, app->pixel_font, app->ui_scale);
+    NetAccess* network_access = app->net_running ? &app->net_service.access : nullptr;
+    net_window_state(&view->network, &app->settings, &app->strings, network_access, app->net_listen_failed,
+                     app->net_fingerprint, &app->net_speed_results,
+                     PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET), hosts, hosts_online);
+    if (view->network.devices != nullptr)
+    {
+        app->ui_net_devices = *view->network.devices;
+        view->network.devices = &app->ui_net_devices;
+    }
     if (network_locked)
     {
         net_service_unlock(&app->net_service);
     }
-    if (forget_host >= 0)
+    settings_window_state(&view->settings, &app->settings_window, &app->settings, &app->strings, &app->paths,
+                          app->core_name, app->game_name, &notes, &app->themes, &image, &view->network);
+}
+
+// The paired devices SETTINGS > NETWORK was drawn with are still the
+// NetAccess's (under the network lock): same count, same keys.
+static bool net_devices_unchanged(const std::vector<NetTrustedDevice>* shown, const NetAccess* access)
+{
+    const std::vector<NetTrustedDevice>* devices = &access->trust.devices;
+    if (shown->size() != devices->size())
     {
-        net_share_link_forget_host(&app->share_link, static_cast<uint32_t>(forget_host));
+        return false;
     }
-    choose_folder_start(app);
-    if (app->settings_window.search_frame_delay)
+    for (size_t i = 0; i < devices->size(); i++)
     {
-        app->settings_window.search_frame_delay = false;
+        if (std::memcmp((*shown)[i].key, (*devices)[i].key, NET_KEY_SIZE) != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// What was done in SETTINGS (its NETWORK tab under the network lock: it
+// changes the NetAccess, pairing, levels, FORGET).
+static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowAction* action)
+{
+    bool network_locked = app->net_running;
+    if (network_locked)
+    {
+        net_service_lock(&app->net_service);
+    }
+    NetAccess* network_access = app->net_running ? &app->net_service.access : nullptr;
+    // A device's ACCESS or FORGET is its index in the list as drawn: if the
+    // network thread changed the list since (a pairing ended, a device
+    // unpaired itself), the index may name another device, so the press is
+    // dropped (it's pressed again on the new list).
+    if (network_access != nullptr && (action->network.set_level || action->network.forget) &&
+        !net_devices_unchanged(&app->ui_net_devices, network_access))
+    {
+        action->network.set_level = false;
+        action->network.forget = false;
+    }
+    settings_window_apply(action, &app->settings);   // SETTINGS saves on closing
+    net_window_apply(&app->net_window, &action->network, &app->settings, network_access);
+    if (network_locked)
+    {
+        net_service_unlock(&app->net_service);
+    }
+    if (action->network.forget_host && frame->hosts_known)
+    {
+        net_share_link_forget_host(&app->share_link, action->network.forget_host_index);
+    }
+    choose_folder_start(app, action->choose_folder);
+    if (action->search_frame_delay)
+    {
         search_frame_delay_again(app);
     }
     // MEASURE AGAIN: AUTO forgets this game's verdict (measured at its next start).
-    if (app->settings_window.rewind_measure_again)
+    if (action->rewind_measure_again)
     {
-        app->settings_window.rewind_measure_again = false;
         settings_reset(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN);
         save_settings(app);
     }
     // SAVE THEME: into themes/ in piccolo's folder, then listed in THEME.
-    if (!app->settings_window.save_theme_request.empty())
+    if (action->save_theme)
     {
-        std::string name = app->settings_window.save_theme_request;
-        app->settings_window.save_theme_request.clear();
+        std::string name = action->save_theme_name;
         if (app->paths.root.empty() ||
             !piccolo_themes_save(&app->settings, name.c_str(), (app->paths.root + "/themes").c_str(), &app->themes))
         {
@@ -3607,44 +3564,86 @@ static void debug_text_done(const char* text)
     SDL_Log("Debug text box: %s", text != nullptr ? text : "(cancelled)");
 }
 
-// WIDGETS: every widget on demand, to see and try them without the
-// situation that brings them up (Andrés, 2026-11-21).
-static void draw_debug_widgets(App* app)
+// The debug window (debug_window.h): what it shows, from the App.
+static_assert(DEBUG_WINDOW_ICON_COUNT == STATE_ICON_COUNT, "the debug window forces each state icon");
+static void debug_window_state(App* app, DebugWindowState* state)
 {
-    uint64_t now_ms = SDL_GetTicks();
-    ImGui::TextUnformatted("Widgets (HUD)");
-    if (ImGui::Button("Remap card: port 1's first controller"))
+    static AppShellGpuInfo gpu = {};   // the strings must outlive this function
+    app_shell_gpu_info(&app->shell, &gpu);
+    state->piccolo_version = PICCOLO_VERSION;
+    state->host_version = HOST_LIBRETRO_VERSION;
+    state->gpu_device = gpu.device;
+    state->gpu_api = gpu.api;
+    state->gpu_swapchain = gpu.swapchain;
+    state->gpu_validation = gpu.validation;
+    state->ui_scale = app->ui_scale;
+    state->screen_hz = app->fps_meter.screen_hz;
+    state->work_ms = app->fps_meter.work_ms;
+    state->game_running = game_running(app);
+    if (state->game_running)
     {
+        const CoreSession* session = &app->session;
+        state->core_name = session->host->system_info.library_name;
+        state->core_fps = session->host->av_info.timing.fps;
+        state->timing_mode = frame_timing_mode_name(session->timing.effective);
+        state->audio_ratio = session->audio.current_ratio;
+        state->audio_queued_ms = audio_output_queued_ms(&session->audio);
+        state->audio_target_ms = session->audio.rate.target_ms;
+        state->audio_automatic = session->audio.rate.automatic;
+        state->audio_underruns = session->audio.underruns;
+        state->missed_refreshes = session->timing.missed_total;
+        state->caught_up_frames = session->timing.caught_up_total;
+    }
+    state->frame_delay_ms = app->frame_delay_ms;
+    for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
+    {
+        state->icons_forced[i] = app->state_icons.debug_show[i];
+    }
+    state->devices_available = app->ports_widget.port_count > 0;
+    state->text_box_allowed = state->game_running && !text_input_pending(app);
+    state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
+    state->toolkit_demo_shown = app->show_imgui_demo;
+}
+
+// What was pressed in the debug window.
+static void debug_window_apply(App* app, const DebugWindowAction* action)
+{
+    if (action->closed)
+    {
+        app->show_debug_window = false;
+    }
+    for (uint32_t i = 0; i < DEBUG_WINDOW_ICON_COUNT; i++)
+    {
+        app->state_icons.debug_show[i] = action->icons_forced[i];
+    }
+    app->show_imgui_demo = action->toolkit_demo_shown;
+
+    uint64_t now_ms = SDL_GetTicks();
+    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
+    uint32_t dvr_card = 3;
+    switch (action->press)
+    {
+    case DebugWindowPress::none:
+        break;
+    case DebugWindowPress::remap_card:
         if (!remap_widget_debug_card(&app->remap, &app->input, &app->input_sdl, &app->layouts, now_ms))
         {
             SDL_Log("Debug: no controller on port 1 for a remap card");
         }
-    }
-    ImGui::Checkbox("PAUSED icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::pause)]);
-    ImGui::SameLine();
-    ImGui::Checkbox("REWINDING icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::rewind)]);
-    ImGui::Checkbox("PLAY icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::play)]);
-    ImGui::SameLine();
-    ImGui::Checkbox("FAST FORWARD icon", &app->state_icons.debug_show[static_cast<uint32_t>(StateIcon::fast_forward)]);
-    if (ImGui::Button("PLAY icon as after PLAY FROM HERE (2.5 s)"))
-    {
+        break;
+    case DebugWindowPress::play_from_here:
         app->dvr.played_from_ms = now_ms;
-    }
-    static const Str DVR_CARDS[3] = {Str::dvr_hud_off, Str::dvr_hud_unsupported, Str::dvr_hud_nothing};
-    static const char* const DVR_CARD_NAMES[3] = {"DVR card: OFF", "DVR card: NO SAVESTATES", "DVR card: NOTHING YET"};
-    for (uint32_t i = 0; i < 3; i++)
-    {
-        if (i > 0)
-        {
-            ImGui::SameLine();
-        }
-        if (ImGui::Button(DVR_CARD_NAMES[i]))
-        {
-            std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[i]));
-            app->dvr.hud_since_ms = now_ms;
-        }
-    }
-    if (ImGui::Button("Ports' tabs rise"))
+        break;
+    case DebugWindowPress::dvr_card_off:
+        dvr_card = 0;
+        break;
+    case DebugWindowPress::dvr_card_unsupported:
+        dvr_card = 1;
+        break;
+    case DebugWindowPress::dvr_card_nothing:
+        dvr_card = 2;
+        break;
+    case DebugWindowPress::ports_rise:
     {
         bool changed[PORTS_VIEW_MAX_PORTS] = {};
         for (uint32_t p = 0; p < PORTS_VIEW_MAX_PORTS; p++)
@@ -3652,23 +3651,15 @@ static void draw_debug_widgets(App* app)
             changed[p] = true;
         }
         ports_view_pop(&app->ports_widget.view, changed, now_ms);
+        break;
     }
-
-    ImGui::TextUnformatted("Widgets (windows; a game must run)");
-    ImGui::BeginDisabled(!game_running(app));
-    // Asked for by the user: they replace what's up, this window included.
-    if (ImGui::Button("DEVICES") && app->ports_widget.port_count > 0)
-    {
+    case DebugWindowPress::open_devices:
         app_open_widget(app, UiWidget::ports);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("DVR"))
-    {
+        break;
+    case DebugWindowPress::open_dvr:
         app_open_widget(app, UiWidget::dvr);
-    }
-    // Asked for by the game: they wait until the menu is closed.
-    ImGui::SameLine();
-    if (ImGui::Button("Text box") && !text_input_pending(app))
+        break;
+    case DebugWindowPress::text_box:
     {
         LibretroTextInput* request = &app->session.host->text_input;
         request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
@@ -3678,10 +3669,9 @@ static void draw_debug_widgets(App* app)
         request->max_length = 8;
         request->done = debug_text_done;
         request->serial++;
+        break;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("KEEP / REVERT") && !shader_check_asking(app))
-    {
+    case DebugWindowPress::keep_revert:
         // REVERT goes back to the preset in use now: nothing changes.
         for (uint32_t i = 0; i < 3; i++)
         {
@@ -3691,50 +3681,12 @@ static void draw_debug_widgets(App* app)
         app->shader_check.state = ShaderCheckState::asking;
         app->shader_check.measured_ns = 1e9 / 41.0;
         app->shader_check_asked_ms = now_ms;
+        break;
     }
-    ImGui::EndDisabled();
-    ImGui::TextDisabled("Text box and KEEP / REVERT show once the menu is closed.");
-}
-
-static void app_draw_debug_ui(App* app)
-{
-    const ImGuiIO& io = ImGui::GetIO();
-    AppShellGpuInfo gpu = {};
-    app_shell_gpu_info(&app->shell, &gpu);
-
-    ImGui::SetNextWindowPos(ImVec2(40.0f, 80.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("piccolo", &app->show_debug_window);
-
-    ImGui::Text("piccolo %s, host-libretro %s", PICCOLO_VERSION, HOST_LIBRETRO_VERSION);
-    ImGui::Text("GPU: %s", gpu.device);
-    ImGui::Text("%s", gpu.api);
-    ImGui::Text("Swapchain: %s", gpu.swapchain);
-    ImGui::Text("%s", gpu.validation);
-    ImGui::Text("Retro UI scale: %dx", app->ui_scale);
-    ImGui::Separator();
-    ImGui::Text("%.3f ms/frame (%.1f FPS)", static_cast<double>(1000.0f / io.Framerate), static_cast<double>(io.Framerate));
-    if (game_running(app))
+    if (dvr_card < 3)
     {
-        const CoreSession* session = &app->session;
-        ImGui::Text("Core: %s, %.3f fps, timing %s", session->host->system_info.library_name,
-                    session->host->av_info.timing.fps, frame_timing_mode_name(session->timing.effective));
-        ImGui::Text("Audio: x%.5f, %u ms queued (target %.0f ms%s), %llu underruns", session->audio.current_ratio,
-                    audio_output_queued_ms(&session->audio), session->audio.rate.target_ms,
-                    session->audio.rate.automatic ? ", auto" : "", static_cast<unsigned long long>(session->audio.underruns));
-        ImGui::Text("Frames: %llu missed refreshes, %llu caught up; frame delay %u ms",
-                    static_cast<unsigned long long>(session->timing.missed_total),
-                    static_cast<unsigned long long>(session->timing.caught_up_total), app->frame_delay_ms);
-    }
-    ImGui::Separator();
-    draw_debug_widgets(app);
-    ImGui::Separator();
-    ImGui::Checkbox("Dear ImGui demo window", &app->show_imgui_demo);
-
-    ImGui::End();
-
-    if (app->show_imgui_demo)
-    {
-        ImGui::ShowDemoWindow(&app->show_imgui_demo);
+        std::snprintf(app->dvr.hud, sizeof(app->dvr.hud), "%s", piccolo_text(&app->strings, DVR_CARDS[dvr_card]));
+        app->dvr.hud_since_ms = now_ms;
     }
 }
 
@@ -4909,21 +4861,21 @@ static void net_update_locked(App* app)
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
             // The dialog that waited for it closes by itself.
-            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);
+                net_pairing_request_close(&app->net_window.request);
             }
-            if (app->net_window_state.invite.answered && app->net_window_state.invite.peer == event.peer)
+            if (app->net_window.invite.answered && app->net_window.invite.peer == event.peer)
             {
-                net_invite_close(&app->net_window_state.invite, &app->net_service.access);
+                net_invite_close(&app->net_window.invite, &app->net_service.access);
             }
             break;
         }
         case NetAccessEventType::closed:
-            if (event.device < 0 && app->net_window_state.request.active &&
-                app->net_window_state.request.peer == event.peer)
+            if (event.device < 0 && app->net_window.request.active &&
+                app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);   // it cancelled, or left
+                net_pairing_request_close(&app->net_window.request);   // it cancelled, or left
             }
             if (app->headless.on && app->headless.peer == event.peer)
             {
@@ -4959,22 +4911,22 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::pairing_failed:
             set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
-            if (app->net_window_state.request.active && app->net_window_state.request.peer == event.peer)
+            if (app->net_window.request.active && app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_close(&app->net_window_state.request);
+                net_pairing_request_close(&app->net_window.request);
             }
             break;
         case NetAccessEventType::pairing_requested:
             // A device asks (Andrés, 2026-11-22): the dialog takes its code and
             // the level; the game pauses while it's up. One at a time: another
             // waits until this one is done (it asks again on its own if refused).
-            if (net_invite_take_request(&app->net_window_state.invite, &app->net_service.access, &event))
+            if (net_invite_take_request(&app->net_window.invite, &app->net_service.access, &event))
             {
                 SDL_Log("Network: \"%s\" came with the invite's code", event.name);
             }
-            else if (!app->net_window_state.request.active || app->net_window_state.request.peer == event.peer)
+            else if (!app->net_window.request.active || app->net_window.request.peer == event.peer)
             {
-                net_pairing_request_open(&app->net_window_state.request, &event);
+                net_pairing_request_open(&app->net_window.request, &event);
                 SDL_Log("Network: \"%s\" asks to pair%s", event.name, event.retry ? " (new code)" : "");
             }
             break;
@@ -5110,32 +5062,24 @@ static void status_line_text(const App* app, char* out, size_t size)
 // INTERFACE > BACKDROP: while a menu or a window (DEVICES too) is up over a
 // game, the whole game is covered by black at that opacity, behind every
 // window (the menu bar stays on top of it): the UI reads well over any
-// picture. Widgets don't dim the game themselves.
-static void draw_menu_backdrop(App* app)
+// picture. Widgets don't dim the game themselves. Its alpha, 0 for none.
+static uint32_t menu_backdrop_alpha(const App* app)
 {
     int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
     if (!game_running(app) || !ui_is_up(app) || percent <= 0)
     {
-        return;
+        return 0;
     }
     percent = percent > 100 ? 100 : percent;
-    uint32_t alpha = static_cast<uint32_t>(percent) * 255u / 100u;
-    const ImGuiIO& io = ImGui::GetIO();
-    retro_ui_begin_layer("##menu_backdrop", app->pixel_font, app->ui_scale, false);
-    retro_ui_layer_rect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y, alpha << 24);
-    retro_ui_end_layer();
+    return static_cast<uint32_t>(percent) * 255u / 100u;
 }
 
-// One turn of piccolo's loop: events, the game's frame, the UI, present.
-// False when piccolo should end (QUIT, or a fatal rendering error). Called
-// by app_loop_run: a plain loop on desktop, the browser's animation frames
-// in the web build (app_loop.h).
 // The HUD widgets' state icons and notification cards (retroui's hud_view),
 // behind every window. The cards stand above the status line's row and the
 // DVR's strip while it's open.
 constexpr float HUD_STATUS_ROW = 16.0f;   // retro pixels at the bottom: the status line and a gap
 
-static void draw_hud(App* app)
+static void hud_fill(App* app, UiView* view)
 {
     uint64_t now_ms = SDL_GetTicks();
     hud_view_clear(&app->hud);
@@ -5148,20 +5092,553 @@ static void draw_hud(App* app)
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
 
-    const ImGuiIO& io = ImGui::GetIO();
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
-    area.right = io.DisplaySize.x / block;
+    area.right = view->screen_width / block;
     area.top = 0.0f;
-    area.bottom = io.DisplaySize.y / block - HUD_STATUS_ROW;
+    area.bottom = view->screen_height / block - HUD_STATUS_ROW;
     float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
-    if (strip > 0.0f && io.DisplaySize.y / block - strip - HUD_VIEW_GAP < area.bottom)
+    if (strip > 0.0f && view->screen_height / block - strip - HUD_VIEW_GAP < area.bottom)
     {
-        area.bottom = io.DisplaySize.y / block - strip - HUD_VIEW_GAP;
+        area.bottom = view->screen_height / block - strip - HUD_VIEW_GAP;
     }
-    hud_view_draw(&app->hud, &area, app->pixel_font, app->ui_scale, now_ms);
+    view->hud = &app->hud;
+    view->hud_area = area;
+    view->hud_now_ms = now_ms;
 }
 
+// ---------------------------------------------------------------------------
+// The frame's UI: updates, view, (ui_draw), apply. None of these draw: a
+// different GUI toolkit would leave them as they are.
+// ---------------------------------------------------------------------------
+
+// Before the view: what moves on its own each frame (placing the picture and
+// the touch gamepad, the windows' polling of jobs and connections), in the
+// order the loop always did it.
+static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
+{
+    // Where the touch gamepad goes (under the picture upright, if it fits),
+    // before the picture is placed.
+    {
+        const retro_game_geometry* geometry = &app->session.host->av_info.geometry;
+        float aspect = geometry->aspect_ratio > 0.0f ? geometry->aspect_ratio
+                     : geometry->base_height > 0 ? static_cast<float>(geometry->base_width) / static_cast<float>(geometry->base_height)
+                                                 : 4.0f / 3.0f;
+        onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, view->screen_width,
+                           view->screen_height);
+    }
+    prepare_game_picture(app, view);   // background, behind everything
+    // The browser's page: its strip hides while a game is played, and an
+    // upright phone gives the picture only the height its shape needs.
+    web_pad_tell_page(game_has_keyboard(app), app->shown_aspect);
+    web_pad_set_vibrate(settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
+    // The touch gamepad over the game, a GAME-mode device (it takes touches
+    // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
+    // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
+    // web page's pad: without a keyboard they're the way to the menus).
+    // STYLE (per core / game): made again only when the setting changes.
+    {
+        const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
+        if (app->onscreen_pad.style_name != style)
+        {
+            onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
+        }
+    }
+    // The page pad's MENU and QUICK (the browser, no keyboard needed): like
+    // the MAIN MENU hotkey; like the QUICK MENU hotkey in a game, back from
+    // anything else. Taken before drawing, as the hotkeys are (they came
+    // right after the touch gamepad's own MENU and QUICK when those were
+    // applied in the middle of drawing).
+    if (web_pad_take_main_menu())
+    {
+        if (app->ui.mode == UiMode::main_menu)
+        {
+            ui_do_back(app);   // its top window, then the game
+        }
+        else
+        {
+            app_enter_main_menu(app);
+        }
+    }
+    if (web_pad_take_quick_menu() && game_running(app))
+    {
+        if (app->ui.mode == UiMode::game)
+        {
+            app_open_quick_menu(app);
+        }
+        else if (quick_menu_up(app))
+        {
+            app_enter_game(app);
+        }
+        else
+        {
+            ui_do_back(app);
+        }
+    }
+    // SETTINGS > NETWORK's hosts list (our client side): SHARE's connection
+    // knows it, started for it.
+    frame->hosts_known = false;
+    if (app->settings_window.open && app->settings_window.tab == SettingsTab::network && start_share_link(app))
+    {
+        net_share_link_status(&app->share_link, &view->settings_hosts);
+        net_share_link_set_beacon(&app->share_link, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+        frame->hosts_known = true;
+    }
+    settings_window_update(&app->settings_window, &app->settings, app->core_name, app->game_name);
+    file_picker_update(&app->picker, &app->catalog);
+    quick_menu_update(&app->quick_menu, &app->session);
+    if (!game_running(app))
+    {
+        app->core_config.open = false;   // the core it configured is gone
+    }
+    frame->config_now = SDL_GetTicks();
+    core_config_window_update(&app->core_config, &app->input, app->session.host, &app->settings, &app->strings,
+                              app->core_name, app->game_name, frame->config_now);
+    file_picker_update(&app->shader_picker, &app->catalog);
+    frame->dvr_now = SDL_GetTicks();
+    dvr_widget_prepare(&app->dvr, &app->strings, app->onscreen_pad.touch_screen, frame->dvr_now);
+    // The core downloader: pick up what finished; the catalog sees
+    // installed or removed cores right away.
+    core_updater_poll(&app->core_updater);
+    if (app->core_updater.cores_changed)
+    {
+        app->core_updater.cores_changed = false;
+        core_catalog_scan(&app->catalog, game_running(app) ? app->session.host : nullptr);
+    }
+    frame->running_file = running_core_file(app);
+    cores_window_update(&app->cores_window, &app->core_updater, &app->settings, frame->running_file.c_str());
+    // SHARE: this side from our folders, the other from the connection.
+    if (app->share_window.open)
+    {
+        share_update(app, &view->share_line);
+        const NetShareLinkStatus* share_link = nullptr;   // nullptr: no connection
+        if (net_share_link_started(&app->share_link))
+        {
+            share_link = &app->share_status;
+        }
+        share_window_update(&app->share_window, &app->share_folders, share_link);
+    }
+    // TOOLS > PAIR (on SHARE's connection).
+    pair_update(app);
+    if (app->pair_window.open)
+    {
+        const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start
+        if (net_share_link_started(&app->share_link))
+        {
+            pair_link = &app->share_status;
+        }
+        pair_window_update(&app->pair_window, pair_link);
+    }
+    frame->input_now = SDL_GetTicks();
+    input_window_update(&app->input_window, &app->input, frame->input_now);
+    frame->map_now = SDL_GetTicks();
+    map_window_update(&app->map_window, &app->input, frame->map_now);
+}
+
+// Everything the frame shows, as plain data (ui.h), after the updates: no
+// GUI calls, nothing changes but what the states themselves fill in.
+static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
+{
+    onscreen_pad_state(&view->pad, &app->settings, &app->strings);
+    // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
+    view->menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
+    ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
+    hud_fill(app, view);
+    view->backdrop_alpha = menu_backdrop_alpha(app);
+    status_line_text(app, view->status, sizeof(view->status));
+    view->status_alone = !view->menu_shown && game_running(app) && app->session.paused;
+    view->menus = app->menus.data();
+    view->menu_count = static_cast<int32_t>(app->menus.size());
+    view->open_first_menu = app->open_first_menu;
+
+    settings_view(app, view, frame);
+    file_picker_state(&view->picker, &app->picker, &app->catalog, &app->strings);
+    quick_menu_state(&view->quick, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
+    core_options_state(app, &view->config_options);
+    core_config_window_state(&view->config, &app->core_config, &app->strings, &view->config_options, &app->input,
+                             app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
+                             app->game_name, app->shader_library.loaded, frame->config_now);
+    file_picker_state(&view->shader_picker, &app->shader_picker, &app->catalog, &app->strings);
+    ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, SDL_GetTicks());
+    dvr_widget_state(&view->dvr, &app->dvr, &app->strings);
+    core_options_state(app, &view->manager);
+    cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
+
+    view->share_shown = app->share_window.open;
+    if (view->share_shown)
+    {
+        const NetShareLinkStatus* share_link = nullptr;   // nullptr: no connection
+        if (net_share_link_started(&app->share_link))
+        {
+            share_link = &app->share_status;
+        }
+        share_window_state(&view->share, &app->strings, share_link, &view->share_line);
+    }
+    view->pair_shown = app->pair_window.open;
+    if (view->pair_shown)
+    {
+        const NetShareLinkStatus* pair_link = nullptr;   // nullptr: networking couldn't start
+        if (net_share_link_started(&app->share_link))
+        {
+            pair_link = &app->share_status;
+        }
+        pair_window_state(&view->pair, &app->strings, pair_link, app->net_running);
+    }
+    // A device asking to pair: over anything, the game paused (ui_derive).
+    // TOOLS > INVITE too (without the network it says the network is off).
+    view->pairing_shown = app->net_running && (app->net_window.request.active || app->net_window.invite.open);
+    view->invite_shown = !view->pairing_shown && app->net_window.invite.open;
+    if (view->pairing_shown)
+    {
+        net_pairing_request_state(&view->request, &app->strings);
+        net_invite_state(&view->invite, &app->strings, &app->net_service.access);   // (only whether there is one)
+    }
+    else if (view->invite_shown)
+    {
+        net_invite_state(&view->invite, &app->strings, nullptr);
+    }
+    // TOOLS > REMOTE PLAY TOGETHER: reads the NetAccess, so under the lock.
+    view->guest_shown = app->guest_window.open;
+    if (view->guest_shown)
+    {
+        NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
+        if (access != nullptr)
+        {
+            net_service_lock(&app->net_service);
+        }
+        guest_window_state(&view->guest, &app->guest_window, access, &app->input_net, &app->input, game_running(app),
+                           !app->net_beacon_applied.empty(), &app->strings);
+        if (access != nullptr)
+        {
+            net_service_unlock(&app->net_service);
+        }
+    }
+    input_window_state(&view->input, &app->input, &app->input_sdl, &app->strings, &app->settings, app->core_name,
+                       app->game_name, &app->layouts, frame->input_now);
+    frame->input_was_open = app->input_window.open;
+    map_window_state(&view->map, &app->map_window, &app->strings, &app->layouts, frame->map_now);
+
+    view->safe_start_shown = app->safe_start_open;
+    if (view->safe_start_shown)
+    {
+        safe_start_window_state(&view->safe_start, &app->strings, app->crashed_core.c_str(),
+                                app->crashed_after_options);
+    }
+    view->shader_check_shown = shader_check_asking(app);
+    if (view->shader_check_shown)
+    {
+        // The preset's file name without its folder and extension (the
+        // pixel font draws it in capitals).
+        std::string name = app->shader_preset_seen;
+        size_t slash = name.find_last_of("/\\");
+        name = slash == std::string::npos ? name : name.substr(slash + 1);
+        size_t dot = name.rfind('.');
+        name = dot == std::string::npos ? name : name.substr(0, dot);
+        view->shader_check_preset = name;
+        const FrameTiming* timing = &app->session.timing;
+        view->shader_check_target_fps = timing->effective == TimingMode::vsync ? timing->display_hz : timing->core_fps;
+        view->shader_check_measured_fps = 1e9 / app->shader_check.measured_ns;
+        view->shader_check_text.title = piccolo_text(&app->strings, Str::shader_slow_title);
+        view->shader_check_text.speed = piccolo_text(&app->strings, Str::shader_slow_text);
+        view->shader_check_text.question = piccolo_text(&app->strings, Str::shader_slow_question);
+        view->shader_check_text.keep = piccolo_text(&app->strings, Str::shader_slow_keep);
+        view->shader_check_text.revert = piccolo_text(&app->strings, Str::shader_slow_revert_n);
+        view->shader_check_asked_ms = app->shader_check_asked_ms;
+        view->shader_check_now_ms = SDL_GetTicks();
+    }
+    view->text_input_shown = text_input_pending(app);
+    if (view->text_input_shown)
+    {
+        text_input_window_state(&view->text_input, &app->session.host->text_input, &app->strings);
+        text_input_window_update(&app->text_input_window, &view->text_input);
+    }
+    view->debug_shown = app->show_debug_window;
+    if (view->debug_shown)
+    {
+        debug_window_state(app, &view->debug);
+    }
+    view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
+    if (view->fps_shown)
+    {
+        view->fps_meter = &app->fps_meter;
+        view->fps_target = game_running(app) ? app->session.host->av_info.timing.fps : 0.0;
+    }
+    view->cursor_shown = ui_is_up(app);
+}
+
+// The windows' own state, which the drawing may change (all the App's).
+static void app_ui_windows(App* app, UiWindows* windows)
+{
+    windows->pad = &app->onscreen_pad;
+    windows->ports = &app->ports_widget;
+    windows->settings = &app->settings_window;
+    windows->network = &app->net_window;
+    windows->picker = &app->picker;
+    windows->quick = &app->quick_menu;
+    windows->config = &app->core_config;
+    windows->options_ui = &app->core_options_ui;
+    windows->shader_picker = &app->shader_picker;
+    windows->dvr = &app->dvr;
+    windows->manager_open = &app->core_options_manager;
+    windows->cores = &app->cores_window;
+    windows->share = &app->share_window;
+    windows->pair = &app->pair_window;
+    windows->guest = &app->guest_window;
+    windows->input = &app->input_window;
+    windows->map = &app->map_window;
+    windows->text_input = &app->text_input_window;
+}
+
+// What the user did this frame, applied in the order the windows are drawn
+// (no GUI calls). What a window changes here, windows drawn after it see
+// from the next frame.
+static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, UiActions* actions)
+{
+    // The pickers as they were drawn: an earlier apply below may open one
+    // again (SETTINGS' CHOOSE FOLDER, CORE CONFIGURATION's shader CHOOSE), and
+    // what was clicked in the old one must not land in the new one.
+    bool picker_drawn = app->picker.open;
+    FilePickerMode picker_mode = app->picker.mode;
+    bool shader_picker_drawn = app->shader_picker.open;
+
+    onscreen_pad_apply(&app->onscreen_pad, &actions->pad);
+    if (actions->pad.menu && game_has_keyboard(app))
+    {
+        app_enter_main_menu(app);
+    }
+    if (actions->pad.quick && game_has_keyboard(app))
+    {
+        app_open_quick_menu(app);
+    }
+
+    if (view->menu_shown)
+    {
+        app->open_first_menu = false;
+        int32_t picked = actions->menu_picked;
+        int32_t recent_picked = -1;
+        MenuAction action = MenuAction::none;
+        if (picked >= MENU_ID_RECENT)
+        {
+            action = MenuAction::recent_game;
+            recent_picked = picked - MENU_ID_RECENT;
+        }
+        else if (picked >= 0)
+        {
+            action = static_cast<MenuAction>(picked);
+        }
+        if (action == MenuAction::recent_game && recent_picked >= 0)
+        {
+            // Started at the top of the next loop, like LOAD GAME (see pending_start).
+            const RecentGame* game = &app->recent.games[app->recent_shown[static_cast<size_t>(recent_picked)]];
+            app->pending_start = FilePickerChoice{};
+            std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
+                          game->core_path.c_str());
+            std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
+                          game->content_path.c_str());
+            app->has_pending_start = true;
+        }
+        handle_menu_action(app, action);
+    }
+
+    settings_apply(app, frame, &actions->settings);
+    // LOAD GAME, or CHOOSE FOLDER (opened from SETTINGS).
+    FilePickerChoice picked;
+    bool choosing_folder = picker_mode == FilePickerMode::folder;
+    bool picker_same = picker_drawn && app->picker.open && app->picker.mode == picker_mode;
+    if (picker_same && file_picker_apply(&app->picker, &actions->picker, &app->catalog, &picked))
+    {
+        if (choosing_folder)
+        {
+            choose_folder_done(app, &picked);
+        }
+        else
+        {
+            app->pending_start = picked;
+            app->has_pending_start = true;   // see pending_start
+        }
+    }
+    quick_menu_apply(&app->quick_menu, &actions->quick, &app->session);
+    CoreConfigRequest config_request = core_config_window_apply(&app->core_config, &actions->config, &app->input,
+                                                                app->session.host, &app->settings, frame->config_now);
+    core_options_ui_apply(&app->core_options_ui, &actions->config.options, &app->session);
+    bool shader_picker_same = shader_picker_drawn;
+    if (config_request == CoreConfigRequest::choose_shader)
+    {
+        shader_picker_same = false;   // opened again: this frame's clicks were in the old one
+        open_shader_picker(app, app->core_config.shader_scope);
+    }
+    if (shader_picker_same)
+    {
+        shader_picker_apply(app, &actions->shader_picker);
+    }
+    ports_widget_apply(&app->ports_widget, &actions->ports, &app->input);
+    dvr_widget_apply(&app->dvr, &actions->dvr, frame->dvr_now);
+    switch (actions->quick.press)
+    {
+    case QuickMenuPress::save:
+        save_state_with_thumbnail(app);
+        set_status(app, app->session.message);
+        break;
+    case QuickMenuPress::load:
+        if (core_session_load_state(&app->session))
+        {
+            app_enter_game(app);   // back to the game
+        }
+        set_status(app, app->session.message);
+        break;
+    case QuickMenuPress::reset:
+        libretro_host_reset(app->session.host);
+        set_status(app, piccolo_text(&app->strings, Str::status_reset));
+        app_enter_game(app);
+        break;
+    case QuickMenuPress::close_game:
+        app->pending_close_game = true;   // the texture may be in this frame already
+        app_enter_game(app);
+        break;
+    case QuickMenuPress::pause:
+        toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
+        break;
+    case QuickMenuPress::dvr:
+        app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
+        break;
+    case QuickMenuPress::config:
+        app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes
+        break;
+    case QuickMenuPress::none:
+        break;
+    }
+    core_options_manager_apply(&app->core_options_ui, &actions->manager, &app->option_store, &app->session,
+                               game_running(app) ? app->core_name : "");
+    if (app->core_options_manager_was_open && !app->core_options_manager)
+    {
+        save_core_options(app);   // what was deleted
+    }
+    app->core_options_manager_was_open = app->core_options_manager;
+    if (cores_window_apply(&app->cores_window, &actions->cores, &app->core_updater, &app->settings,
+                           frame->running_file.c_str()))
+    {
+        save_settings(app);   // a SHOW switch
+    }
+
+    if (view->share_shown)
+    {
+        ShareWindowRequest share_request =
+            share_window_apply(&app->share_window, &actions->share, &app->share_folders, &app->share_link,
+                               &app->share_status, settings_get_text(&app->settings, PICCOLO_NET_BEACON));
+        if (share_request != ShareWindowRequest::none)
+        {
+            share_pair(app, share_request == ShareWindowRequest::pair_internet);
+        }
+    }
+    if (view->pair_shown)
+    {
+        pair_apply(app, &actions->pair);
+    }
+    // The pairing request and INVITE answer on the NetAccess: the network
+    // thread waits meanwhile.
+    if (view->pairing_shown)
+    {
+        net_service_lock(&app->net_service);
+        NetAccess* access = &app->net_service.access;
+        net_pairing_request_apply(&app->net_window.request, &actions->request, access);
+        net_invite_apply(&app->net_window.invite, &actions->invite, access);
+        net_service_unlock(&app->net_service);
+    }
+    else if (view->invite_shown)
+    {
+        net_invite_apply(&app->net_window.invite, &actions->invite, nullptr);
+    }
+    // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
+    if (view->guest_shown)
+    {
+        NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
+        if (access != nullptr)
+        {
+            net_service_lock(&app->net_service);
+        }
+        GuestWindowPress press = guest_window_apply(&app->guest_window, &actions->guest, access);
+        if (press == GuestWindowPress::make_link || press == GuestWindowPress::new_link)
+        {
+            guest_make_link(app);
+        }
+        else if (press == GuestWindowPress::end)
+        {
+            guest_end(app, access);
+        }
+        if (access != nullptr)
+        {
+            net_service_unlock(&app->net_service);
+        }
+    }
+    InputWindowRequest input_request =
+        input_window_apply(&app->input_window, &actions->input, &app->input, &app->settings, frame->input_now);
+    map_window_apply(&app->map_window, &actions->map, &app->input, &app->strings, &app->layouts, frame->map_now);
+    if (input_request == InputWindowRequest::edit_touch_layout)
+    {
+        // EDIT LAYOUT: INPUT closes, the touch gamepad's editor takes the screen.
+        app->input_window.open = false;
+        onscreen_pad_edit(&app->onscreen_pad);
+    }
+    if (frame->input_was_open && !app->input_window.open)
+    {
+        save_settings(app);   // SETTINGS tab
+        if (app->input_window.dirty && !app->input_config_path.empty())
+        {
+            input_config_save(&app->input, app->input_config_path.c_str());   // closed: keep what changed
+            app->input_window.dirty = false;
+        }
+    }
+    if (view->safe_start_shown)
+    {
+        SafeStartResult answer = safe_start_window_apply(&actions->safe_start, &app->option_store,
+                                                         app->crashed_core.c_str());
+        if (answer.options_deleted)
+        {
+            save_core_options(app);
+        }
+        if (answer.skip_stored_options_once)
+        {
+            app->session.skip_stored_options_once = true;
+        }
+        if (answer.start)
+        {
+            app->pending_start = app->safe_start_pending;   // started at the top of the next loop
+            app->has_pending_start = true;
+            app->safe_start_confirmed = true;
+        }
+        if (answer.closed)
+        {
+            app->safe_start_open = false;
+            if (app->net_load_waiting && !app->has_pending_start)
+            {
+                net_answer_load(app, NetContentStatus::failed);   // not started after all
+            }
+        }
+    }
+    if (view->shader_check_shown && actions->shader_check != ShaderCheckChoice::none)
+    {
+        shader_check_answer(app, actions->shader_check);
+    }
+    if (view->text_input_shown)
+    {
+        if (app->session.host->text_input.type == RETRO_EXT_TEXT_INPUT_TYPE_NUMBER)
+        {
+            text_input_ui_field_number(&app->shell.text_input);   // the OSK's number keypad
+        }
+        text_input_window_apply(&app->text_input_window, &actions->text_input, app->session.host);
+    }
+    if (view->debug_shown)
+    {
+        debug_window_apply(app, &actions->debug);
+    }
+    save_after_options_windows(app);
+    onscreen_pad_end_frame(&app->onscreen_pad);   // (the fingers seen by this frame are done)
+}
+
+// One turn of piccolo's loop: events, the game's frame, the UI, present.
+// False when piccolo should end (QUIT, or a fatal rendering error). Called
+// by app_loop_run: a plain loop on desktop, the browser's animation frames
+// in the web build (app_loop.h).
 static bool app_frame(App* app)
 {
     uint64_t loop_start_ns = SDL_GetTicksNS();   // SHOW FPS: the loop's own work
@@ -5207,11 +5684,12 @@ static bool app_frame(App* app)
     update_language(app);
     RetroUiPalette palette = {};
     piccolo_settings_palette(&app->settings, &palette);   // the Interface settings, live
-    retro_ui_set_palette(&palette);
+    ui_toolkit_set_palette(&palette);
     // BACKGROUND behind the menu; while a game runs, black around its picture.
     uint32_t back = game_running(app) ? 0xFF000000u : palette.background;
-    ImVec4 back_color = retro_ui_color_vec4(back);
-    ClearColor background = {back_color.x, back_color.y, back_color.z, 1.0f};
+    ClearColor background = {static_cast<float>((back >> 16) & 0xFFu) / 255.0f,
+                             static_cast<float>((back >> 8) & 0xFFu) / 255.0f, static_cast<float>(back & 0xFFu) / 255.0f,
+                             1.0f};
     app_shell_set_frames_in_flight(&app->shell, piccolo_settings_frames_in_flight(&app->settings));
     // RUN-AHEAD: the setting, or a streaming device's tuning (in memory
     // only) when it isn't "host's".
@@ -5300,452 +5778,35 @@ static bool app_frame(App* app)
 
     if (!app->headless.on && app_shell_begin_frame(&app->shell))
     {
-        app->ui_scale = retro_ui_scale_for_window(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
+        float screen_width = 0.0f;
+        float screen_height = 0.0f;
+        ui_toolkit_screen_size(&screen_width, &screen_height);
+        app->ui_scale = ui_toolkit_scale_for_screen(screen_width, screen_height);
+        ui_toolkit_set_scale(app->ui_scale);
         // A phone turned (or the window resized): the open windows back to
         // the middle, or they'd keep the old one, half off the screen. Not on
         // the first frame (nothing is up yet).
+        bool resized = screen_width != app->ui_display_width || screen_height != app->ui_display_height;
+        if (resized && app->ui_display_width > 0.0f)
         {
-            const ImGuiIO& io = ImGui::GetIO();
-            bool resized = io.DisplaySize.x != app->ui_display_size.x || io.DisplaySize.y != app->ui_display_size.y;
-            if (resized && app->ui_display_size.x > 0.0f)
-            {
-                retro_ui_center_windows();
-            }
-            app->ui_display_size = io.DisplaySize;
+            ui_toolkit_center_windows();
         }
+        app->ui_display_width = screen_width;
+        app->ui_display_height = screen_height;
 
-        // Where the touch gamepad goes (under the picture upright, if it fits),
-        // before the picture is placed.
-        {
-            const retro_game_geometry* geometry = &app->session.host->av_info.geometry;
-            float aspect = geometry->aspect_ratio > 0.0f ? geometry->aspect_ratio
-                         : geometry->base_height > 0 ? static_cast<float>(geometry->base_width) / static_cast<float>(geometry->base_height)
-                                                     : 4.0f / 3.0f;
-            const ImGuiIO& io = ImGui::GetIO();
-            onscreen_pad_place(&app->onscreen_pad, app->ui_derived.overlay_active, aspect, io.DisplaySize.x, io.DisplaySize.y);
-        }
-        draw_game(app);   // background, behind everything
-        // The browser's page: its strip hides while a game is played, and an
-        // upright phone gives the picture only the height its shape needs.
-        web_pad_tell_page(game_has_keyboard(app), app->shown_aspect);
-        web_pad_set_vibrate(settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
-        // The touch gamepad over the game, a GAME-mode device (it takes touches
-        // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
-        // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
-        // web page's pad: without a keyboard they're the way to the menus).
-        // STYLE (per core / game): made again only when the setting changes.
-        {
-            const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
-            if (app->onscreen_pad.style_name != style)
-            {
-                onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
-            }
-        }
-        onscreen_pad_draw(&app->onscreen_pad, app->pixel_font, piccolo_text(&app->strings, Str::touch_pad_menu),
-                          piccolo_text(&app->strings, Str::touch_pad_quick),
-                          static_cast<float>(settings_get_int(&app->settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f,
-                          settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
-        if (app->onscreen_pad.menu_pressed && game_has_keyboard(app))
-        {
-            app_enter_main_menu(app);
-        }
-        if (app->onscreen_pad.quick_pressed && game_has_keyboard(app))
-        {
-            app_open_quick_menu(app);
-        }
-        // The page pad's MENU and QUICK (the browser, no keyboard needed): like
-        // the MAIN MENU hotkey; like the QUICK MENU hotkey in a game, back from
-        // anything else.
-        if (web_pad_take_main_menu())
-        {
-            if (app->ui.mode == UiMode::main_menu)
-            {
-                ui_do_back(app);   // its top window, then the game
-            }
-            else
-            {
-                app_enter_main_menu(app);
-            }
-        }
-        if (web_pad_take_quick_menu() && game_running(app))
-        {
-            if (app->ui.mode == UiMode::game)
-            {
-                app_open_quick_menu(app);
-            }
-            else if (quick_menu_up(app))
-            {
-                app_enter_game(app);
-            }
-            else
-            {
-                ui_do_back(app);
-            }
-        }
-        // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
-        bool menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
-        // The ports' tabs, behind every window (they peek while the menu is up).
-        ports_widget_draw_tabs(&app->ports_widget, app->pixel_font, app->ui_scale, &app->strings, menu_shown, SDL_GetTicks());
-        draw_hud(app);
-        draw_menu_backdrop(app);   // (after the tabs: behind them and every window)
-        // The status line: with the menu bar, or alone over a paused game
-        // (it says why: "PAUSED: ...").
-        char status[400] = {};
-        status_line_text(app, status, sizeof(status));
-        float status_left = ports_widget_tabs_width(&app->ports_widget);
-        status_left = status_left > 4.0f ? status_left : 4.0f;
-        if (!menu_shown && game_running(app) && app->session.paused)
-        {
-            retro_ui_status_line_from(app->pixel_font, app->ui_scale, status, status_left);
-        }
-        if (menu_shown)
-        {
-            // The status line's window goes first, so it stays behind the
-            // others; it starts past the tabs.
-            retro_ui_status_line_from(app->pixel_font, app->ui_scale, status, status_left);
-            int32_t picked = retro_ui_menu_bar(app->pixel_font, app->ui_scale, app->menus.data(),
-                                               static_cast<int32_t>(app->menus.size()), app->open_first_menu);
-            app->open_first_menu = false;
-            int32_t recent_picked = -1;
-            MenuAction action = MenuAction::none;
-            if (picked >= MENU_ID_RECENT)
-            {
-                action = MenuAction::recent_game;
-                recent_picked = picked - MENU_ID_RECENT;
-            }
-            else if (picked >= 0)
-            {
-                action = static_cast<MenuAction>(picked);
-            }
-            if (action == MenuAction::recent_game && recent_picked >= 0)
-            {
-                // Started at the top of the next loop, like LOAD GAME (see pending_start).
-                const RecentGame* game = &app->recent.games[app->recent_shown[static_cast<size_t>(recent_picked)]];
-                app->pending_start = FilePickerChoice{};
-                std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
-                              game->core_path.c_str());
-                std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
-                              game->content_path.c_str());
-                app->has_pending_start = true;
-            }
-            handle_menu_action(app, action);
-        }
-
-        draw_settings(app);
-        // After SETTINGS, so CHOOSE FOLDER opened from it is drawn on top.
-        FilePickerChoice picked;
-        bool choosing_folder = app->picker.mode == FilePickerMode::folder;
-        if (file_picker_draw(&app->picker, &app->catalog, app->pixel_font, app->ui_scale, &app->strings, &picked))
-        {
-            if (choosing_folder)
-            {
-                choose_folder_done(app, &picked);
-            }
-            else
-            {
-                app->pending_start = picked;
-                app->has_pending_start = true;   // see pending_start
-            }
-        }
-        QuickMenuContext quick = {};
-        quick.strings = &app->strings;
-        quick.session = &app->session;
-        quick.core_name = app->core_name;
-        quick.game_name = app->game_name;
-        quick.user_paused = app->ui.user_paused;
-        uint32_t slot_before = app->quick_menu.slot;
-        QuickMenuAction quick_action = quick_menu_draw(&app->quick_menu, &quick, app->pixel_font, app->ui_scale);
-        if (app->quick_menu.slot != slot_before || app->quick_menu.open)
-        {
-            app->session.state_slot = app->quick_menu.slot;   // F2 / F4 follow the picked slot
-        }
-        if (!game_running(app))
-        {
-            app->core_config.open = false;   // the core it configured is gone
-        }
-        CoreConfigContext config = {};
-        config.strings = &app->strings;
-        config.core_options_state = &app->core_options_state;
-        config.core_options = core_options_context(app);
-        config.input = &app->input;
-        config.host = app->session.host;
-        config.settings = &app->settings;
-        config.sdl = &app->input_sdl;
-        config.layouts = &app->layouts;
-        config.now_ms = SDL_GetTicks();
-        config.core_name = app->core_name;
-        config.game_name = app->game_name;
-        config.shaders_available = app->shader_library.loaded;
-        core_config_window_draw(&app->core_config, &config, app->pixel_font, app->ui_scale);
-        if (app->core_config.choose_shader_request)
-        {
-            app->core_config.choose_shader_request = false;
-            open_shader_picker(app, app->core_config.shader_scope);
-        }
-        draw_shader_picker(app);   // over CORE CONFIGURATION
-        ports_widget_draw_board(&app->ports_widget, &app->input, app->pixel_font, app->ui_scale, SDL_GetTicks(), &app->strings);
-        dvr_widget_draw(&app->dvr, app->pixel_font, app->ui_scale, &app->strings, app->onscreen_pad.touch_screen, SDL_GetTicks());
-        switch (quick_action)
-        {
-        case QuickMenuAction::save:
-            save_state_with_thumbnail(app);
-            set_status(app, app->session.message);
-            break;
-        case QuickMenuAction::load:
-            if (core_session_load_state(&app->session))
-            {
-                app_enter_game(app);   // back to the game
-            }
-            set_status(app, app->session.message);
-            break;
-        case QuickMenuAction::reset:
-            libretro_host_reset(app->session.host);
-            set_status(app, piccolo_text(&app->strings, Str::status_reset));
-            app_enter_game(app);
-            break;
-        case QuickMenuAction::close_game:
-            app->pending_close_game = true;   // the texture may be in this frame already
-            app_enter_game(app);
-            break;
-        case QuickMenuAction::pause:
-            toggle_user_pause(app);   // QUICK MENU stays: RESUME, or back to the game
-            break;
-        case QuickMenuAction::dvr:
-            app_open_widget(app, UiWidget::dvr);   // a window widget: it replaces the QUICK MENU
-            break;
-        case QuickMenuAction::config:
-            app_open_core_config(app, UINT32_MAX, 0);   // a MAIN MENU window: QUICK MENU closes
-            break;
-        case QuickMenuAction::none:
-            break;
-        }
-        CoreOptionsUiContext manager = core_options_context(app);
-        core_options_manager_draw(&app->core_options_manager, &app->core_options_state, &manager, app->pixel_font,
-                                  app->ui_scale);
-        if (app->core_options_manager_was_open && !app->core_options_manager)
-        {
-            save_core_options(app);   // what was deleted
-        }
-        app->core_options_manager_was_open = app->core_options_manager;
-        // The core downloader: pick up what finished; the catalog sees
-        // installed or removed cores right away.
-        core_updater_poll(&app->core_updater);
-        if (app->core_updater.cores_changed)
-        {
-            app->core_updater.cores_changed = false;
-            core_catalog_scan(&app->catalog, game_running(app) ? app->session.host : nullptr);
-        }
-        std::string running_file = running_core_file(app);
-        CoresWindowContext cores_context = {};
-        cores_context.strings = &app->strings;
-        cores_context.updater = &app->core_updater;
-        cores_context.running_file = running_file.c_str();
-        app->cores_window.show_non_free = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_NON_FREE);
-        app->cores_window.show_legacy = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_LEGACY);
-        app->cores_window.show_experimental = settings_get_bool(&app->settings, PICCOLO_CORES_SHOW_EXPERIMENTAL);
-        cores_window_draw(&app->cores_window, &cores_context, app->pixel_font, app->ui_scale);
-
-        // SHARE: this side from our folders, the other from the connection.
-        if (app->share_window.open)
-        {
-            ShareTransferLine share_line;
-            share_update(app, &share_line);
-            ShareWindowContext share_context;
-            share_context.strings = &app->strings;
-            share_context.local_folders = &app->share_folders;
-            share_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
-            share_context.line = &share_line;
-            share_window_draw(&app->share_window, &share_context, app->pixel_font, app->ui_scale);
-        }
-        // TOOLS > PAIR (on SHARE's connection).
-        pair_update(app);
-        if (app->pair_window.open)
-        {
-            PairWindowContext pair_context;
-            pair_context.strings = &app->strings;
-            pair_context.link = net_share_link_started(&app->share_link) ? &app->share_status : nullptr;
-            pair_context.can_give_back = app->net_running;
-            pair_window_draw(&app->pair_window, &pair_context, app->pixel_font, app->ui_scale);
-        }
-        // A device asking to pair: over anything, the game paused (ui_derive).
-        // TOOLS > INVITE too. They answer on the NetAccess: the network thread
-        // waits meanwhile.
-        if (app->net_running && (app->net_window_state.request.active || app->net_window_state.invite.open))
-        {
-            net_service_lock(&app->net_service);
-            net_pairing_request_draw(&app->net_window_state.request, &app->net_service.access, &app->strings,
-                                     app->pixel_font, app->ui_scale);
-            net_invite_draw(&app->net_window_state.invite, &app->net_service.access, &app->strings, app->pixel_font,
-                            app->ui_scale);
-            net_service_unlock(&app->net_service);
-        }
-        else if (app->net_window_state.invite.open)
-        {
-            net_invite_draw(&app->net_window_state.invite, nullptr, &app->strings, app->pixel_font,
-                            app->ui_scale);   // says the network is off
-        }
-        // TOOLS > REMOTE PLAY TOGETHER: acts on the NetAccess, so under the lock.
-        if (app->guest_window.open)
-        {
-            NetAccess* access = app->net_running ? &app->net_service.access : nullptr;
-            if (access != nullptr)
-            {
-                net_service_lock(&app->net_service);
-            }
-            guest_window_draw(&app->guest_window, access, &app->input_net, &app->input, game_running(app),
-                              !app->net_beacon_applied.empty(), &app->strings, app->pixel_font, app->ui_scale);
-            GuestWindowAction action = app->guest_window.action;
-            app->guest_window.action = GuestWindowAction::none;
-            if (access != nullptr && (action == GuestWindowAction::make_link || action == GuestWindowAction::new_link))
-            {
-                guest_make_link(app);
-            }
-            else if (access != nullptr && action == GuestWindowAction::end)
-            {
-                guest_end(app, access);
-            }
-            if (access != nullptr)
-            {
-                net_service_unlock(&app->net_service);
-            }
-        }
-        if (app->cores_window.show_changed)
-        {
-            app->cores_window.show_changed = false;
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_NON_FREE,
-                              app->cores_window.show_non_free);
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_LEGACY,
-                              app->cores_window.show_legacy);
-            settings_set_bool(&app->settings, SettingLayer::global, PICCOLO_CORES_SHOW_EXPERIMENTAL,
-                              app->cores_window.show_experimental);
-            save_settings(app);
-        }
-        InputWindowContext input_context = {};
-        input_context.input = &app->input;
-        input_context.sdl = &app->input_sdl;
-        input_context.strings = &app->strings;
-        input_context.settings = &app->settings;
-        input_context.core_name = app->core_name;
-        input_context.game_name = app->game_name;
-        input_context.layouts = &app->layouts;
-        input_context.now_ms = SDL_GetTicks();
-        bool input_was_open = app->input_window.open;
-        input_window_draw(&app->input_window, &input_context, app->pixel_font, app->ui_scale);
-        MapWindowContext map_context = {};
-        map_context.input = &app->input;
-        map_context.strings = &app->strings;
-        map_context.layouts = &app->layouts;
-        map_context.now_ms = SDL_GetTicks();
-        map_window_draw(&app->map_window, &map_context, app->pixel_font, app->ui_scale);
-        if (app->input_window.edit_touch_layout)
-        {
-            // EDIT LAYOUT: INPUT closes, the touch gamepad's editor takes the screen.
-            app->input_window.edit_touch_layout = false;
-            app->input_window.open = false;
-            onscreen_pad_edit(&app->onscreen_pad);
-        }
-        if (input_was_open && !app->input_window.open)
-        {
-            save_settings(app);   // SETTINGS tab
-            if (app->input_window.dirty && !app->input_config_path.empty())
-            {
-                input_config_save(&app->input, app->input_config_path.c_str());   // closed: keep what changed
-                app->input_window.dirty = false;
-            }
-        }
-        if (app->safe_start_open)
-        {
-            SafeStartChoice answer = safe_start_window_draw(app->pixel_font, app->ui_scale, &app->strings,
-                                                            app->crashed_core.c_str(), app->crashed_after_options);
-            if (answer == SafeStartChoice::delete_stored)
-            {
-                std::vector<std::string> sections;
-                core_options_store_sections_of(&app->option_store, app->crashed_core.c_str(), &sections);
-                for (size_t i = 0; i < sections.size(); i++)
-                {
-                    core_options_store_remove_section(&app->option_store, sections[i].c_str());
-                }
-                save_core_options(app);
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Safe start: deleted the stored options of %s",
-                            app->crashed_core.c_str());
-            }
-            if (answer == SafeStartChoice::defaults)
-            {
-                app->session.skip_stored_options_once = true;
-            }
-            if (answer == SafeStartChoice::stored || answer == SafeStartChoice::defaults ||
-                answer == SafeStartChoice::delete_stored)
-            {
-                app->pending_start = app->safe_start_pending;   // started at the top of the next loop
-                app->has_pending_start = true;
-                app->safe_start_confirmed = true;
-            }
-            if (answer != SafeStartChoice::none)
-            {
-                app->safe_start_open = false;
-                if (app->net_load_waiting && !app->has_pending_start)
-                {
-                    net_answer_load(app, NetContentStatus::failed);   // not started after all
-                }
-            }
-        }
-        if (shader_check_asking(app))
-        {
-            // The preset's file name without its folder and extension (the
-            // pixel font draws it in capitals).
-            std::string name = app->shader_preset_seen;
-            size_t slash = name.find_last_of("/\\");
-            name = slash == std::string::npos ? name : name.substr(slash + 1);
-            size_t dot = name.rfind('.');
-            name = dot == std::string::npos ? name : name.substr(0, dot);
-            const FrameTiming* timing = &app->session.timing;
-            double target = timing->effective == TimingMode::vsync ? timing->display_hz : timing->core_fps;
-            ShaderCheckText words;
-            words.title = piccolo_text(&app->strings, Str::shader_slow_title);
-            words.speed = piccolo_text(&app->strings, Str::shader_slow_text);
-            words.question = piccolo_text(&app->strings, Str::shader_slow_question);
-            words.keep = piccolo_text(&app->strings, Str::shader_slow_keep);
-            words.revert = piccolo_text(&app->strings, Str::shader_slow_revert_n);
-            ShaderCheckChoice answer = shader_check_view_draw_window(app->pixel_font, app->ui_scale, &words, name.c_str(),
-                                                                     1e9 / app->shader_check.measured_ns, target,
-                                                                     app->shader_check_asked_ms, SDL_GetTicks());
-            if (answer != ShaderCheckChoice::none)
-            {
-                shader_check_answer(app, answer);
-            }
-        }
-        if (text_input_pending(app))
-        {
-            TextInputChoice answer = text_input_window_draw(&app->text_input_window, &app->session.host->text_input,
-                                                            app->pixel_font, app->ui_scale, &app->strings);
-            if (app->session.host->text_input.type == RETRO_EXT_TEXT_INPUT_TYPE_NUMBER)
-            {
-                text_input_ui_field_number(&app->shell.text_input);   // the OSK's number keypad
-            }
-            if (answer == TextInputChoice::ok)
-            {
-                libretro_host_text_input_answer(app->session.host, app->text_input_window.buffer);
-            }
-            else if (answer == TextInputChoice::cancel)
-            {
-                libretro_host_text_input_answer(app->session.host, nullptr);
-            }
-        }
-        if (app->show_debug_window)
-        {
-            app_draw_debug_ui(app);
-        }
-        if (app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS))
-        {
-            double target = game_running(app) ? app->session.host->av_info.timing.fps : 0.0;
-            fps_meter_draw(&app->fps_meter, target, app->pixel_font, app->ui_scale, ImGui::GetIO().DisplaySize.x);
-        }
-
-        bool ui_up = ui_is_up(app);
-        save_after_options_windows(app);
-        retro_ui_scrollbars(app->ui_scale);
-        retro_ui_cursor(app->ui_scale, ui_up);   // the theme's cursor, on top of everything
-        onscreen_pad_end_frame(&app->onscreen_pad);   // (the fingers seen by this frame are done)
+        // The UI: what moves on its own, what the frame shows (plain data),
+        // all of it drawn at once (ui.h), then what the user did applied.
+        AppUiFrame ui_frame;
+        UiView view;
+        view.screen_width = screen_width;
+        view.screen_height = screen_height;
+        app_ui_update(app, &ui_frame, &view);
+        app_ui_view(app, &ui_frame, &view);
+        UiWindows windows;
+        app_ui_windows(app, &windows);
+        UiActions actions;
+        ui_draw(&view, &windows, app->pixel_font, app->ui_scale, &actions);
+        app_apply_ui(app, &view, &ui_frame, &actions);
 
         dvr_widget_upload(&app->dvr, &app->session, &app->shell);   // a thumbnail (moves the core and back)
         core_session_upload_video(&app->session, &app->shell);
@@ -5912,8 +5973,7 @@ int main(int argc, char** argv)
         SDL_SetWindowTitle(app->shell.window, "piccolo " PICCOLO_VERSION);
     }
     app_loop_prepare_window(app->shell.window);
-    debug_ui_set_draw_data_hook(add_text_shadows, app);
-    app->pixel_font = pixel_font_imgui_add();
+    app->pixel_font = ui_toolkit_start();
     if (app->pixel_font == nullptr)
     {
         core_session_destroy(&app->session, &app->shell);
@@ -5934,12 +5994,10 @@ int main(int argc, char** argv)
 
     // Everything in piccolo's folder, migrated once from ~/.host-libretro.
     // Without it nothing is saved, but games still run.
-    ImGuiIO& io = ImGui::GetIO();
     if (app_paths_init(&app->paths, bundled_files_folder_name(), "piccolo.cfg"))
     {
         bundled_files_install_cores(app->paths.cores.c_str());   // before the catalog first looks
-        app->imgui_ini = app->paths.settings + "/imgui.ini";
-        io.IniFilename = app->imgui_ini.c_str();
+        ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
         settings_load(&app->settings, app->settings_path.c_str());
         piccolo_settings_complete_ui_theme(&app->settings);
@@ -5963,7 +6021,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        io.IniFilename = nullptr;
+        ui_toolkit_set_layout_file(nullptr);   // nowhere to keep it
     }
 
     // The files that come with piccolo (layouts, themes, shaders): next to the

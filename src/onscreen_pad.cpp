@@ -2,14 +2,19 @@
 
 #include <SDL3/SDL.h>
 
-#include "imgui.h"
-#include "imgui_internal.h"   // BringWindowToDisplayFront (EDIT LAYOUT on top)
 #include "input_devices.h"
 #include "pad_layout.h"
+#include "piccolo_settings.h"
+#include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 #include "touch_ui.h"
+#include "ui_toolkit.h"
 
 constexpr float BELOW_GAP = 4.0f;   // retro pixels between the picture and the pad (pad_layouts_place)
+
+// ---------------------------------------------------------------------------
+// State
 
 void onscreen_pad_init(OnscreenPad* pad, const char* settings_dir)
 {
@@ -34,16 +39,6 @@ void onscreen_pad_shutdown(OnscreenPad* pad)
     haptics_close(&pad->haptics);
 }
 
-static void save_layouts(OnscreenPad* pad)
-{
-    if (pad->path.empty())
-    {
-        return;
-    }
-    pad_layouts_save_file(&pad->layouts, &pad->file);
-    settings_file_save(&pad->file, pad->path.c_str(), "piccolo's on-screen gamepad layouts (EDIT LAYOUT)");
-}
-
 void onscreen_pad_event(OnscreenPad* pad, const SDL_Event* event, float display_width, float display_height)
 {
     if (event->type == SDL_EVENT_FINGER_DOWN)
@@ -64,15 +59,6 @@ bool onscreen_pad_enabled(const OnscreenPad* pad, OnscreenPadShow show)
         return false;
     }
     return pad->touch_screen;   // AUTO
-}
-
-void onscreen_pad_edit_end(OnscreenPad* pad)
-{
-    if (pad->editor.active)
-    {
-        pad->editor.active = false;
-        save_layouts(pad);
-    }
 }
 
 // A real gamepad played (a button held): AUTO hides the pad.
@@ -233,32 +219,48 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
     pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
 }
 
-void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_label, const char* quick_label, float opacity,
-                       bool vibrate)
+void onscreen_pad_state(OnscreenPadState* state, const Settings* settings, const Localization* strings)
 {
-    pad->menu_pressed = false;
-    pad->quick_pressed = false;
-    pad->edit_done = false;
+    state->menu_label = piccolo_text(strings, Str::touch_pad_menu);
+    state->quick_label = piccolo_text(strings, Str::touch_pad_quick);
+    state->opacity = static_cast<float>(settings_get_int(settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f;
+    state->vibrate = settings_get_bool(settings, PICCOLO_TOUCH_PAD_VIBRATE);
+}
+
+void onscreen_pad_end_frame(OnscreenPad* pad)
+{
+    touch_fingers_end_frame(&pad->fingers);
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+
+void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiFont* pixel_font,
+                       OnscreenPadAction* action)
+{
+    *action = {};
     pad->pad = RetroPad{};
     if (!pad->shown)
     {
         return;
     }
-    const ImGuiIO& io = ImGui::GetIO();
+    float screen_width = 0.0f;
+    float screen_height = 0.0f;
+    ui_toolkit_screen_size(&screen_width, &screen_height);
     TouchUi ui;
     ui.font = pixel_font;
-    ui.scale = touch_ui_scale_for(io.DisplaySize.x, io.DisplaySize.y);
+    ui.scale = touch_ui_scale_for(screen_width, screen_height);
     ui.palette = *retro_ui_palette();
     ui.fingers = &pad->fingers;
     ui.pad = &pad->pad;
     for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
     {
-        pad_layout_set_default_alpha(&pad->layouts.layouts[i], opacity);   // (a layout's own, from EDIT LAYOUT, wins)
+        pad_layout_set_default_alpha(&pad->layouts.layouts[i], state->opacity);   // (a layout's own, from EDIT LAYOUT, wins)
         pad->layouts.layouts[i].style = pad->styled ? &pad->style : nullptr;
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
-    layout->menu_label = menu_label;     // retroui's menu button: the MAIN MENU
-    layout->action_label = quick_label;  // its action button: the QUICK MENU
+    layout->menu_label = state->menu_label;     // retroui's menu button: the MAIN MENU
+    layout->action_label = state->quick_label;  // its action button: the QUICK MENU
     float width = touch_ui_width(&ui);
     float height = touch_ui_height(&ui);
     PadFrame frame = pad->placement.frame;
@@ -266,7 +268,7 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     touch_ui_begin_overlay(&ui, "##onscreen_pad");
     if (pad->editor.active)
     {
-        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());   // EDIT LAYOUT: above everything
+        retro_ui_bring_window_to_front();   // EDIT LAYOUT: above everything
     }
     if (pad->below)
     {
@@ -277,27 +279,39 @@ void onscreen_pad_draw(OnscreenPad* pad, ImFont* pixel_font, const char* menu_la
     {
         if (pad_editor_draw(&pad->editor, &ui, &frame, layout))
         {
-            pad->editor.active = false;
-            pad->edit_done = true;
-            save_layouts(pad);
+            action->edit_done = true;
         }
     }
     else
     {
         pad_layout_draw(&ui, &frame, layout);
-        pad->menu_pressed = layout->menu_pressed;
-        pad->quick_pressed = layout->action_pressed;
-        if (vibrate && pad->fingers.presses > 0)
-        {
-            haptics_buzz(&pad->haptics);
-        }
+        action->menu = layout->menu_pressed;
+        action->quick = layout->action_pressed;
+        action->buzz = state->vibrate && pad->fingers.presses > 0;
     }
     touch_ui_end_screen();
 }
 
-void onscreen_pad_end_frame(OnscreenPad* pad)
+// ---------------------------------------------------------------------------
+// Apply
+
+static void save_layouts(OnscreenPad* pad)
 {
-    touch_fingers_end_frame(&pad->fingers);
+    if (pad->path.empty())
+    {
+        return;
+    }
+    pad_layouts_save_file(&pad->layouts, &pad->file);
+    settings_file_save(&pad->file, pad->path.c_str(), "piccolo's on-screen gamepad layouts (EDIT LAYOUT)");
+}
+
+void onscreen_pad_edit_end(OnscreenPad* pad)
+{
+    if (pad->editor.active)
+    {
+        pad->editor.active = false;
+        save_layouts(pad);
+    }
 }
 
 void onscreen_pad_edit(OnscreenPad* pad)
@@ -305,4 +319,16 @@ void onscreen_pad_edit(OnscreenPad* pad)
     pad->editor = PadEditor{};
     pad->editor.active = true;
     pad->hidden = false;
+}
+
+void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action)
+{
+    if (action->edit_done)
+    {
+        onscreen_pad_edit_end(pad);
+    }
+    if (action->buzz)
+    {
+        haptics_buzz(&pad->haptics);
+    }
 }

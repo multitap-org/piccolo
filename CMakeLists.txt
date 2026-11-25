@@ -196,7 +196,6 @@ add_subdirectory(deps/libretro/frontend-libretro)
 
 set(PICCOLO_SOURCES
     src/main.cpp
-    src/menus.cpp
     src/file_picker.cpp
     src/piccolo_settings.cpp
     src/settings_ui.cpp
@@ -212,9 +211,10 @@ set(PICCOLO_SOURCES
     src/map_window.cpp
     src/image_window.cpp
     src/piccolo_window.cpp
-    src/piccolo_text.cpp
     src/recent_games.cpp
-    src/ui_mode.cpp
+    src/ui.cpp
+    src/ui_toolkit_imgui.cpp
+    src/debug_window.cpp
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp
@@ -228,7 +228,6 @@ set(PICCOLO_SOURCES
     src/fps_meter.cpp
     src/remap_widget.cpp
     src/state_widget.cpp
-    src/screen_effects.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)
@@ -273,8 +272,24 @@ add_custom_command(
     DEPENDS multitap_strings_generator "${CMAKE_CURRENT_SOURCE_DIR}/src/strings.txt"
     COMMENT "Generating piccolo's string IDs from strings.txt"
     VERBATIM)
-target_sources(piccolo PRIVATE "${PICCOLO_GENERATED}/piccolo_strings.cpp")
-target_include_directories(piccolo PRIVATE "${PICCOLO_GENERATED}")
+
+# piccolo's logic with no GUI: the settings rows' view state, the UI modes,
+# the UI text, the menus as data and the screen effects' rules. Built without ImGui's include path (it links frontend_settings,
+# not frontend_common), so a stray #include "imgui.h" here fails to compile:
+# the separation doesn't depend on anyone remembering it. The windows' drawing
+# stays in the piccolo target.
+add_library(piccolo_logic STATIC
+    src/settings_view.cpp
+    src/piccolo_text.cpp
+    src/ui_mode.cpp
+    src/menus.cpp
+    src/screen_effects.cpp
+    "${PICCOLO_GENERATED}/piccolo_strings.cpp"
+)
+target_include_directories(piccolo_logic PUBLIC src "${PICCOLO_GENERATED}")
+target_link_libraries(piccolo_logic PUBLIC frontend_settings libretro_api)
+multitap_set_project_flags(piccolo_logic)
+target_link_libraries(piccolo PRIVATE piccolo_logic)
 
 # Translations (lang/<code>.po) next to the program, in the build folder and
 # in piccolo's own folder.
@@ -488,16 +503,23 @@ if(MULTITAP_BUILD_TESTS)
                          PASS_REGULAR_EXPRESSION "gl presets: all [0-9]+ load, run and come out even"
                          FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    add_executable(piccolo_ui_mode_test tools/ui_mode_test.cpp src/ui_mode.cpp)
-    target_include_directories(piccolo_ui_mode_test PRIVATE src)
+    add_executable(piccolo_ui_mode_test tools/ui_mode_test.cpp)
+    target_link_libraries(piccolo_ui_mode_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_ui_mode_test)
     add_test(NAME piccolo_ui_mode COMMAND piccolo_ui_mode_test)
     set_tests_properties(piccolo_ui_mode PROPERTIES
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
-    add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp src/screen_effects.cpp)
-    target_include_directories(piccolo_screen_effects_test PRIVATE src)
-    target_link_libraries(piccolo_screen_effects_test PRIVATE frontend_common)
+    add_executable(piccolo_settings_view_test tools/settings_view_test.cpp)
+    target_link_libraries(piccolo_settings_view_test PRIVATE piccolo_logic)
+    multitap_set_project_flags(piccolo_settings_view_test)
+    add_test(NAME piccolo_settings_view COMMAND piccolo_settings_view_test)
+    set_tests_properties(piccolo_settings_view PROPERTIES
+        PASS_REGULAR_EXPRESSION "settings view: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    add_executable(piccolo_screen_effects_test tools/screen_effects_test.cpp)
+    target_link_libraries(piccolo_screen_effects_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_screen_effects_test)
     add_test(NAME piccolo_screen_effects COMMAND piccolo_screen_effects_test)
     set_tests_properties(piccolo_screen_effects PROPERTIES

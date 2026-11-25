@@ -15,15 +15,22 @@
 //   then: PAIRED: KITCHEN PC GAVE YOU SHARE.
 //         GIVE IT SHARE ON THIS PICCOLO TOO?  [YES] [NO]
 //
-// The connection is SHARE's (NetShareLink): main.cpp acts on the requests
-// below (connect / pair across the internet / cancel / give access back).
+// The connection is SHARE's (NetShareLink): pair_window_apply acts on it
+// (connect / pair across the internet / cancel / give access back).
+//
+// Split like every window: pair_window_update follows SHARE's connection
+// (the code, the outcome) and pair_window_state fills what the window shows
+// (no GUI), pair_window_draw draws it and records what was pressed, and
+// pair_window_apply acts on it (no GUI).
 
 #include <cstdint>
 #include <string>
 
-#include "imgui.h"
 #include "localization.h"
+#include "net_service.h"
 #include "net_share_link.h"
+
+#include "retro_ui_font.h"
 
 enum class PairWindowPhase : uint8_t
 {
@@ -44,21 +51,44 @@ struct PairWindow
     NetAccessLevel  given = NetAccessLevel::gamepad;   // done: what it gave us
     uint8_t         host_key[NET_KEY_SIZE] = {};
     bool            seen_connecting = false;   // waiting: the link took our request
-    // Requests for main.cpp, cleared by it.
-    bool            want_pair = false;           // LAN: found[selected] with `code`
-    bool            want_pair_internet = false;  // through the beacon with `code`
-    bool            want_cancel = false;         // drop the connection (CANCEL, close while waiting)
-    bool            want_give_back = false;      // YES: give `given` back to host_key
-    bool            want_close = false;          // closed after pairing: main drops the link unless SHARE uses it
+    std::string     preselect;          // pair_window_open's name to pick, until the list shows it
 };
 
-struct PairWindowContext
+struct PairWindowState
 {
     const Localization*       strings = nullptr;
     const NetShareLinkStatus* link = nullptr;   // nullptr: networking couldn't start
     bool                      can_give_back = false;   // our listener runs (ALLOW CONNECTIONS)
 };
 
+enum class PairWindowPress
+{
+    none,
+    pair,            // PAIR: found[selected] with our code, on the LAN
+    pair_internet,   // INTERNET: through the beacon with our code
+    cancel,          // CANCEL while waiting
+    give_back,       // YES: give `given` back to the host (and close)
+    close,           // closed (the title bar, OK, NO)
+};
+
+struct PairWindowAction
+{
+    PairWindowPress press = PairWindowPress::none;
+};
+
 // `preselect`: a name in the LAN list to pick (SHARE's PAIR), or nullptr.
 void pair_window_open(PairWindow* window, const char* preselect);
-void pair_window_draw(PairWindow* window, const PairWindowContext* context, ImFont* pixel_font, int32_t scale);
+// Before drawing, every frame the window is open: follows SHARE's connection
+// (`link` nullptr: networking couldn't start).
+void pair_window_update(PairWindow* window, const NetShareLinkStatus* link);
+void pair_window_state(PairWindowState* state, const Localization* strings, const NetShareLinkStatus* link,
+                       bool can_give_back);
+void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiFont* pixel_font, int32_t scale,
+                      PairWindowAction* action);
+// Acts on SHARE's connection (`link` not started: only the window changes).
+// `status`: the connection's last status (the LAN list), `beacon`: BEACON
+// SERVER, `service`: our listener, nullptr when it doesn't run (no access
+// back), `share_open`: SHARE uses the connection (closing after pairing
+// keeps it).
+void pair_window_apply(PairWindow* window, const PairWindowAction* action, NetShareLink* link,
+                       const NetShareLinkStatus* status, const char* beacon, NetService* service, bool share_open);
