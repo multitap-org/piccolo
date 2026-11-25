@@ -878,6 +878,7 @@ guests_no_game = LOAD A GAME FIRST: THE LINK IS FOR THE GAME THAT RUNS.
 guests_no_internet = TURN ON INTERNET IN SETTINGS > NETWORK FIRST.
 guests_make = CREATE LINK
 guests_link = LINK
+guests_link_tip = CLICK TO COPY IT.
 guests_no_link = NO LINK YET
 guests_copied = COPIED
 guests_copied_where = TO THE CLIPBOARD

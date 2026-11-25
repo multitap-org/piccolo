@@ -20,8 +20,10 @@
 // button and PLAYER line up (one grid). Before the link the field says NO
 // LINK YET, the button is CREATE LINK and STOP REMOTE PLAY is greyed out.
 // CREATE LINK makes the link and, once it's ready, copies it: the
-// notification cards say LINK COPIED TO THE CLIPBOARD (guest_window_add_hud).
-// Hovering the link shows it whole. GUESTS counts guests only (seats: the
+// notification cards say LINK COPIED TO THE CLIPBOARD (guest_window_add_hud)
+// when the copy worked (a browser refuses one that isn't right after a
+// click). Clicking the link field copies it too, with the same card.
+// Hovering the link shows it whole, and says a click copies it. GUESTS counts guests only (seats: the
 // host is never one of them).
 //
 // Closing the window keeps the link; STOP REMOTE PLAY, closing the game,
@@ -115,6 +117,7 @@ struct GuestWindowAction
     GuestWindowPress press = GuestWindowPress::none;
     bool     seats_changed = false;              // window->seats changed: a live link takes it
     bool     level_changed = false;              // window->level changed: a live link takes it
+    bool     copy_link = false;                  // the link field was clicked: it goes to the clipboard
     bool     kick = false;                       // KICK on `kick_peer`, if it's still `kick_key`
     uint32_t kick_peer = 0;
     uint8_t  kick_key[NET_KEY_SIZE] = {};
@@ -131,12 +134,14 @@ void guest_window_state(GuestWindowState* state, const NetAccess* access, const 
 void guest_window_draw(GuestWindow* window, const GuestWindowState* state, RetroUiFont* pixel_font, int32_t scale,
                        GuestWindowAction* action);
 // Under the network lock (`access` nullptr: the network is off): guests,
-// role and KICK. Returns what main.cpp does itself.
-GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access);
+// role, KICK, and the link copied when its field was clicked (the card says
+// so from `now_ms`). Returns what main.cpp does itself.
+GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access,
+                                    uint64_t now_ms);
 
 // The link shows (its room joined, its card sent or given up on): after
 // CREATE / REFRESH LINK it goes to the clipboard now, and the notification
-// card says so from `now_ms`.
+// card says so from `now_ms` if the copy worked.
 void guest_window_link_ready(GuestWindow* window, uint64_t now_ms);
 
 // LINK COPIED TO THE CLIPBOARD, as a notification card for a few seconds

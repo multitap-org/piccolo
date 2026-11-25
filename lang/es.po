@@ -4031,6 +4031,10 @@ msgctxt "guests_link"
 msgid "LINK"
 msgstr "ENLACE"
 
+msgctxt "guests_link_tip"
+msgid "CLICK TO COPY IT."
+msgstr "HAZ CLIC PARA COPIARLO."
+
 msgctxt "guests_no_link"
 msgid "NO LINK YET"
 msgstr "AÚN NO HAY ENLACE"

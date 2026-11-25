@@ -791,6 +791,33 @@ static void guest_capture(App* app)
     }
 }
 
+// The card's title: the game's name cleaned (groups in () and [] dropped).
+// A name that is all groups ("[BIOS] (World)") keeps their words instead,
+// and a core without content its own name: never empty, so a link can
+// always be made.
+static void guest_title(const App* app, char* title)
+{
+    net_guest_title_clean(app->game_name, title);
+    if (title[0] != '\0')
+    {
+        return;
+    }
+    char words[sizeof(app->game_name)] = {};
+    std::snprintf(words, sizeof(words), "%s", app->game_name);
+    for (size_t i = 0; words[i] != '\0'; i++)
+    {
+        if (words[i] == '(' || words[i] == ')' || words[i] == '[' || words[i] == ']')
+        {
+            words[i] = ' ';
+        }
+    }
+    net_guest_title_clean(words, title);
+    if (title[0] == '\0')
+    {
+        net_guest_title_clean(app->core_name[0] != '\0' ? app->core_name : "piccolo", title);
+    }
+}
+
 // The window opens with the game's name cleaned for the card and the frame
 // shown now as its picture (a link already open keeps its own).
 static void open_guest_window(App* app)
@@ -798,7 +825,7 @@ static void open_guest_window(App* app)
     GuestWindow* window = &app->guest_window;
     if (!window->live)
     {
-        net_guest_title_clean(app->game_name, window->title);
+        guest_title(app, window->title);
         guest_capture(app);
     }
     guest_window_open(window);
@@ -5752,7 +5779,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         {
             net_service_lock(&app->net_service);
         }
-        GuestWindowPress press = guest_window_apply(&app->guest_window, &actions->guest, access);
+        GuestWindowPress press = guest_window_apply(&app->guest_window, &actions->guest, access, SDL_GetTicks());
         if (press == GuestWindowPress::make_link || press == GuestWindowPress::new_link)
         {
             guest_make_link(app);

@@ -166,7 +166,15 @@ static void draw_link_row(GuestWindow* window, const GuestWindowState* state, co
     if (shown)
     {
         retro_ui_edit_field("guest_link", window->link_text, sizeof(window->link_text), &link_field);
-        retro_ui_item_tooltip(window->link_text);
+        // A click copies it: the browser allows a copy only right after
+        // one, which CREATE LINK's (up to GUEST_PREPARE_MS later) isn't.
+        if (retro_ui_item_clicked())
+        {
+            action->copy_link = true;
+        }
+        char tip[NET_GUEST_MAX_LINK + 160];
+        std::snprintf(tip, sizeof(tip), "%s\n%s", window->link_text, piccolo_text(strings, Str::guests_link_tip));
+        retro_ui_item_tooltip(tip);
     }
     else
     {
@@ -362,8 +370,23 @@ void guest_window_open(GuestWindow* window)
     window->open = true;
 }
 
-GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access)
+// The link to the clipboard; the notification card only when it got there
+// (a browser refuses a copy that isn't right after a click).
+static void copy_link(GuestWindow* window, uint64_t now_ms)
 {
+    if (clipboard_set_text(window->link_text))
+    {
+        window->copied_ms = now_ms > 0 ? now_ms : 1;
+    }
+}
+
+GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access,
+                                    uint64_t now_ms)
+{
+    if (action->copy_link)
+    {
+        copy_link(window, now_ms);   // the link field clicked (it shows only once the link is ready)
+    }
     // GUESTS and ROLE: before the link they're kept for CREATE LINK; with it
     // they apply at once (fewer seats never drop anyone).
     if (action->seats_changed && window->live && access != nullptr)
@@ -404,8 +427,9 @@ void guest_window_link_ready(GuestWindow* window, uint64_t now_ms)
     window->copy_when_ready = false;
     // TODO(round1): on Android CREATE LINK should open the share sheet with
     // the link; piccolo has no path to it yet, so it's copied there too.
-    clipboard_set_text(window->link_text);
-    window->copied_ms = now_ms > 0 ? now_ms : 1;
+    // In the browser this copy comes too long after the click to be allowed:
+    // no card then, and a click on the link field copies it.
+    copy_link(window, now_ms);
 }
 
 constexpr uint64_t HUD_CARD_MS = 2500;      // the card stays this long (as the DVR's)...

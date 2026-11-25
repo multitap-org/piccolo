@@ -2,7 +2,12 @@
 
 #include <SDL3/SDL.h>
 
-void clipboard_set_text(const char* text)
+bool clipboard_set_text(const char* text)
 {
-    SDL_SetClipboardText(text);
+    if (!SDL_SetClipboardText(text))
+    {
+        SDL_Log("Clipboard: %s", SDL_GetError());
+        return false;
+    }
+    return true;
 }
