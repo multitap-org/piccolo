@@ -6,6 +6,7 @@
 #include "net_window.h"
 #include "piccolo_text.h"
 #include "retro_ui.h"
+#include "retro_ui_controls.h"
 
 static const Str LEVEL_NAMES[NET_ACCESS_LEVEL_COUNT] = {Str::net_access_gamepad, Str::net_access_stream,
                                                         Str::net_access_share, Str::net_access_full};
@@ -38,7 +39,7 @@ static void draw_code(const char* code)
     char grouped[16] = {};
     std::snprintf(grouped, sizeof(grouped), "%.3s %.3s %.3s", code, code + 3, code + 6);
     retro_ui_push_section_text();
-    ImGui::TextUnformatted(grouped);
+    retro_ui_text(grouped);
     retro_ui_pop_section_text();
 }
 
@@ -46,13 +47,13 @@ static void draw_list(PairWindow* window, const PairWindowContext* context)
 {
     const Localization* strings = context->strings;
     const NetShareLinkStatus* link = context->link;
-    ImGui::TextDisabled("%s", piccolo_text(strings, Str::pair_on_network));
+    retro_ui_dim_text(piccolo_text(strings, Str::pair_on_network), nullptr);
     if (window->selected >= static_cast<int32_t>(link->found.size()))
     {
         window->selected = -1;
     }
-    float width = ImGui::GetFontSize() * 24.0f;
-    retro_ui_begin_list("pair_found", width, ImGui::GetTextLineHeightWithSpacing() * 4.0f);
+    float width = retro_ui_font_size() * 24.0f;
+    retro_ui_begin_list("pair_found", width, retro_ui_text_line_step() * 4.0f);
     for (size_t i = 0; i < link->found.size(); i++)
     {
         const std::string* name = &link->found[i].name;
@@ -61,31 +62,24 @@ static void draw_list(PairWindow* window, const PairWindowContext* context)
             window->selected = static_cast<int32_t>(i);
             preselect_name.clear();
         }
-        ImGui::PushID(static_cast<int>(i));
-        if (ImGui::Selectable(name->c_str(), window->selected == static_cast<int32_t>(i)))
+        const char* note = is_paired(link, name) ? piccolo_text(strings, Str::pair_paired) : nullptr;
+        if (retro_ui_list_item(static_cast<uint32_t>(i), name->c_str(), window->selected == static_cast<int32_t>(i),
+                               note))
         {
             window->selected = static_cast<int32_t>(i);
         }
-        if (is_paired(link, name))
-        {
-            ImGui::SameLine(width - ImGui::CalcTextSize(piccolo_text(strings, Str::pair_paired)).x -
-                            ImGui::GetStyle().ItemSpacing.x * 2.0f);
-            ImGui::TextDisabled("%s", piccolo_text(strings, Str::pair_paired));
-        }
-        ImGui::PopID();
     }
     if (link->found.empty())
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_found_none));
+        retro_ui_dim_text(piccolo_text(strings, Str::share_found_none), nullptr);
     }
     retro_ui_end_list();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(piccolo_text(strings, Str::share_code));
-    ImGui::SameLine();
+    retro_ui_label(piccolo_text(strings, Str::share_code));
+    retro_ui_same_line();
     draw_code(window->code);
     if (window->failed)
     {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::pair_failed));
+        retro_ui_dim_text(piccolo_text(strings, Str::pair_failed), nullptr);
     }
     if (retro_ui_button(piccolo_text(strings, Str::pair_internet)))
     {
@@ -93,15 +87,15 @@ static void draw_list(PairWindow* window, const PairWindowContext* context)
         window->internet = true;
         window->phase = PairWindowPhase::waiting;
     }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(window->selected < 0);
+    retro_ui_same_line();
+    retro_ui_begin_disabled(window->selected < 0);
     if (retro_ui_button(piccolo_text(strings, Str::pair_button)))
     {
         window->want_pair = true;
         window->internet = false;
         window->phase = PairWindowPhase::waiting;
     }
-    ImGui::EndDisabled();
+    retro_ui_end_disabled();
 }
 
 static void draw_waiting(PairWindow* window, const PairWindowContext* context)
@@ -112,9 +106,8 @@ static void draw_waiting(PairWindow* window, const PairWindowContext* context)
     {
         std::snprintf(window->code, sizeof(window->code), "%s", link->code.c_str());   // a new one after a wrong try
     }
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
-    ImGui::TextUnformatted(piccolo_text(strings, window->internet ? Str::pair_give_code : Str::pair_type_code));
-    ImGui::PopTextWrapPos();
+    retro_ui_text_wrapped_at(piccolo_text(strings, window->internet ? Str::pair_give_code : Str::pair_type_code),
+                             retro_ui_font_size() * 24.0f);
     draw_code(window->code);
     net_window_waiting_leds(piccolo_text(strings, Str::share_waiting));
     if (retro_ui_button(piccolo_text(strings, Str::net_owner_cancel)))
@@ -149,30 +142,28 @@ static void draw_done(PairWindow* window, const PairWindowContext* context, bool
 {
     const Localization* strings = context->strings;
     const char* level = piccolo_text(strings, LEVEL_NAMES[static_cast<uint32_t>(window->given)]);
-    ImGui::Text("%s %s: %s", piccolo_text(strings, Str::pair_done), window->host_name.c_str(), level);
+    retro_ui_text_format("%s %s: %s", piccolo_text(strings, Str::pair_done), window->host_name.c_str(), level);
     if (context->link->access != window->given)
     {
         window->given = context->link->access;   // the host's welcome came after ready
     }
-    ImGui::Spacing();
+    retro_ui_spacing();
     if (!context->can_give_back)
     {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::pair_back_off));
-        ImGui::PopTextWrapPos();
+        retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::pair_back_off), retro_ui_font_size() * 24.0f);
         if (retro_ui_button(piccolo_text(strings, Str::pair_ok)))
         {
             *keep = false;
         }
         return;
     }
-    ImGui::Text("%s %s?", piccolo_text(strings, Str::pair_back_question), level);
+    retro_ui_text_format("%s %s?", piccolo_text(strings, Str::pair_back_question), level);
     if (retro_ui_button(piccolo_text(strings, Str::pair_yes)))
     {
         window->want_give_back = true;
         *keep = false;
     }
-    ImGui::SameLine();
+    retro_ui_same_line();
     if (retro_ui_button(piccolo_text(strings, Str::pair_no)))
     {
         *keep = false;
@@ -186,43 +177,37 @@ void pair_window_draw(PairWindow* window, const PairWindowContext* context, ImFo
         return;
     }
     const Localization* strings = context->strings;
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    char title[96];
-    std::snprintf(title, sizeof(title), "%s###pair_window", piccolo_text(strings, Str::pair_title));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
-                             ImGuiWindowFlags_NoSavedSettings;
+    RetroUiWindow frame = {};
+    frame.id = "pair_window";
+    frame.title = piccolo_text(strings, Str::pair_title);
+    frame.centered_on_open = true;
     bool keep = true;
+    bool closed = false;
     retro_ui_push_theme(pixel_font, scale);
-    if (!ImGui::Begin(title, nullptr, flags))
+    if (retro_ui_window_begin(&frame, scale, &closed))
     {
-        ImGui::End();
-        retro_ui_pop_theme();
-        return;
+        if (closed)
+        {
+            keep = false;
+        }
+        if (context->link == nullptr)
+        {
+            retro_ui_dim_text(piccolo_text(strings, Str::share_network_off), nullptr);
+        }
+        else if (window->phase == PairWindowPhase::list)
+        {
+            draw_list(window, context);
+        }
+        else if (window->phase == PairWindowPhase::waiting)
+        {
+            draw_waiting(window, context);
+        }
+        else
+        {
+            draw_done(window, context, &keep);
+        }
     }
-    retro_ui_begin_window(scale);
-    if (retro_ui_close_button())
-    {
-        keep = false;
-    }
-    if (context->link == nullptr)
-    {
-        ImGui::TextDisabled("%s", piccolo_text(strings, Str::share_network_off));
-    }
-    else if (window->phase == PairWindowPhase::list)
-    {
-        draw_list(window, context);
-    }
-    else if (window->phase == PairWindowPhase::waiting)
-    {
-        draw_waiting(window, context);
-    }
-    else
-    {
-        draw_done(window, context, &keep);
-    }
-    retro_ui_end_window();
-    ImGui::End();
+    retro_ui_window_end();
     retro_ui_pop_theme();
     if (!keep)
     {

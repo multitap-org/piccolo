@@ -21,9 +21,10 @@
 #include <cstdint>
 #include <string>
 
-#include "imgui.h"
 #include "localization.h"
 #include "net_share_link.h"
+
+struct ImFont;
 
 enum class PairWindowPhase : uint8_t
 {
