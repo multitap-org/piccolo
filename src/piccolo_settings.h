@@ -27,6 +27,16 @@ constexpr bool PICCOLO_BROWSER = true;
 constexpr bool PICCOLO_BROWSER = false;
 #endif
 
+// A phone or tablet (Android; iOS once there's a build): always full screen, the status and
+// navigation bars hidden and the picture under the camera cutout, as
+// piccoletto does (testing round 3). SDL's activity does that only for a
+// fullscreen window, so DISPLAY (full screen, the window) is hidden there.
+#if defined(__ANDROID__)
+constexpr bool PICCOLO_MOBILE = true;
+#else
+constexpr bool PICCOLO_MOBILE = false;
+#endif
+
 // Keys (file keys: stable, never translated).
 constexpr const char* PICCOLO_LANGUAGE = "language";
 constexpr const char* PICCOLO_PAUSE_IN_MENU = "pause_in_menu";

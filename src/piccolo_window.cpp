@@ -79,8 +79,10 @@ void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Sett
 void piccolo_window_apply(PiccoloWindow* state, SDL_Window* window, const Settings* settings,
                           const ViewportInput* picture)
 {
-    bool fullscreen = settings_get_bool(settings, PICCOLO_DISPLAY_FULLSCREEN);
-    uint32_t fullscreen_type = settings_get_enum(settings, PICCOLO_DISPLAY_FULLSCREEN_TYPE);
+    // A phone is always full screen, borderless (PICCOLO_MOBILE).
+    bool fullscreen = PICCOLO_MOBILE || settings_get_bool(settings, PICCOLO_DISPLAY_FULLSCREEN);
+    uint32_t fullscreen_type =
+        PICCOLO_MOBILE ? PICCOLO_FULLSCREEN_BORDERLESS : settings_get_enum(settings, PICCOLO_DISPLAY_FULLSCREEN_TYPE);
     bool was_fullscreen = state->fullscreen;
     if (fullscreen != state->fullscreen || (fullscreen && fullscreen_type != state->fullscreen_type))
     {

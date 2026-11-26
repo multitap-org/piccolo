@@ -822,8 +822,9 @@ static void draw_tabs(SettingsWindow* window, NetWindow* network_window, const S
                 end_tab_content();
                 retro_ui_end_tab();
             }
-            // DISPLAY (full screen, the window): the browser's page owns them.
-            if (!PICCOLO_BROWSER && retro_ui_begin_tab("display", piccolo_text(strings, Str::tab_display), false))
+            // DISPLAY (full screen, the window): the browser's page owns them;
+            // a phone is always full screen.
+            if (!PICCOLO_BROWSER && !PICCOLO_MOBILE && retro_ui_begin_tab("display", piccolo_text(strings, Str::tab_display), false))
             {
                 begin_tab_content();
                 draw_display(ui, state);
