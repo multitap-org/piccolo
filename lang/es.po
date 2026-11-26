@@ -4273,6 +4273,30 @@ msgctxt "web_emulators"
 msgid "Emulators"
 msgstr "Emuladores"
 
+msgctxt "web_channels"
+msgid "Build"
+msgstr "Versión"
+
+msgctxt "web_channel_release"
+msgid "Release"
+msgstr "Release"
+
+msgctxt "web_channel_dev"
+msgid "Dev"
+msgstr "Dev"
+
+msgctxt "web_channel_release_title"
+msgid "The latest release"
+msgstr "El último release"
+
+msgctxt "web_channel_dev_title"
+msgid "Every push to main: newer, less tested"
+msgstr "Cada push a main: más nuevo, menos probado"
+
+msgctxt "web_channel_none_title"
+msgid "No release yet"
+msgstr "Todavía no hay un release"
+
 msgctxt "web_play"
 msgid "Play"
 msgstr "Jugar"
