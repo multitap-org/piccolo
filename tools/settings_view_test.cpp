@@ -85,6 +85,9 @@ static void test_typed_values()
     check(row.integer == 50, "an integer: read as a number");
     settings_view_row(&settings, nullptr, SettingLayer::global, "scale", &row);
     check(row.real == 1.0f, "a real: read as a number");
+    settings_set_real(&settings, SettingLayer::global, "scale", 2.5);
+    settings_view_row(&settings, nullptr, SettingLayer::global, "scale", &row);
+    check(row.real == 2.5f, "a real with a decimal part: read with '.' as the mark");
     settings_view_row(&settings, nullptr, SettingLayer::global, "tint", &row);
     check(row.color == 0xFFFF8000u, "a color: read as ARGB");
 
