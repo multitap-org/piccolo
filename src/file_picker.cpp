@@ -154,6 +154,12 @@ static void add_file(FilePicker* picker, const char* name)
 // Archives list folders once per file inside them ("d/a", "d/b"): added once.
 static void add_folder_once(FilePicker* picker, const char* name)
 {
+    // The entries of one folder come together: the last folder added is
+    // nearly always the match, so the full search below is the fallback.
+    if (!picker->folders.empty() && picker->folders.back() == name)
+    {
+        return;
+    }
     for (size_t i = 0; i < picker->folders.size(); i++)
     {
         if (picker->folders[i] == name)
