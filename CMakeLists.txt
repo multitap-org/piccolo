@@ -199,6 +199,7 @@ set(PICCOLO_SOURCES
     src/piccolo_settings.cpp
     src/settings_ui.cpp
     src/settings_window.cpp
+    src/button_names.cpp
     src/input_window.cpp
     src/net_caps_ui.cpp
     src/net_window.cpp
@@ -564,6 +565,17 @@ if(MULTITAP_BUILD_TESTS)
              COMMAND piccolo_state_undo_test "${CMAKE_CURRENT_BINARY_DIR}/state_undo_test")
     set_tests_properties(piccolo_state_undo PROPERTIES
         PASS_REGULAR_EXPRESSION "state undo: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # How controls are named (the DVR's hints, INPUT): layouts, SDL's labels, the font's glyphs. No SDL.
+    add_executable(piccolo_button_names_test tools/button_names_test.cpp src/button_names.cpp)
+    target_include_directories(piccolo_button_names_test PRIVATE src)
+    target_link_libraries(piccolo_button_names_test PRIVATE frontend_common retroui_font)
+    multitap_set_project_flags(piccolo_button_names_test)
+    add_test(NAME piccolo_button_names
+             COMMAND piccolo_button_names_test "${CMAKE_CURRENT_SOURCE_DIR}/layouts")
+    set_tests_properties(piccolo_button_names PROPERTIES
+        PASS_REGULAR_EXPRESSION "button names: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     # FILE TRANSFER's target paths (MIRROR FOLDER STRUCTURE), no GUI.

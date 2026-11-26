@@ -6299,6 +6299,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
                               app->core_name, app->game_name, frame->config_now);
     file_picker_update(&app->shader_picker, &app->catalog);
     frame->dvr_now = SDL_GetTicks();
+    dvr_widget_name_keys(&app->dvr, &app->input, &app->input_sdl, &app->layouts);
     dvr_widget_prepare(&app->dvr, &app->strings, app->onscreen_pad.touch_screen, frame->dvr_now);
     // The core downloader: pick up what finished; the catalog sees
     // installed or removed cores right away.

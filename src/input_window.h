@@ -158,12 +158,17 @@ InputWindowRequest input_window_apply(InputWindow* window, const InputWindowActi
 // when it has none (never mapped, declined, or a layout that's gone).
 const InputLayout* input_window_layout(const InputSystem* input, const InputLayouts* layouts, const InputDevice* device);
 
-// A source as the user sees it on that device: "RETURN", "A", "CROSS",
+// A source as the user sees it on that device: "RETURN", "A", "✕",
 // "D-PAD UP", "LEFT STICK RIGHT", "ZL"... A button the controller's profile
 // gave a name to has that name; the rest are named by its layout, without
-// one by SDL's labels. `profile` may be nullptr.
+// one by SDL's labels (button_names.h). `profile` may be nullptr.
 void input_window_source_label(const InputSdl* sdl, const InputDevice* device, const InputLayout* layout,
                                const InputProfile* profile, InputSource source, char* out, size_t out_size);
+
+// The first control bound to `action` on that controller, named as above
+// ("" and false when nothing is bound).
+bool input_window_action_label(const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts,
+                               uint32_t controller, InputAction action, char* out, size_t out_size);
 
 // A binding's sources in `width`: all of them ("D-PAD UP, LEFT STICK UP"),
 // or when they don't fit the first and how many more ("D-PAD UP +1") with

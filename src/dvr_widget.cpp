@@ -7,10 +7,12 @@
 
 #include <SDL3/SDL.h>
 
+#include "button_names.h"
 #include "core_session.h"
 #include "hud_view.h"
 #include "imgui.h"   // the display's size, for the phone's panel (drawing only)
 #include "input_bindings.h"
+#include "input_window.h"
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui_controls.h"
@@ -382,6 +384,10 @@ static void follow_history(DvrWidget* widget)
 
 void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms)
 {
+    if (frame->ui_gamepad >= 0)
+    {
+        widget->gamepad = frame->ui_gamepad;   // (also the hotkey that opens it)
+    }
     follow_history(widget);
     if (!widget->open)
     {
@@ -619,6 +625,87 @@ static float track_place(const DvrWidget* widget, uint32_t first, uint32_t count
 
 // The view from where the cursor is now (the game stopping closes it
 // first: the history's DVR closed with it).
+// A hint's control: its name, or the RetroPad's (touch, or nothing named).
+static const char* named(const char* name, const char* retropad, bool touch)
+{
+    return touch || name[0] == '\0' ? retropad : name;
+}
+
+// The controller whose controls the hints name: the keyboard's first when
+// it was used last, else the gamepad used last, else port 1's first gamepad
+// (-1: none, the RetroPad's names).
+static int32_t hint_controller(const DvrWidget* widget, const InputSystem* input)
+{
+    InputDeviceKind kind = widget->keyboard ? InputDeviceKind::keyboard : InputDeviceKind::gamepad;
+    if (!widget->keyboard && widget->gamepad >= 0 && static_cast<size_t>(widget->gamepad) < input->controllers.size())
+    {
+        const InputDevice* device =
+            input_devices_find_const(&input->devices, input->controllers[static_cast<size_t>(widget->gamepad)].device_id);
+        if (device != nullptr && device->connected && device->kind == kind)
+        {
+            return widget->gamepad;
+        }
+    }
+    for (size_t m = 0; m < input->ports[0].size(); m++)
+    {
+        uint32_t controller = input->ports[0][m];
+        const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
+        if (device != nullptr && device->connected && device->kind == kind)
+        {
+            return static_cast<int32_t>(controller);
+        }
+    }
+    for (size_t c = 0; c < input->controllers.size(); c++)
+    {
+        const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[c].device_id);
+        if (device != nullptr && device->connected && device->kind == kind && !device->game_only)
+        {
+            return static_cast<int32_t>(c);
+        }
+    }
+    return -1;
+}
+
+void dvr_widget_name_keys(DvrWidget* widget, const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts)
+{
+    widget->key_accept[0] = '\0';
+    widget->key_watch[0] = '\0';
+    widget->key_back[0] = '\0';
+    widget->key_pages[0] = '\0';
+    if (!widget->open)
+    {
+        return;
+    }
+    int32_t found = hint_controller(widget, input);
+    if (found < 0)
+    {
+        return;
+    }
+    uint32_t controller = static_cast<uint32_t>(found);
+    input_window_action_label(input, sdl, layouts, controller, InputAction::ui_accept, widget->key_accept,
+                              sizeof(widget->key_accept));
+    input_window_action_label(input, sdl, layouts, controller, InputAction::ui_back, widget->key_back,
+                              sizeof(widget->key_back));
+    if (widget->keyboard)
+    {
+        // WATCH on the keyboard is Space, not the open-menu key (dvr_widget_draw).
+        std::snprintf(widget->key_watch, sizeof(widget->key_watch), "SPACE");
+    }
+    else
+    {
+        input_window_action_label(input, sdl, layouts, controller, InputAction::ui_open_menu, widget->key_watch,
+                                  sizeof(widget->key_watch));
+    }
+    char left[32] = {};
+    char right[32] = {};
+    bool has_left = input_window_action_label(input, sdl, layouts, controller, InputAction::ui_page_left, left, sizeof(left));
+    bool has_right = input_window_action_label(input, sdl, layouts, controller, InputAction::ui_page_right, right, sizeof(right));
+    if (has_left && has_right)
+    {
+        button_names_pair(left, right, widget->key_pages, sizeof(widget->key_pages));
+    }
+}
+
 void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool touch, uint64_t now_ms)
 {
     follow_history(widget);
@@ -712,7 +799,7 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
     {
         view->hints[n++] = {"\xE2\x97\x80\xE2\x96\xB6", piccolo_text(strings, scrub ? Str::dvr_hint_play : Str::dvr_hint_snapshot),
                             false, DvrViewAction::none};
-        view->hints[n++] = {widget->keyboard ? "PG UP DN" : "L R",
+        view->hints[n++] = {named(widget->key_pages, "L R", false),
                             piccolo_text(strings, scrub ? Str::dvr_hint_jump : Str::dvr_hint_snapshot), false,
                             DvrViewAction::none};
         if (position.lanes)
@@ -721,12 +808,13 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
                                 DvrViewAction::other_lane};
         }
     }
-    // The keys' names: the RetroPad's, or the keyboard's when it was used last.
-    bool keys = widget->keyboard && !touch;
-    view->hints[n++] = {keys ? "ENTER" : "B", piccolo_text(strings, Str::dvr_play_here), touch, DvrViewAction::play_here};
-    view->hints[n++] = {keys ? "SPACE" : "Y", piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
+    // The controls' names (dvr_widget_name_keys); touch keeps the RetroPad's.
+    view->hints[n++] = {named(widget->key_accept, "B", touch), piccolo_text(strings, Str::dvr_play_here), touch,
+                        DvrViewAction::play_here};
+    view->hints[n++] = {named(widget->key_watch, "Y", touch), piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
                         moving, DvrViewAction::watch};
-    view->hints[n++] = {keys ? "ESC" : "A", piccolo_text(strings, Str::dvr_back_to_now), false, DvrViewAction::back_to_now};
+    view->hints[n++] = {named(widget->key_back, "A", touch), piccolo_text(strings, Str::dvr_back_to_now), false,
+                        DvrViewAction::back_to_now};
     if (touch)
     {
         view->hints[n++] = {"", "\xE2\x96\xB6", false, DvrViewAction::forward};   // ▶

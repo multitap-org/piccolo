@@ -67,20 +67,7 @@ static bool was_answered(const RemapWidget* widget, uint32_t controller, uint32_
 static void remap_key_label(const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts,
                             uint32_t controller, char* out, size_t out_size)
 {
-    out[0] = '\0';
-    const InputController* mapped = &input->controllers[controller];
-    const InputDevice* device = input_devices_find_const(&input->devices, mapped->device_id);
-    const InputSource* sources = mapped->bindings.sources[static_cast<uint32_t>(InputAction::hotkey_remap)];
-    for (uint32_t s = 0; s < INPUT_SOURCES_PER_ACTION; s++)
-    {
-        if (sources[s].type != InputSourceType::none)
-        {
-            const InputProfile* profile = device != nullptr ? input_profile(input, device->guid) : nullptr;
-            input_window_source_label(sdl, device, input_window_layout(input, layouts, device), profile, sources[s], out,
-                                      out_size);
-            return;
-        }
-    }
+    input_window_action_label(input, sdl, layouts, controller, InputAction::hotkey_remap, out, out_size);
 }
 
 // A controller this widget asks about: local, connected, not a mouse, with
