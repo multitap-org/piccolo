@@ -21,6 +21,7 @@
 
 #include "about_window.h"
 #include "debug_window.h"
+#include "dvr_view.h"
 #include "guest_window.h"
 #include "hud_view.h"
 #include "localization.h"
@@ -54,6 +55,7 @@ struct DebugPreviews
     GuestWindow        guest;          // REMOTE PLAY (its picture: none)
     QuickMenu          quick;          // its slots: a few used, no pictures
     MobileHome         phone;          // the phone's HOME and ☰
+    DvrView            phone_dvr;      // the DVR's phone panel: five empty pictures, a kept lane
 };
 
 // What the preview shows this frame (UiView).
@@ -65,6 +67,7 @@ struct DebugPreviewView
     GuestWindowState guest = {};
     QuickMenuState   quick = {};
     MobileHomeState  phone = {};
+    DvrViewText      dvr_text = {};
 };
 
 // What was pressed in it (UiActions): only closing it counts.
@@ -75,6 +78,7 @@ struct DebugPreviewActions
     GuestWindowAction guest = {};
     QuickMenuAction   quick = {};
     MobileHomeAction  phone = {};
+    DvrViewInput      dvr = {};
 };
 
 // Shows `which` (another one shown ends), from its first step's fake state.

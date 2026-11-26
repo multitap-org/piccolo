@@ -3772,6 +3772,22 @@ msgctxt "dvr_lane_kept"
 msgid "KEPT LANE"
 msgstr "LÍNEA GUARDADA"
 
+msgctxt "dvr_tab_recorded"
+msgid "RECORDED"
+msgstr "GRABADA"
+
+msgctxt "dvr_tab_kept"
+msgid "KEPT"
+msgstr "GUARDADA"
+
+msgctxt "dvr_jump_back"
+msgid "-5 S"
+msgstr "-5 S"
+
+msgctxt "dvr_jump_forward"
+msgid "+5 S"
+msgstr "+5 S"
+
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
 msgstr "REBOBINAR: NADA GRABADO TODAVÍA"

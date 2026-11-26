@@ -3497,13 +3497,29 @@ static void prepare_game_picture(App* app, UiView* view)
         // Upright with the touch gamepad under it: the picture keeps the top.
         input.window_height = static_cast<uint32_t>(app->onscreen_pad.picture_height);
     }
-    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale);
+    float strip = app->phone_ui ? 0.0f : dvr_widget_strip_height(&app->dvr, app->ui_scale);
     if (strip > 0.0f && static_cast<float>(input.window_height) > strip)
     {
         // The DVR's strip at the bottom: the game shrinks into the space above.
         input.window_height -= static_cast<uint32_t>(strip);
     }
+    // The phone's DVR: the game in the room its panel leaves (upright the
+    // top, full width; sideways the left), centered at the top of it.
+    float dvr_width = 0.0f;
+    float dvr_height = 0.0f;
+    bool phone_dvr = app->phone_ui && dvr_widget_phone_game_area(&app->dvr, screen_width, screen_height, app->ui_scale,
+                                                                 static_cast<float>(input.core_aspect), &dvr_width,
+                                                                 &dvr_height);
+    if (phone_dvr)
+    {
+        input.window_width = static_cast<uint32_t>(dvr_width);
+        input.window_height = static_cast<uint32_t>(dvr_height);
+    }
     piccolo_settings_viewport(&app->settings, &input);
+    if (phone_dvr)
+    {
+        input.anchor = ViewportAnchor::top;
+    }
     // A phone held upright: the picture always at the top, centered, menu up
     // or not (Andrés, 2026-11-25: opening the menu hid the pad and the picture
     // moved to the middle; the top left corner looked lost).
@@ -5518,7 +5534,7 @@ static void hud_fill(App* app, UiView* view)
     area.right = view->screen_width / block;
     area.top = 0.0f;
     area.bottom = view->screen_height / block - HUD_VIEW_MARGIN;
-    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
+    float strip = app->phone_ui ? 0.0f : dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
     if (strip > 0.0f && view->screen_height / block - strip - HUD_VIEW_GAP < area.bottom)
     {
         area.bottom = view->screen_height / block - strip - HUD_VIEW_GAP;
@@ -5717,7 +5733,8 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
                              app->game_name, app->shader_library.loaded, frame->config_now);
     file_picker_state(&view->shader_picker, &app->shader_picker, &app->catalog, &app->strings);
     ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, SDL_GetTicks());
-    dvr_widget_state(&view->dvr, &app->dvr, &app->strings);
+    float game_aspect = game_running(app) ? static_cast<float>(app->session.host->av_info.geometry.aspect_ratio) : 0.0f;
+    dvr_widget_state(&view->dvr, &app->dvr, &app->strings, app->phone_ui, game_aspect);
     core_options_state(app, &view->manager);
     cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
 

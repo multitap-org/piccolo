@@ -153,6 +153,7 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     preview_button(action, "HOME", DebugPreview::phone_home, false);
     preview_button(action, "HOME, no games", DebugPreview::phone_home_empty, true);
     preview_button(action, "MENU over a game", DebugPreview::phone_menu, true);
+    preview_button(action, "DVR", DebugPreview::phone_dvr, true);
 }
 
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)

@@ -4,6 +4,7 @@
 #include "debug_preview.h"
 
 #include "net_caps_ui.h"
+#include "piccolo_text.h"
 
 #include <cstdio>
 
@@ -37,6 +38,28 @@ static const MobileGameRow PREVIEW_GAMES[] = {
 static bool is_phone(DebugPreview preview)
 {
     return preview >= DebugPreview::phone_home && preview <= DebugPreview::phone_menu;
+}
+
+// The DVR's phone panel: SCRUB 27 s back, five pictures (not made: empty
+// cards), a kept lane from between the third and fourth.
+static void show_phone_dvr(DebugPreviews* previews)
+{
+    DvrView* view = &previews->phone_dvr;
+    *view = DvrView{};
+    const char* labels[5] = {"-0:40", "-0:35", "-0:30", "-0:25", "-0:20"};
+    view->count = 5;
+    view->selected = 2;
+    view->between = 0.45f;
+    view->touch = true;
+    for (uint32_t i = 0; i < view->count; i++)
+    {
+        std::snprintf(view->thumbs[i].label, sizeof(view->thumbs[i].label), "%s", labels[i]);
+        view->thumbs[i].after = i > view->selected;
+    }
+    view->lanes = true;
+    view->fork_at = 2.6f;
+    view->upper_end = 4.3f;
+    view->lower_end = 4.8f;
 }
 
 static bool is_guest(DebugPreview preview)
@@ -240,6 +263,10 @@ void debug_preview_show(DebugPreviews* previews, DebugPreview which)
     {
         show_quick(previews);
     }
+    else if (which == DebugPreview::phone_dvr)
+    {
+        show_phone_dvr(previews);
+    }
 }
 
 void debug_preview_end(DebugPreviews* previews)
@@ -259,7 +286,7 @@ bool debug_preview_shown(const DebugPreviews* previews)
 
 bool debug_preview_covers_screen(const DebugPreviews* previews)
 {
-    return is_phone(previews->shown);
+    return is_phone(previews->shown) || previews->shown == DebugPreview::phone_dvr;
 }
 
 void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open)
@@ -304,6 +331,20 @@ void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, 
                          const char* version, const RetroUiMenu* menus, int32_t menu_count)
 {
     view->shown = previews->shown;
+    if (previews->shown == DebugPreview::phone_dvr)
+    {
+        DvrViewText* text = &view->dvr_text;
+        text->title = piccolo_text(strings, Str::dvr_title);
+        text->mode = piccolo_text(strings, Str::dvr_mode_scrub);
+        text->readout = "-0:27.8";
+        text->exit = piccolo_text(strings, Str::dvr_back_to_now);
+        text->play_here = piccolo_text(strings, Str::dvr_play_here);
+        text->watch = piccolo_text(strings, Str::dvr_watch);
+        text->jump_back = piccolo_text(strings, Str::dvr_jump_back);
+        text->jump_forward = piccolo_text(strings, Str::dvr_jump_forward);
+        text->lane_recorded = piccolo_text(strings, Str::dvr_tab_recorded);
+        text->lane_kept = piccolo_text(strings, Str::dvr_tab_kept);
+    }
     if (is_phone(previews->shown))
     {
         MobileHomeState* phone = &view->phone;
@@ -367,6 +408,16 @@ void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, R
     {
         quick_menu_draw(&previews->quick, &view->quick, pixel_font, scale, &actions->quick);
     }
+    else if (view->shown == DebugPreview::phone_dvr)
+    {
+        // At the phone's touch scale; the game's room is left empty.
+        const ImGuiIO& io = ImGui::GetIO();
+        int32_t phone_scale = touch_ui_scale_for(io.DisplaySize.x, io.DisplaySize.y);
+        float block = static_cast<float>(phone_scale);
+        DvrPhoneAreas areas;
+        dvr_view_phone_areas(&previews->phone_dvr, io.DisplaySize.x / block, io.DisplaySize.y / block, 4.0f / 3.0f, &areas);
+        dvr_view_draw_phone(&previews->phone_dvr, pixel_font, phone_scale, &view->dvr_text, &areas, &actions->dvr);
+    }
     else if (is_phone(view->shown))
     {
         // At the phone's touch scale whatever the screen (the desktop's is smaller).
@@ -399,6 +450,9 @@ void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* act
     {
         previews->shown = DebugPreview::phone_menu;
     }
+    // The DVR's: BACK TO NOW or PLAY FROM HERE ends it; the rest is ignored.
+    closed = closed || (previews->shown == DebugPreview::phone_dvr && (actions->dvr.action == DvrViewAction::back_to_now ||
+                                                                        actions->dvr.action == DvrViewAction::play_here));
     closed = closed || (is_phone(previews->shown) &&
                         (actions->phone.close_menu || actions->phone.picked != RETRO_UI_MENU_NONE || actions->phone.rotate));
     if (closed)

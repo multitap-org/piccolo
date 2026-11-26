@@ -47,6 +47,7 @@ enum class DebugPreview
     phone_home,                // HOME with recent games
     phone_home_empty,          // HOME, no recent games yet
     phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
+    phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
 };
 
 struct DebugWindowState
