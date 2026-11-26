@@ -16,8 +16,7 @@
 //
 // The core is picked first; the file list shows only what that core says it
 // can load (its own extension list, from the core catalog). FILTER narrows
-// both lists to the names with its text in them. A phone held upright has
-// the folders above the files (a fifth of the room) instead of beside them. Double-click a
+// both lists to the names with its text in them. Double-click a
 // file or press LOAD to start it; click a folder to open it.
 //
 // Zip and 7z archives are always in the file list (never filtered: what's
