@@ -163,7 +163,8 @@ void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t
 // Why it didn't open, as a notification card for a few seconds (hud_view).
 void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms);
 
-// For SETTINGS > GENERAL: what AUTO chose for the running game ("" = nothing).
+// For SETTINGS > GENERAL: AUTO measuring, or no savestates ("" = nothing; the
+// mode in use is the caller's CURRENT MODE).
 void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char* out, size_t out_size);
 
 // Frees the thumbnails (the history goes with the game: core_session_stop).

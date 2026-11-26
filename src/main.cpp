@@ -3198,17 +3198,15 @@ static void handle_links(App* app)
     {
         SDL_Log("Link: %s", link.c_str());
         SDL_RaiseWindow(app->shell.window);
-        // A guest link (piccolo://join/...): guests play in piccoletto (Andrés,
-        // 2026-11-22), so it goes to piccoletto in the browser.
+        // A guest link (piccolo://join/...): guests play in piccoletto; piccolo
+        // has no player of its own yet (it may get one), so it only says so
+        // (Andrés, testing round 3: no more handing it to the browser).
         NetGuestLink guest;
         char beacon[NET_GUEST_MAX_BEACON];
         if (net_guest_link_parse(link.c_str(), &guest, beacon, sizeof(beacon)))
         {
-            std::string web = std::string("https://get-piccolo.app/play/piccoletto/#join=") + guest.room + "." +
-                              guest.token + (beacon[0] != '\0' ? std::string("&b=") + beacon : std::string());
             net_guest_link_wipe(&guest);
             set_status(app, piccolo_text(&app->strings, Str::status_guest_link));
-            SDL_OpenURL(web.c_str());
             continue;
         }
         std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " + link;
@@ -3710,9 +3708,9 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
     notes.rewind_note = app->rewind_note;
     notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
-    // The mode the running game records in now, after AUTO's choice:
-    // "THIS GAME: AUTO CHOSE SCRUB / CURRENT: SCRUB" (Andrés, testing round 3;
-    // REWIND's header used to say it). Measuring or no savestates: that note alone.
+    // The mode the running game records in now: "CURRENT MODE: SCRUB"
+    // (Andrés, testing round 3; REWIND's header used to say it). Measuring or
+    // no savestates: that note instead.
     if (game_running(app) && (app->dvr.rewind.state == CoreRewindState::off ||
                               app->dvr.rewind.state == CoreRewindState::scrub ||
                               app->dvr.rewind.state == CoreRewindState::snapshots))
@@ -5422,6 +5420,18 @@ static void net_update_locked(App* app)
 // with or without a game, and also for the windows that open over the game
 // itself (a pairing request, PAIR, REMOTE PLAY). Widgets and modals don't
 // dim the screen themselves. ARGB; alpha 0 for none.
+// BACKGROUND at its opacity (100 - BACKGROUND TRANSPARENCY) over black: the
+// screen's color without a game, as the backdrop looks over a game's borders.
+static uint32_t background_over_black(const RetroUiPalette* palette)
+{
+    uint32_t transparency = palette->background_transparency > 100 ? 100 : palette->background_transparency;
+    uint32_t opacity = 100u - transparency;
+    uint32_t red = ((palette->background >> 16) & 0xFFu) * opacity / 100u;
+    uint32_t green = ((palette->background >> 8) & 0xFFu) * opacity / 100u;
+    uint32_t blue = (palette->background & 0xFFu) * opacity / 100u;
+    return 0xFF000000u | (red << 16) | (green << 8) | blue;
+}
+
 static uint32_t menu_backdrop(const App* app)
 {
     RetroUiPalette palette = {};
@@ -5430,7 +5440,8 @@ static uint32_t menu_backdrop(const App* app)
     // (Not DEBUG: it's watched while playing.)
     bool window_over_game = app->pair_window.open || app->guest_window.open ||
                             (app->pair_window.request.active && !pair_request_in_game(app));
-    if ((!ui_is_up(app) && !window_over_game) || transparency >= 100)
+    // (No game: the screen is that color already, background_over_black.)
+    if ((!ui_is_up(app) && !window_over_game) || transparency >= 100 || !game_running(app))
     {
         return 0;
     }
@@ -6080,8 +6091,11 @@ static bool app_frame(App* app)
     RetroUiPalette palette = {};
     piccolo_settings_palette(&app->settings, &palette);   // the Interface settings, live
     ui_toolkit_set_palette(&palette);
-    // BACKGROUND behind the menu; while a game runs, black around its picture.
-    uint32_t back = game_running(app) ? 0xFF000000u : palette.background;
+    // While a game runs, black around its picture (the menu's backdrop covers
+    // it in BACKGROUND at its transparency). Without one, the same color that
+    // makes over black: BACKGROUND at 100 - TRANSPARENCY over black, so the
+    // menu bar stands out as it does over a game (Andrés, testing round 3).
+    uint32_t back = game_running(app) ? 0xFF000000u : background_over_black(&palette);
     ClearColor background = {static_cast<float>((back >> 16) & 0xFFu) / 255.0f,
                              static_cast<float>((back >> 8) & 0xFFu) / 255.0f, static_cast<float>(back & 0xFFu) / 255.0f,
                              1.0f};

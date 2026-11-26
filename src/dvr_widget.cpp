@@ -784,13 +784,7 @@ void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char*
         break;
     case CoreRewindState::scrub:
     case CoreRewindState::snapshots:
-        if (widget->rewind.settings.mode == RewindMode::automatic)
-        {
-            std::snprintf(out, out_size, "%s %s", piccolo_text(strings, Str::rewind_note_chose),
-                          piccolo_text(strings, widget->rewind.state == CoreRewindState::scrub ? Str::value_rewind_scrub
-                                                                                               : Str::value_rewind_snapshots));
-        }
-        break;
+        break;   // (the caller says CURRENT MODE: AUTO's choice is that mode)
     case CoreRewindState::off:
         break;
     }

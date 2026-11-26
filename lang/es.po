@@ -3656,10 +3656,6 @@ msgctxt "value_memory_2048"
 msgid "2 GB"
 msgstr "2 GB"
 
-msgctxt "rewind_note_chose"
-msgid "THIS GAME: AUTO CHOSE"
-msgstr "ESTE JUEGO: AUTO ELIGIÓ"
-
 msgctxt "rewind_note_current"
 msgid "CURRENT MODE:"
 msgstr "MODO ACTUAL:"
@@ -3961,8 +3957,8 @@ msgid "%s LEFT THE SESSION"
 msgstr "%s SALIÓ DE LA SESIÓN"
 
 msgctxt "status_guest_link"
-msgid "GUEST LINKS OPEN IN PICCOLETTO: OPENING IT IN THE BROWSER"
-msgstr "LOS ENLACES DE INVITADO SE ABREN EN PICCOLETTO: SE ABRE EN EL NAVEGADOR"
+msgid "REMOTE PLAY UNSUPPORTED, USE PICCOLETTO"
+msgstr "JUEGO REMOTO NO DISPONIBLE, USA PICCOLETTO"
 
 msgctxt "menu_pair"
 msgid "PAIR..."
