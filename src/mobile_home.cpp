@@ -20,6 +20,7 @@ constexpr float SMALL_BUTTON = 18.0f;   // CLEAR ALL
 constexpr float GAME_ROW     = 34.0f;   // a recent game: two lines
 constexpr float MENU_ROW     = 24.0f;   // an item in the sidebar
 constexpr float ROW_GAP      = 4.0f;
+constexpr float ROW_INSET    = 5.0f;    // RESUME inside a selected row
 constexpr float SECTION_GAP  = 8.0f;    // above a menu's name in the sidebar
 constexpr float SIDE_COLUMN  = 120.0f;  // landscape HOME: LOAD GAME's column
 constexpr int32_t HEADER_ICONS = 2;     // ROTATE, ☰
@@ -118,14 +119,34 @@ static void keep_focus_in_view(const TouchFocus* focus, float top, float height,
 // HOME
 
 // One recent game: its name, the core under it; tapping it starts it.
-static bool draw_game(const TouchUi* ui, const MobileGameRow* game, int32_t index, float x, float y, float width)
+// A recent game's row. A tap only selects it (Andrés: a game opening on a
+// tap is bound for mistakes, a scroll or a stray touch): the selected row is
+// outlined and has RESUME at its right, which starts the game (its
+// automatic state, if it has one). Returns the row tapped; *resume RESUME.
+static bool draw_game(const TouchUi* ui, const MobileGameRow* game, int32_t index, float x, float y, float width,
+                      bool selected, const char* resume_label, bool* resume)
 {
     const RetroUiPalette* palette = &ui->palette;
     char id[32];
+    float row_width = width;
+    if (selected)
+    {
+        float button_width = touch_ui_text_width(ui, resume_label, TouchText::normal) + 16.0f;
+        float button_x = x + width - ROW_INSET - button_width;
+        row_width = button_x - ROW_INSET - x;
+        touch_ui_rect(ui, x, y, width, GAME_ROW, palette->panel_face);   // under RESUME
+        std::snprintf(id, sizeof(id), "##resume%d", static_cast<int>(index));
+        *resume = touch_ui_button(ui, id, button_x, y + ROW_INSET, button_width, GAME_ROW - 2.0f * ROW_INSET,
+                                  resume_label, TouchButton::primary, TouchText::normal);
+    }
     std::snprintf(id, sizeof(id), "##game%d", static_cast<int>(index));
-    bool tapped = touch_ui_button(ui, id, x, y, width, GAME_ROW, nullptr, TouchButton::card, TouchText::normal);
-    // A long name is cut at the row's edge.
-    touch_ui_push_clip(ui, x, y, width - CARD_PADDING * 0.5f, GAME_ROW);
+    bool tapped = touch_ui_button(ui, id, x, y, row_width, GAME_ROW, nullptr, TouchButton::card, TouchText::normal);
+    if (selected)
+    {
+        touch_ui_outline(ui, x, y, width, GAME_ROW, 1.0f, palette->highlight);
+    }
+    // A long name is cut at the row's edge (RESUME's, when selected).
+    touch_ui_push_clip(ui, x, y, row_width - CARD_PADDING * 0.5f, GAME_ROW);
     float line = y + 7.0f;
     touch_ui_text(ui, x + CARD_PADDING, line, game->name, palette->text_highlight, TouchText::normal);
     line += touch_ui_text_height(ui, TouchText::normal) + 5.0f;
@@ -169,6 +190,7 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
     TouchFocus focus;
     TouchUi list_ui = *ui;
     list_ui.focus = &focus;
+    const char* resume_label = piccolo_text(state->strings, Str::continue_resume);
     touch_ui_push_clip(ui, x, y, width, height);
     for (int32_t i = first; i < state->game_count; i++)
     {
@@ -176,7 +198,13 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
         int32_t row = (i - first) / columns;
         float row_x = x + static_cast<float>(column) * (column_width + ROW_GAP);
         float row_y = y + static_cast<float>(row) * (GAME_ROW + ROW_GAP) - home->scroll;
-        if (draw_game(&list_ui, &state->games[i], i, row_x, row_y, column_width))
+        bool resume = false;
+        if (draw_game(&list_ui, &state->games[i], i, row_x, row_y, column_width, home->selected == i, resume_label,
+                      &resume))
+        {
+            home->selected = i;
+        }
+        if (resume)
         {
             action->picked = state->first_game_id + i;
         }
@@ -496,6 +524,10 @@ void mobile_home_draw(MobileHome* home, const MobileHomeState* state, RetroUiFon
                       MobileHomeAction* action)
 {
     *action = MobileHomeAction{};
+    if (!state->home_shown || home->selected >= state->game_count)
+    {
+        home->selected = -1;   // a game runs (the list changes when it closes), or the list got shorter
+    }
     if (!state->home_shown && !state->menu_shown)
     {
         return;

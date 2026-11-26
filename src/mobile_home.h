@@ -50,6 +50,7 @@ struct MobileHome
     float   scroll      = 0.0f;    // HOME's list, retro pixels
     float   menu_scroll = 0.0f;    // the sidebar's
     MobileDrag drag;               // HOME's list
+    int32_t selected = -1;         // the recent game tapped (games[]): its row shows RESUME, which starts it
     MobileDrag menu_drag;          // the sidebar's
 };
 
