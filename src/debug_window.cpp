@@ -139,6 +139,37 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     preview_button(action, "QUICK MENU, SAVE STATES open", DebugPreview::quick_menu, true);
 }
 
+// The easter eggs: the menu snow and its sleigh (retroui's snow_view).
+static void draw_easter_eggs(const DebugWindowState* state, DebugWindowAction* action)
+{
+    static const char* const SNOW_NAMES[3] = {"AUTO", "ON", "OFF"};
+    uint32_t current = static_cast<uint32_t>(action->snow);
+    retro_ui_label("SNOW");
+    retro_ui_same_line();
+    if (retro_ui_begin_choice("snow", SNOW_NAMES[current]))
+    {
+        for (uint32_t i = 0; i < 3; i++)
+        {
+            if (retro_ui_choice_item(i, SNOW_NAMES[i], i == current))
+            {
+                action->snow = static_cast<DebugSnow>(i);
+            }
+        }
+        retro_ui_end_choice();
+    }
+    retro_ui_dim_text(state->snow_in_season ? "AUTO: in season (December 24 to 28), it falls."
+                                            : "AUTO: out of season (December 24 to 28), no snow.",
+                      nullptr);
+    retro_ui_dim_text("It falls on the empty background and MAIN MENU only; not saved.", nullptr);
+    retro_ui_begin_disabled(!state->snow_falling);
+    press(action, retro_ui_button("SLEIGH NOW"), DebugWindowPress::sleigh_now);
+    retro_ui_end_disabled();
+    retro_ui_same_line();
+    retro_ui_dim_text(state->snow_falling ? "On December 25 it crosses once a minute."
+                                          : "The snow must be falling: set SNOW to ON first.",
+                      nullptr);
+}
+
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)
 {
     *action = {};
@@ -147,6 +178,7 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         action->icons_forced[i] = state->icons_forced[i];
     }
     action->pair_request_card = state->pair_request_card;
+    action->snow = state->snow;
 
     retro_ui_push_theme(pixel_font, scale);
     RetroUiWindow window = {};
@@ -169,6 +201,10 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         if (retro_ui_section_header("previews", "Dialogs (preview)", false))
         {
             draw_previews(state, action);
+        }
+        if (retro_ui_section_header("easter_eggs", "Easter eggs", false))
+        {
+            draw_easter_eggs(state, action);
         }
     }
     retro_ui_window_end();

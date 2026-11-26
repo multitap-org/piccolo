@@ -45,6 +45,15 @@ enum class DebugPreview
     quick_menu,                // QUICK MENU with SAVE STATES open (quick_menu.h): no game needed
 };
 
+// MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced
+// on or off, or left to the season. Kept in memory only, never saved.
+enum class DebugSnow
+{
+    automatic,   // AUTO: December 24 to 28, local date
+    on,
+    off,
+};
+
 struct DebugWindowState
 {
     // About
@@ -81,6 +90,11 @@ struct DebugWindowState
     bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
     bool about_open = false;          // the real ABOUT
     bool guest_open = false;          // the real REMOTE PLAY
+
+    // EASTER EGGS
+    DebugSnow snow = DebugSnow::automatic;
+    bool snow_in_season = false;      // today is in the snow's season (local date)
+    bool snow_falling = false;        // the snow shows now (the empty background or MAIN MENU)
 };
 
 enum class DebugWindowPress
@@ -99,6 +113,7 @@ enum class DebugWindowPress
     card_link_copied,     // REMOTE PLAY's LINK COPIED TO THE CLIPBOARD
     card_pair_timed_out,  // PAIRING TIMED OUT
     card_pair_failed,     // PAIRING FAILED
+    sleigh_now,           // the December 25 sleigh crosses now (the snow must be falling)
 };
 
 struct DebugWindowAction
@@ -108,8 +123,9 @@ struct DebugWindowAction
     bool icons_forced[DEBUG_WINDOW_ICON_COUNT] = {};   // the checkboxes after this frame
     bool pair_request_card = false;                    // its checkbox after this frame
     DebugPreview preview = DebugPreview::none;         // a preview to show
+    DebugSnow snow = DebugSnow::automatic;             // SNOW after this frame
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).
-// action->icons_forced and pair_request_card start as the state's.
+// action->icons_forced, pair_request_card and snow start as the state's.
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);

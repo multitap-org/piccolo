@@ -9,6 +9,7 @@
 // host-libretro test frontend. Cores, saves, states and settings live in
 // piccolo's own folder (app_paths.h: ~/.local/share/piccolo on Linux).
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -65,6 +66,7 @@
 #include "remap_widget.h"
 #include "screen_effects.h"
 #include "screenshot_writer.h"
+#include "snow_view.h"
 #include "state_widget.h"
 #include "debug_window.h"
 #include "debug_preview.h"
@@ -122,6 +124,17 @@ struct App
 
     bool     running = false;
     bool     show_debug_window = false;
+
+    // The menu snow (retroui's snow_view), an easter egg with no setting
+    // (Andrés, 2026-11-25): it falls by itself in season on the empty
+    // background and MAIN MENU. MENU > DEBUG forces it (memory only).
+    SnowView  snow = {};
+    bool      snow_started = false;          // snow_view_start done once
+    bool      snow_was_shown = false;        // it showed last frame
+    DebugSnow snow_debug = DebugSnow::automatic;
+    bool      snow_in_season = false;        // the local date, checked once a minute
+    bool      snow_sleigh_day = false;
+    uint64_t  snow_date_checked_ms = 0;
 
     RetroUiFont* pixel_font = nullptr;   // piccolo's pixel font, as the GUI toolkit holds it (ui_toolkit_start)
     int32_t ui_scale   = 1;         // window pixels per retro pixel
@@ -3934,6 +3947,9 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->pair_open = app->pair_window.open;
     state->about_open = app->about_window.open;
     state->guest_open = app->guest_window.open;
+    state->snow = app->snow_debug;
+    state->snow_in_season = app->snow_in_season;
+    state->snow_falling = app->snow_was_shown;
 }
 
 // What was pressed in the debug window.
@@ -3947,6 +3963,7 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
     {
         app->state_icons.debug_show[i] = action->icons_forced[i];
     }
+    app->snow_debug = action->snow;
 
     uint64_t now_ms = SDL_GetTicks();
     debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
@@ -4025,6 +4042,9 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::card_pair_failed:
         debug_preview_show_card(&app->debug_previews, DebugCard::pair_failed, now_ms);
+        break;
+    case DebugWindowPress::sleigh_now:
+        snow_view_sleigh_now(&app->snow);
         break;
     }
     if (dvr_card < 3)
@@ -5453,6 +5473,64 @@ static void hud_fill(App* app, UiView* view)
     view->hud_now_ms = now_ms;
 }
 
+// The menu snow: in season (December 24 to 28, local date) or forced
+// from MENU > DEBUG, only while MAIN MENU's bar is up (the empty background,
+// the menu over a game); never in GAME or a widget. Shown again after a
+// while away, it starts from the sky. The sleigh crosses on December 25.
+constexpr uint64_t SNOW_DATE_CHECK_MS = 60 * 1000;
+
+static void snow_fill(App* app, UiView* view)
+{
+    uint64_t now_ms = SDL_GetTicks();
+    if (app->snow_date_checked_ms == 0 || now_ms - app->snow_date_checked_ms >= SNOW_DATE_CHECK_MS)
+    {
+        app->snow_date_checked_ms = now_ms > 0 ? now_ms : 1;
+        SDL_Time time = 0;
+        SDL_DateTime date = {};
+        if (SDL_GetCurrentTime(&time) && SDL_TimeToDateTime(time, &date, true))
+        {
+            app->snow_in_season = snow_view_in_season(date.month, date.day);
+            app->snow_sleigh_day = snow_view_is_sleigh_day(date.month, date.day);
+        }
+    }
+    bool wanted = app->snow_in_season;
+    if (app->snow_debug == DebugSnow::on)
+    {
+        wanted = true;
+    }
+    else if (app->snow_debug == DebugSnow::off)
+    {
+        wanted = false;
+    }
+    bool shown = wanted && view->menu_shown;
+    if (shown && !app->snow_was_shown)
+    {
+        if (!app->snow_started)
+        {
+            snow_view_start(&app->snow, static_cast<uint32_t>(SDL_GetPerformanceCounter()));
+            app->snow_started = true;
+        }
+        else
+        {
+            snow_view_restart(&app->snow);
+        }
+    }
+    app->snow_was_shown = shown;
+    view->snow = nullptr;
+    if (!shown)
+    {
+        return;
+    }
+    float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
+    // Whole retro pixels, the last one cut by the screen's edge included.
+    int32_t width = static_cast<int32_t>(std::ceil(view->screen_width / block));
+    int32_t height = static_cast<int32_t>(std::ceil(view->screen_height / block));
+    snow_view_set_area(&app->snow, width, height);
+    snow_view_set_sleigh_day(&app->snow, app->snow_sleigh_day);
+    snow_view_update(&app->snow, now_ms);
+    view->snow = &app->snow;
+}
+
 // ---------------------------------------------------------------------------
 // The frame's UI: updates, view, (ui_draw), apply. None of these draw: a
 // different GUI toolkit would leave them as they are.
@@ -5599,6 +5677,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
     view->menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
     ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
+    snow_fill(app, view);
     hud_fill(app, view);
     view->backdrop_alpha = menu_backdrop_alpha(app);
     status_line_text(app, view->status, sizeof(view->status));

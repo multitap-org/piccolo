@@ -66,6 +66,12 @@ static int32_t draw_status_and_menu_bar(const UiView* view, const PortsWidget* p
 void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, int32_t scale, UiActions* actions)
 {
     draw_game(view);   // background, behind everything
+    // The menu snow, on the same background list after the game: over the
+    // picture, behind every window and the menu bar.
+    if (view->snow != nullptr)
+    {
+        snow_view_draw(view->snow, 0.0f, 0.0f, scale);
+    }
     // The touch gamepad over the game (or its EDIT LAYOUT).
     onscreen_pad_draw(windows->pad, &view->pad, pixel_font, &actions->pad);
     // The ports' tabs, behind every window (they peek while the menu is up).
