@@ -197,6 +197,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
     settings_ui_row(ui, PICCOLO_PAUSE_ON_FOCUS_LOSS, nullptr);
     settings_ui_row(ui, PICCOLO_PAUSE_ON_DISCONNECT, nullptr);
     settings_ui_row(ui, PICCOLO_SCREENSAVER_WHEN_PAUSED, nullptr);
+    settings_ui_row(ui, PICCOLO_SAVESTATE_ON_EXIT, nullptr);
     if (state->game_mode_supported)   // Linux only: nothing to turn on elsewhere
     {
         settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);

@@ -39,6 +39,7 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_general, none, none, PICCOLO_PAUSE_ON_FOCUS_LOSS);
     add_row(rows, Str::tab_general, none, none, PICCOLO_PAUSE_ON_DISCONNECT);
     add_row(rows, Str::tab_general, none, none, PICCOLO_SCREENSAVER_WHEN_PAUSED);
+    add_row(rows, Str::tab_general, none, none, PICCOLO_SAVESTATE_ON_EXIT);
     if (game_mode_supported())
     {
         add_row(rows, Str::tab_general, none, none, PICCOLO_GAME_MODE);

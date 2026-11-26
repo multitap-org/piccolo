@@ -209,6 +209,8 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_SCREENSAVER_WHEN_PAUSED, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_screensaver),
      .help = text_id(Str::setting_screensaver_help)},
+    {.key = PICCOLO_SAVESTATE_ON_EXIT, .type = SettingType::boolean, .default_value = "true", .overridable = true,
+     .label = text_id(Str::setting_savestate_on_exit), .help = text_id(Str::setting_savestate_on_exit_help)},
     // Input (overridable per core / game; the bindings are per controller, in input.cfg)
     {.key = PICCOLO_INPUT_SHARE_PORT1, .type = SettingType::boolean, .default_value = "true", .overridable = true,
      .label = text_id(Str::setting_input_share_port1), .help = text_id(Str::setting_input_share_port1_help)},

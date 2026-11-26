@@ -54,6 +54,8 @@ status_reset = RESET
 status_undo_save = SAVE STATE UNDONE, SLOT %u
 status_undo_load = LOAD STATE UNDONE
 status_undo_nothing = NOTHING TO UNDO
+status_resumed = RESUMED WHERE YOU LEFT OFF
+status_resume_failed = COULD NOT RESUME WHERE YOU LEFT OFF
 
 # LOAD GAME window
 picker_title = LOAD GAME
@@ -270,6 +272,8 @@ setting_pause_on_disconnect = PAUSE WHEN CONTROLLERS DISCONNECT
 setting_pause_on_disconnect_help = Pause when the last controller playing goes away (unplugged, out of battery, a phone that dropped). Not when the keyboard, the mouse, a device's pad or the on-screen pad was what played. It goes on when a controller is back, or when the keyboard plays.
 setting_screensaver = ALLOW SCREENSAVER WHILE PAUSED
 setting_screensaver_help = While a game runs the screensaver is always blocked. On: it may start while paused or in the menu.
+setting_savestate_on_exit = SAVE STATE ON EXIT
+setting_savestate_on_exit_help = Closing a game saves where you are; starting it again continues from there. UNDO LOAD STATE goes back to the start.
 setting_game_mode = GAME MODE
 setting_show_fps = SHOW FPS
 setting_show_fps_help = A corner of the screen shows the core's frames per second against its own rate, the screen's rate and how long each frame's work takes.

@@ -45,6 +45,10 @@ constexpr const char* PICCOLO_PAUSE_ON_FOCUS_LOSS = "pause_on_focus_loss";
 // what played); START (joining a port, or on one) resumes.
 constexpr const char* PICCOLO_PAUSE_ON_DISCONNECT = "pause_on_disconnect";
 constexpr const char* PICCOLO_SCREENSAVER_WHEN_PAUSED = "screensaver_when_paused";
+// SAVE STATE ON EXIT (on by default, Andrés 2026-11-26): closing a game
+// saves its AUTO state ("<game>.state.auto"), starting it again loads it.
+// May be set per core / game (a core whose states misbehave).
+constexpr const char* PICCOLO_SAVESTATE_ON_EXIT = "savestate_on_exit";
 constexpr const char* PICCOLO_GAME_MODE = "game_mode";
 constexpr const char* PICCOLO_SHOW_FPS = "show_fps";   // fps_meter.h
 // Rewind (SETTINGS > GENERAL > REWIND; core_rewind.h). REWIND may be set per

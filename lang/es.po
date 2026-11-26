@@ -134,6 +134,14 @@ msgctxt "status_undo_nothing"
 msgid "NOTHING TO UNDO"
 msgstr "NADA QUE DESHACER"
 
+msgctxt "status_resumed"
+msgid "RESUMED WHERE YOU LEFT OFF"
+msgstr "SIGUES DONDE LO DEJASTE"
+
+msgctxt "status_resume_failed"
+msgid "COULD NOT RESUME WHERE YOU LEFT OFF"
+msgstr "NO SE PUDO SEGUIR DONDE LO DEJASTE"
+
 msgctxt "picker_title"
 msgid "LOAD GAME"
 msgstr "CARGAR JUEGO"
@@ -457,6 +465,14 @@ msgstr "PERMITIR PROTECTOR DE PANTALLA EN PAUSA"
 msgctxt "setting_screensaver_help"
 msgid "While a game runs the screensaver is always blocked. On: it may start while paused or in the menu."
 msgstr "Con un juego corriendo el protector de pantalla siempre está bloqueado. Encendido: puede activarse en pausa o en el menú."
+
+msgctxt "setting_savestate_on_exit"
+msgid "SAVE STATE ON EXIT"
+msgstr "GUARDAR ESTADO AL SALIR"
+
+msgctxt "setting_savestate_on_exit_help"
+msgid "Closing a game saves where you are; starting it again continues from there. UNDO LOAD STATE goes back to the start."
+msgstr "Cerrar un juego guarda dónde estás; al abrirlo otra vez sigue desde ahí. DESHACER CARGAR ESTADO vuelve al principio."
 
 msgctxt "setting_path_cores"
 msgid "CORES"

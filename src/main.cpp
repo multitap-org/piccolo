@@ -202,6 +202,7 @@ struct App
     uint32_t   undo_save_checked = UINT32_MAX;   // ...checked for this slot
     bool       menus_built_undo_save = false;    // UNDO SAVE STATE was enabled when the menus were built
     bool       menus_built_undo_load = false;    // UNDO LOAD STATE too
+    bool       resume_skip = false;   // the next start doesn't load the AUTO state (HARD RESET)
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -820,6 +821,92 @@ static void report_undo_load(App* app, bool undone, bool announce)
 }
 
 // ---------------------------------------------------------------------------
+// SAVE STATE ON EXIT (on by default, Andrés 2026-11-26): closing a game
+// (CLOSE GAME, another game, QUIT, Android sending piccolo to the background,
+// where it may be killed) saves its AUTO state; starting it again loads it,
+// with a card, and UNDO LOAD STATE goes back to the fresh start.
+// ---------------------------------------------------------------------------
+
+// The AUTO state's file: "<game>.state.auto", next to the slots. host-libretro
+// names a slot ".state<N>": slot 0's name without its digit, plus ".auto".
+// It's no slot, so the slot list, QUICK MENU and FILE TRANSFER's companions
+// never see it.
+static bool auto_state_path(const App* app, char* out, size_t out_size)
+{
+    char slot_path[LIBRETRO_PATH_MAX] = {};
+    if (!game_running(app) || !libretro_host_state_path(app->session.host, 0, slot_path, sizeof(slot_path)))
+    {
+        return false;
+    }
+    size_t length = std::strlen(slot_path);
+    if (length == 0 || slot_path[length - 1] != '0')
+    {
+        return false;
+    }
+    slot_path[length - 1] = '\0';
+    int written = std::snprintf(out, out_size, "%s.auto", slot_path);
+    return written > 0 && static_cast<size_t>(written) < out_size;
+}
+
+// Before the running game stops (between frames). A core without savestates
+// saves nothing.
+static void save_state_on_exit(App* app)
+{
+    char path[LIBRETRO_PATH_MAX + 8] = {};
+    if (!settings_get_bool(&app->settings, PICCOLO_SAVESTATE_ON_EXIT) || !auto_state_path(app, path, sizeof(path)))
+    {
+        return;
+    }
+    LibretroHost* host = app->session.host;
+    size_t size = libretro_host_state_size(host);
+    std::vector<uint8_t> state;   // once, as the game closes: not a hot path
+    if (size == 0 || !libretro_host_serialize(host, &state))
+    {
+        return;
+    }
+    if (host_fs_write_file(path, state.data(), size))
+    {
+        SDL_Log("Save state on exit: %s (%zu bytes)", path, size);
+    }
+}
+
+// Right after a game started: its AUTO state, if it has one. The fresh start
+// becomes UNDO LOAD STATE's. Said with a card (nothing else shows it).
+static void resume_state_on_start(App* app)
+{
+    char path[LIBRETRO_PATH_MAX + 8] = {};
+    if (!settings_get_bool(&app->settings, PICCOLO_SAVESTATE_ON_EXIT) || !auto_state_path(app, path, sizeof(path)) ||
+        !host_fs_exists(path))
+    {
+        return;
+    }
+    uint8_t* data = nullptr;
+    size_t size = 0;
+    if (!host_fs_read_file(path, &data, &size))
+    {
+        set_status(app, piccolo_text(&app->strings, Str::status_resume_failed));
+        return;
+    }
+    LibretroHost* host = app->session.host;
+    size_t start_size = libretro_host_state_size(host);
+    bool kept = start_size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    bool loaded = size > 0 && libretro_host_load_state_memory(host, data, size);
+    delete[] data;
+    if (!loaded)
+    {
+        set_status(app, piccolo_text(&app->strings, Str::status_resume_failed));
+        return;
+    }
+    audio_output_clear(&app->session.audio);
+    if (kept)
+    {
+        app->undo_load.swap(app->undo_load_spare);
+        app->undo_load_size = start_size;
+    }
+    set_status(app, piccolo_text(&app->strings, Str::status_resumed));
+}
+
+// ---------------------------------------------------------------------------
 // Screenshots (GAME > SCREENSHOT, the screenshot hotkey; SETTINGS > GENERAL:
 // SCREENSHOTS mode and folder). RAW copies the core's frame now; GPU asks
 // video_output for the picture as shown, which comes back a frame or two
@@ -1374,13 +1461,25 @@ static bool needs_safe_start(App* app, const FilePickerChoice* choice)
 // True if the game started (false also when it waits for SAFE START).
 static bool start_game(App* app, const FilePickerChoice* choice)
 {
+    // The last session didn't end (check_running_marker): no AUTO state for
+    // the first start after it, in case loading it was the crash (SAFE START
+    // only asks for a core with stored options).
+    bool after_crash = !app->crashed_core.empty();
     if (!app->safe_start_confirmed && needs_safe_start(app, choice))
     {
         app->safe_start_pending = *choice;
         app->safe_start_open = true;   // started (or not) when it's answered
         return false;
     }
+    // No resume after HARD RESET (the point is starting over) nor after a
+    // crash (SAFE START or not).
+    bool resume = !app->resume_skip && !app->safe_start_confirmed && !after_crash;
+    app->resume_skip = false;
     app->safe_start_confirmed = false;
+    if (game_running(app))
+    {
+        save_state_on_exit(app);   // the previous game, in its own settings' layer
+    }
     remove_running_marker(app);   // the previous game, if any, ended properly
     save_core_options(app);   // what was changed for the previous game
     save_learned_latency(app);   // what the previous game learned
@@ -1405,6 +1504,10 @@ static bool start_game(App* app, const FilePickerChoice* choice)
             {
                 libretro_host_set_port_device(app->session.host, port, static_cast<unsigned>(device));
             }
+        }
+        if (resume)
+        {
+            resume_state_on_start(app);
         }
     }
     if (!started)
@@ -1856,6 +1959,7 @@ static bool hard_reset(App* app)
     std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
                   app->marker_content_path.c_str());
     app->has_pending_start = true;
+    app->resume_skip = true;   // starting over: no AUTO state (it's still saved as the game stops)
     return true;
 }
 
@@ -3446,9 +3550,21 @@ static void app_handle_events(App* app)
         if (event.type == SDL_EVENT_DID_ENTER_BACKGROUND)
         {
             app->android_background = true;
+            if (game_running(app))
+            {
+                // Android may kill piccolo back there without a quit: the
+                // game saved, and that end counts as a proper one (no SAFE
+                // START, the AUTO state loads next time).
+                save_state_on_exit(app);
+                remove_running_marker(app);
+            }
         }
         if (event.type == SDL_EVENT_WILL_ENTER_FOREGROUND || event.type == SDL_EVENT_DID_ENTER_FOREGROUND)
         {
+            if (app->android_background && game_running(app))
+            {
+                write_running_marker(app);   // running again
+            }
             app->android_background = false;
         }
         if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED || event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
@@ -4247,6 +4363,12 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::card_undo_nothing:
         report_undo_load(app, false, true);
+        break;
+    case DebugWindowPress::card_resumed:
+        set_status(app, piccolo_text(&app->strings, Str::status_resumed));
+        break;
+    case DebugWindowPress::card_resume_failed:
+        set_status(app, piccolo_text(&app->strings, Str::status_resume_failed));
         break;
     }
     if (dvr_card < 3)
@@ -6264,6 +6386,7 @@ static bool app_frame(App* app)
     {
         app->pending_close_game = false;
         save_core_options(app);
+        save_state_on_exit(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
         drop_undos(app);
         remove_running_marker(app);   // a proper end
@@ -6767,6 +6890,10 @@ int main(int argc, char** argv)
     save_learned_latency(app);
     save_core_options(app);
     core_updater_shutdown(&app->core_updater);   // cancels a download in progress
+    if (game_running(app))
+    {
+        save_state_on_exit(app);
+    }
     core_session_destroy(&app->session, &app->shell);   // writes save RAM
     dvr_widget_destroy(&app->dvr, &app->shell);
     remove_running_marker(app);   // quit properly (a marker found at launch stays if no game ran)

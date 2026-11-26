@@ -74,6 +74,10 @@ static void draw_hud_widgets(DebugWindowAction* action)
     press(action, retro_ui_button("UNDO LOAD card"), DebugWindowPress::card_undo_load);
     retro_ui_same_line();
     press(action, retro_ui_button("NOTHING TO UNDO card"), DebugWindowPress::card_undo_nothing);
+    // SAVE STATE ON EXIT's cards, as a game starts.
+    press(action, retro_ui_button("RESUMED card"), DebugWindowPress::card_resumed);
+    retro_ui_same_line();
+    press(action, retro_ui_button("COULD NOT RESUME card"), DebugWindowPress::card_resume_failed);
     retro_ui_check("pair_request_card", "Pairing request card (a fake device)", &action->pair_request_card);
     retro_ui_dim_text("In the game, START held fills its key and the card goes; nothing opens.", nullptr);
 }

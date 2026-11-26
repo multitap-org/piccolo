@@ -102,6 +102,8 @@ enum class DebugWindowPress
     card_undo_save,       // SAVE STATE UNDONE, SLOT 3
     card_undo_load,       // LOAD STATE UNDONE
     card_undo_nothing,    // NOTHING TO UNDO
+    card_resumed,         // RESUMED WHERE YOU LEFT OFF (SAVE STATE ON EXIT)
+    card_resume_failed,   // COULD NOT RESUME WHERE YOU LEFT OFF
     effect_snap,          // the REWIND screen effect (SNAP), as after PLAY FROM HERE
     effect_shutter,       // the SCREENSHOT screen effect (SHUTTER), without a screenshot
 };
