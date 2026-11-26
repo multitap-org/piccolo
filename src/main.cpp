@@ -913,19 +913,27 @@ static StateThumbnail picture_thumbnail(const App* app, uint32_t* aspect_width, 
     return thumbnail;
 }
 
-// The system the core plays, from the core downloader's index when it has
-// been read ("" otherwise: the card shows the core alone).
+// The system the core plays, from the core downloader's index: this run's,
+// else the one a refresh kept in the cores folder ("" when neither knows the
+// core: the card shows the core alone).
 static std::string core_systems(const App* app)
 {
     const char* name = app->session.host->core_path;
     const char* slash = std::strrchr(name, '/');
     const char* file = slash != nullptr ? slash + 1 : name;
-    int32_t entry = core_index_find_file(&app->core_updater.index, file);
+    const CoreIndex* index = &app->core_updater.index;
+    CoreIndex kept;
+    int32_t entry = core_index_find_file(index, file);
+    if (entry < 0 && core_updater_load_kept_index(&kept, app->cores_directory.c_str(), core_index_build_target()))
+    {
+        index = &kept;
+        entry = core_index_find_file(index, file);
+    }
     if (entry < 0)
     {
         return std::string();
     }
-    std::string systems = app->core_updater.index.entries[static_cast<size_t>(entry)].systems;
+    std::string systems = index->entries[static_cast<size_t>(entry)].systems;
     for (size_t i = 0; i < systems.size(); i++)
     {
         if (systems[i] == '|')
