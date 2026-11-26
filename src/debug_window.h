@@ -49,6 +49,7 @@ enum class DebugPreview
     phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
     phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
     devices,                   // DEVICES (ports_view's board): fake controllers on four ports; rows upright on a phone
+    settings_error,            // the red SETTINGS COULD NOT BE READ dialog (settings_error_window.h)
 };
 
 // MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced
@@ -95,6 +96,7 @@ struct DebugWindowState
     bool pair_request_card = false;   // the fake pairing request's card is up
     bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
     bool about_open = false;          // the real ABOUT
+    bool settings_error_open = false; // the real SETTINGS COULD NOT BE READ dialog
     bool guest_open = false;          // the real REMOTE PLAY
 
     // EASTER EGGS

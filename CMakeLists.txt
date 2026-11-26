@@ -226,6 +226,7 @@ set(PICCOLO_SOURCES
     src/state_undo.cpp
     src/pair_window.cpp
     src/safe_start_window.cpp
+    src/settings_error_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
     src/ui_picture.cpp

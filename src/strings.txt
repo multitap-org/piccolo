@@ -246,6 +246,11 @@ safe_start_defaults_help = The core's own option values for this start only. Not
 safe_start_delete = DELETE STORED OPTIONS
 safe_start_delete_help = Deletes every option stored for this core (core, folders and games), then starts with its defaults.
 safe_start_cancel = CANCEL
+
+# SETTINGS COULD NOT BE READ dialog (piccolo.cfg exists but is unreadable, at start)
+settings_error_title = SETTINGS COULD NOT BE READ
+settings_error_text = piccolo.cfg is there but could not be read. Settings are at their defaults for now, and nothing you change will be saved, so the file is not replaced. Close piccolo, check the file, and start again.
+settings_error_ok = OK
 text_input_title = ENTER TEXT
 text_input_ok = OK
 text_input_cancel = CANCEL

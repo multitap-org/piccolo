@@ -1386,6 +1386,18 @@ msgctxt "safe_start_cancel"
 msgid "CANCEL"
 msgstr "CANCELAR"
 
+msgctxt "settings_error_title"
+msgid "SETTINGS COULD NOT BE READ"
+msgstr "NO SE PUDIERON LEER LOS AJUSTES"
+
+msgctxt "settings_error_text"
+msgid "piccolo.cfg is there but could not be read. Settings are at their defaults for now, and nothing you change will be saved, so the file is not replaced. Close piccolo, check the file, and start again."
+msgstr "piccolo.cfg está, pero no se pudo leer. Los ajustes están en sus valores por defecto por ahora, y nada de lo que cambies se guardará, así que el archivo no se sustituye. Cierra piccolo, revisa el archivo y vuelve a arrancar."
+
+msgctxt "settings_error_ok"
+msgid "OK"
+msgstr "ACEPTAR"
+
 msgctxt "text_input_title"
 msgid "ENTER TEXT"
 msgstr "ESCRIBIR TEXTO"

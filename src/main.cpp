@@ -46,6 +46,7 @@
 #include "continue_view.h"
 #include "touch_ui.h"
 #include "safe_start_window.h"
+#include "settings_error_window.h"
 #include "shader_check.h"
 #include "shader_check_view.h"
 #include "text_input_window.h"
@@ -297,6 +298,10 @@ struct App
     // Settings (piccolo_settings.h) in <settings>/piccolo.cfg, and their window.
     Settings       settings = {};
     std::string    settings_path;
+    // piccolo.cfg exists but settings_load could not read it (review 2026-11-26, H3): the settings
+    // are the defaults, and nothing is saved all run so the user's file is not replaced.
+    bool           settings_unreadable = false;
+    bool           settings_error_open = false;   // its dialog (settings_error_window.h), until OK
     SettingsWindow settings_window = {};
     const char*    choose_folder_key = nullptr;   // the folder setting CHOOSE FOLDER sets
     bool           settings_window_was_open = false;
@@ -540,6 +545,13 @@ static void apply_folders(App* app)
 
 static void save_settings(App* app)
 {
+    // Every write of piccolo.cfg comes through here. A file that exists but could not be read
+    // left the settings at their defaults: saving them would replace the user's file (the
+    // rename succeeds even when the old file was unreadable).
+    if (app->settings_unreadable)
+    {
+        return;
+    }
     if (app->settings.dirty && !app->settings_path.empty())
     {
         piccolo_settings_save(&app->settings, app->settings_path.c_str());
@@ -4477,6 +4489,7 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->pair_request_card = app->debug_previews.request_card;
     state->pair_open = app->pair_window.open;
     state->about_open = app->about_window.open;
+    state->settings_error_open = app->settings_error_open;
     state->guest_open = app->guest_window.open;
     state->snow = app->snow_debug;
     state->snow_in_season = app->snow_in_season;
@@ -5051,6 +5064,12 @@ static void net_follow_remote(App* app)
             net_service_set_stream(&app->net_service, i, 0);   // remote play needs STREAM
             app->stream_tuning_set[i] = false;
         }
+        if ((net_peer_caps(app, i) & NET_CAP_GAMEPAD) == 0)
+        {
+            // Pads are GAMEPAD: a device that lost it (net_send_actions above
+            // already took the new caps as seen) has its pads unplugged.
+            input_net_peer_gone(&app->input_net, &app->input, i);
+        }
     }
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
@@ -5268,15 +5287,15 @@ static void net_speed_request(App* app, const NetAccessEvent* event)
 }
 
 // speed_result: one step of a device's speed test, as it measured it.
-static void net_speed_result(App* app, const NetAccessEvent* event)
+// `device_now`: the device's index in the list as it is now (net_trust_find), -1 when it is gone.
+static void net_speed_result(App* app, const NetAccessEvent* event, int32_t device_now)
 {
     NetSpeedResult result;
-    if (event->device < 0 || static_cast<size_t>(event->device) >= app->net_service.access.trust.devices.size() ||
-        !net_speed_read_result(event->data, event->size, &result))
+    if (device_now < 0 || !net_speed_read_result(event->data, event->size, &result))
     {
         return;
     }
-    const uint8_t* key = app->net_service.access.trust.devices[static_cast<size_t>(event->device)].key;
+    const uint8_t* key = app->net_service.access.trust.devices[static_cast<size_t>(device_now)].key;
     NetSpeedSummary* summary = nullptr;
     for (size_t i = 0; i < app->net_speed_results.size() && summary == nullptr; i++)
     {
@@ -5833,8 +5852,11 @@ static void net_update_locked(App* app)
     {
         char address[64];
         net_address_to_text(event.address, address, sizeof(address));
-        const char* device = event.device >= 0 && static_cast<size_t>(event.device) < app->net_service.access.trust.devices.size()
-                                 ? app->net_service.access.trust.devices[static_cast<size_t>(event.device)].name.c_str()
+        // The device as the list is now, by its key: event.device was an index when the event was
+        // made on the network thread, and the list may have shrunk since (an unpair, FORGET).
+        int32_t device_now = event.device >= 0 ? net_trust_find(&app->net_service.access.trust, event.key) : -1;
+        const char* device = device_now >= 0
+                                 ? app->net_service.access.trust.devices[static_cast<size_t>(device_now)].name.c_str()
                                  : "?";
         const NetAccessPeer* guest = event.guest ? net_access_guest(&app->net_service.access, event.peer) : nullptr;
         if (guest != nullptr)
@@ -5980,11 +6002,17 @@ static void net_update_locked(App* app)
             }
             else if (event.channel == NetChannel::input && event.device >= 0)
             {
-                const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(event.device)];
-                input_net_set_hotkeys(&app->input_net, &app->input, event.peer,
-                                      (event.caps & NET_CAP_STREAM) != 0);
-                input_net_receive(&app->input_net, &app->input, event.peer, paired->key, paired->name.c_str(),
-                                  event.data, event.size);
+                // A paired device's pad needs GAMEPAD (net_access drops the rest too: this is the
+                // frontend's own guard), and the device must still be paired: a packet from one
+                // forgotten meanwhile is dropped, never plugged in under another device's key.
+                if (device_now >= 0 && (event.caps & NET_CAP_GAMEPAD) != 0)
+                {
+                    const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(device_now)];
+                    input_net_set_hotkeys(&app->input_net, &app->input, event.peer,
+                                          (event.caps & NET_CAP_STREAM) != 0);
+                    input_net_receive(&app->input_net, &app->input, event.peer, paired->key, paired->name.c_str(),
+                                      event.data, event.size);
+                }
             }
             else if (event.channel == NetChannel::control)
             {
@@ -5994,7 +6022,7 @@ static void net_update_locked(App* app)
                 }
                 if (event.size > 0 && event.data[0] == NET_SPEED_RESULT)
                 {
-                    net_speed_result(app, &event);
+                    net_speed_result(app, &event, device_now);
                 }
                 net_stream_message(app, &event, device);
                 net_games_message(app, &event, device);   // net_access let through only what its level covers
@@ -6438,7 +6466,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     }
     // The debug window's preview of a window ends when the real one opens.
     debug_preview_update(&app->debug_previews, app->pair_window.open, app->about_window.open, app->guest_window.open,
-                         app->quick_menu.open);
+                         app->quick_menu.open, app->settings_error_open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();
@@ -6554,6 +6582,11 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     {
         safe_start_window_state(&view->safe_start, &app->strings, app->crashed_core.c_str(),
                                 app->crashed_after_options);
+    }
+    view->settings_error_shown = app->settings_error_open;
+    if (view->settings_error_shown)
+    {
+        settings_error_window_state(&view->settings_error, &app->strings);
     }
     view->shader_check_shown = shader_check_asking(app);
     if (view->shader_check_shown)
@@ -6915,6 +6948,10 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
             app->safe_start_open = false;
             net_answer_load_refused(app);
         }
+    }
+    if (view->settings_error_shown && settings_error_window_apply(&actions->settings_error))
+    {
+        app->settings_error_open = false;   // only informs: nothing else waits for it
     }
     if (view->shader_check_shown && actions->shader_check != ShaderCheckChoice::none)
     {
@@ -7378,7 +7415,18 @@ int main(int argc, char** argv)
         bundled_files_install_cores(app->paths.cores.c_str());   // before the catalog first looks
         ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
-        settings_load(&app->settings, app->settings_path.c_str());
+        if (settings_load(&app->settings, app->settings_path.c_str()))
+        {
+            // Before anything reads the game folders (apply_folders, the share paths).
+            piccolo_settings_compact_game_folders(&app->settings);
+        }
+        else
+        {
+            app->settings_unreadable = true;
+            app->settings_error_open = true;
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s exists but could not be read: defaults for this run, nothing is saved over it",
+                         app->settings_path.c_str());
+        }
         apply_folders(app);
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
@@ -7472,8 +7520,18 @@ int main(int argc, char** argv)
         piccolo_themes_load_directory(&app->themes, (app->paths.root + "/themes").c_str());
     }
     // The interface's colors from the theme piccolo.cfg names (never its own colors).
+    // It applies the theme's colors with settings_set, which marks the settings dirty although
+    // those colors are never written (piccolo_settings_save strips them): that alone must not
+    // save at every start. Dirty stays only when it changed ui_theme itself (an old file's colors
+    // became a saved theme). The text is copied: the setting's pointer may move.
+    bool settings_dirty_before_theme = app->settings.dirty;
+    std::string ui_theme_before = settings_get_text(&app->settings, PICCOLO_UI_THEME);
     piccolo_settings_start_ui_theme(&app->settings, &app->themes,
                                     app->paths.root.empty() ? "" : (app->paths.root + "/themes").c_str());
+    if (ui_theme_before == settings_get_text(&app->settings, PICCOLO_UI_THEME))
+    {
+        app->settings.dirty = settings_dirty_before_theme;
+    }
     // settings/input.cfg first: controllers are made from its profiles as their devices appear.
     app->input_config_path = app->paths.settings.empty() ? "" : app->paths.settings + "/input.cfg";
     if (!app->input_config_path.empty())
