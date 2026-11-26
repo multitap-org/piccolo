@@ -106,6 +106,30 @@ msgctxt "menu_clear_recents"
 msgid "CLEAR ALL"
 msgstr "BORRAR TODO"
 
+msgctxt "mobile_recent_games"
+msgid "RECENT GAMES"
+msgstr "JUEGOS RECIENTES"
+
+msgctxt "mobile_no_games"
+msgid "NO GAMES YET"
+msgstr "TODAVÍA NO HAY JUEGOS"
+
+msgctxt "mobile_no_games_hint"
+msgid "LOAD ONE TO PLAY IT"
+msgstr "CARGA UNO PARA JUGARLO"
+
+msgctxt "mobile_no_games_more"
+msgid "YOUR LAST GAMES SHOW HERE"
+msgstr "TUS ÚLTIMOS JUEGOS APARECEN AQUÍ"
+
+msgctxt "mobile_load_game"
+msgid "LOAD GAME"
+msgstr "CARGAR JUEGO"
+
+msgctxt "mobile_menu"
+msgid "MENU"
+msgstr "MENÚ"
+
 msgctxt "recent_no_game"
 msgid "NO GAME"
 msgstr "SIN JUEGO"

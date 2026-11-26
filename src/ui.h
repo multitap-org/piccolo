@@ -28,6 +28,7 @@
 #include "hud_view.h"
 #include "input_window.h"
 #include "map_window.h"
+#include "mobile_home.h"
 #include "net_share_link.h"
 #include "net_window.h"
 #include "onscreen_pad.h"
@@ -79,6 +80,11 @@ struct UiView
     int32_t            menu_count = 0;
     bool               open_first_menu = false;
 
+    // The phone UI (PICCOLO_MOBILE, --mobile): HOME and the ☰ sidebar in
+    // place of the menu bar (mobile_home.h); the windows are pages.
+    bool            phone = false;
+    MobileHomeState mobile_home = {};
+
     // The windows, in drawing order.
     UiSettingsText          settings_text;
     NetWindowState          network = {};
@@ -127,6 +133,7 @@ struct UiView
 struct UiWindows
 {
     OnscreenPad*       pad = nullptr;
+    MobileHome*        mobile_home = nullptr;
     PortsWidget*       ports = nullptr;
     SettingsWindow*    settings = nullptr;
     NetWindow*         network = nullptr;   // SETTINGS > NETWORK
@@ -154,6 +161,7 @@ struct UiActions
 {
     OnscreenPadAction        pad = {};
     int32_t                  menu_picked = -1;   // the menu bar's item id (-1: none)
+    MobileHomeAction         mobile_home = {};   // the phone's HOME and ☰ (their picks are the bar's ids)
     SettingsWindowAction     settings = {};
     FilePickerAction         picker = {};
     QuickMenuAction          quick = {};

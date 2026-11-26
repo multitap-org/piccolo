@@ -39,3 +39,8 @@ bool recent_games_save(const RecentGames* recent, const char* path);
 // "Super Mario World (USA)  [snes9x]", or "<no_game>  [snes9x]" for a core
 // alone (`no_game` is the caller's text for it).
 void recent_games_label(const RecentGame* game, const char* no_game, char* out, size_t out_size);
+
+// The label's two parts apart (the phone's HOME shows them on two lines):
+// "Super Mario World (USA)" (or `no_game`) and "snes9x".
+void recent_games_names(const RecentGame* game, const char* no_game, char* name, size_t name_size, char* core,
+                        size_t core_size);

@@ -68,6 +68,11 @@ int main(int argc, char** argv)
     game.content_path = "";
     recent_games_label(&game, "NO GAME", label, sizeof(label));
     check(std::strcmp(label, "NO GAME  [snes9x]") == 0, "label: a core alone");
+    char name[256] = {};
+    char core[256] = {};
+    game.content_path = "/roms/Super Mario World (USA).sfc";
+    recent_games_names(&game, "NO GAME", name, sizeof(name), core, sizeof(core));
+    check(std::strcmp(name, "Super Mario World (USA)") == 0 && std::strcmp(core, "snes9x") == 0, "names: game and core apart");
 
     std::string path = std::string(argv[1]) + "/recent.cfg";
     std::remove(path.c_str());

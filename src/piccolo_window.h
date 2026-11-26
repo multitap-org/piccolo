@@ -17,6 +17,10 @@ struct SDL_Window;
 
 struct PiccoloWindow
 {
+    // The phone UI on the desktop (--mobile): a phone-shaped window that the
+    // Display settings leave alone (no full screen, no window modes).
+    bool     phone_window       = false;
+
     // What was applied last (to notice changes).
     bool     applied            = false;
     bool     fullscreen         = false;
@@ -49,6 +53,10 @@ void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Sett
 // (window fields unused), or nullptr when no game runs.
 void piccolo_window_apply(PiccoloWindow* state, SDL_Window* window, const Settings* settings,
                           const ViewportInput* picture);
+
+// The phone UI's ROTATE: Android turns the screen (portrait <-> landscape,
+// as piccoletto); the desktop's phone window swaps its width and height.
+void piccolo_window_rotate(SDL_Window* window);
 
 // Before saving the "last used" file: the window's current windowed size and
 // position (skipped while fullscreen, so the windowed ones are kept).

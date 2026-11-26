@@ -47,6 +47,14 @@ menu_recent_empty = NO RECENT GAMES
 menu_clear_recents = CLEAR ALL
 recent_no_game = NO GAME
 
+# The phone UI (mobile_home.h): HOME and the ☰ sidebar
+mobile_recent_games = RECENT GAMES
+mobile_no_games = NO GAMES YET
+mobile_no_games_hint = LOAD ONE TO PLAY IT
+mobile_no_games_more = YOUR LAST GAMES SHOW HERE
+mobile_load_game = LOAD GAME
+mobile_menu = MENU
+
 # Messages (HUD cards: message_widget.h)
 status_reset = RESET
 

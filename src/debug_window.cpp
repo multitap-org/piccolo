@@ -148,6 +148,11 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     // The real QUICK MENU needs a game; this one is a fake game's, its
     // slots without pictures.
     preview_button(action, "QUICK MENU, SAVE STATES open", DebugPreview::quick_menu, true);
+    // The phone's screens (on any screen: drawn at the phone's scale).
+    retro_ui_text("PHONE UI");
+    preview_button(action, "HOME", DebugPreview::phone_home, false);
+    preview_button(action, "HOME, no games", DebugPreview::phone_home_empty, true);
+    preview_button(action, "MENU over a game", DebugPreview::phone_menu, true);
 }
 
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)

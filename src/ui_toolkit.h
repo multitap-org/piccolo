@@ -25,6 +25,13 @@ void ui_toolkit_set_scale(int32_t scale);
 // The retro UI's scale (window pixels per retro pixel) for a screen this
 // size, in the toolkit's units.
 int32_t ui_toolkit_scale_for_screen(float width, float height);
+// The phone UI's scale (touch sized, as piccoletto's): the short side holds
+// about 195 retro pixels.
+int32_t ui_toolkit_scale_for_phone(float width, float height);
+
+// The phone UI on or off (PICCOLO_MOBILE, --mobile): every window becomes a
+// full-screen page (retroui's page mode). Before the frame's first window.
+void ui_toolkit_set_phone(bool on);
 
 // The interface's colors (the theme), from now on. At the frame's start,
 // before the toolkit's frame begins.
