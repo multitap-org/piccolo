@@ -2799,6 +2799,12 @@ static void app_handle_hotkeys(App* app, const InputFrame* frame)
     {
         take_screenshot(app);   // the menus stay as they are (they're not in the picture)
     }
+    // RESET (testing round 3; nothing bound by default): the core's own
+    // reset, said with a card (no menu shows it).
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_reset)] && soft_reset(app))
+    {
+        set_status(app, piccolo_text(&app->strings, Str::status_reset));
+    }
     // PAUSE: the player's own pause; what's up stays up.
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_pause)] && game_running(app))
     {
@@ -3986,6 +3992,12 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         {
             SDL_Log("Debug: no controller on port 1 for a remap card");
         }
+        break;
+    case DebugWindowPress::effect_snap:
+        screen_effects_test_snap(&app->screen_effects, SDL_GetTicks());
+        break;
+    case DebugWindowPress::effect_shutter:
+        screen_effects_test_shutter(&app->screen_effects, SDL_GetTicks());
         break;
     case DebugWindowPress::play_from_here:
         app->dvr.played_from_ms = now_ms;

@@ -1299,8 +1299,8 @@ msgid "ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
 msgstr "FLECHAS O 0-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
 
 msgctxt "status_no_core_for_file"
-msgid "NO CORE FOR THIS FILE"
-msgstr "NINGÚN CORE ABRE ESTE ARCHIVO"
+msgid "NO CORE FOUND FOR THIS FILE TYPE"
+msgstr "NO HAY NÚCLEO PARA ESTE TIPO DE ARCHIVO"
 
 msgctxt "core_options_section"
 msgid "SECTION"
@@ -3661,8 +3661,8 @@ msgid "THIS GAME: AUTO CHOSE"
 msgstr "ESTE JUEGO: AUTO ELIGIÓ"
 
 msgctxt "rewind_note_current"
-msgid "CURRENT:"
-msgstr "AHORA:"
+msgid "CURRENT MODE:"
+msgstr "MODO ACTUAL:"
 
 msgctxt "rewind_note_measuring"
 msgid "THIS GAME: AUTO IS MEASURING THE CORE."
@@ -3823,6 +3823,10 @@ msgstr "TODAVÍA SE ESTÁ GUARDANDO LA ÚLTIMA CAPTURA"
 msgctxt "input_action_hotkey_screenshot"
 msgid "SCREENSHOT"
 msgstr "CAPTURA"
+
+msgctxt "input_action_hotkey_reset"
+msgid "RESET"
+msgstr "REINICIAR"
 
 msgctxt "quick_menu_config"
 msgid "CORE CONFIG"

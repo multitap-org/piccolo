@@ -88,6 +88,17 @@ static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction
     retro_ui_dim_text("Text box and KEEP / REVERT show once the menu is closed.", nullptr);
 }
 
+// The screen effects on the game picture, played now (SCREEN EFFECTS off:
+// nothing plays; each effect's own switch is ignored here).
+static void draw_screen_effects(const DebugWindowState* state, DebugWindowAction* action)
+{
+    retro_ui_begin_disabled(!state->game_running);
+    press(action, retro_ui_button("REWIND (SNAP)"), DebugWindowPress::effect_snap);
+    retro_ui_same_line();
+    press(action, retro_ui_button("SCREENSHOT (SHUTTER)"), DebugWindowPress::effect_shutter);
+    retro_ui_end_disabled();
+}
+
 static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)
 {
     if (same_line)
@@ -165,6 +176,10 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", false))
         {
             draw_window_widgets(state, action);
+        }
+        if (retro_ui_section_header("effects", "Screen effects (a game must run)", false))
+        {
+            draw_screen_effects(state, action);
         }
         if (retro_ui_section_header("previews", "Dialogs (preview)", false))
         {

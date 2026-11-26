@@ -46,6 +46,7 @@ static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
     Str::input_action_hotkey_save_state, Str::input_action_hotkey_load_state, Str::input_action_hotkey_fast_forward,
     Str::input_action_hotkey_grab_mouse, Str::input_action_hotkey_ports, Str::input_action_hotkey_pause,
     Str::input_action_hotkey_dvr, Str::input_action_hotkey_remap, Str::input_action_hotkey_screenshot,
+    Str::input_action_hotkey_reset,
 };
 
 // ---------------------------------------------------------------------------
@@ -1294,7 +1295,7 @@ void input_window_draw(InputWindow* window, const InputWindowState* state, Retro
             if (retro_ui_begin_tab("hotkeys", piccolo_text(strings, Str::input_section_hotkeys), target == 2))
             {
                 window->tab = 2;
-                draw_bindings(window, state, InputAction::hotkey_enable, InputAction::hotkey_screenshot,
+                draw_bindings(window, state, InputAction::hotkey_enable, InputAction::hotkey_reset,
                               Str::input_column_action, label_width, action);
                 retro_ui_end_tab();
             }

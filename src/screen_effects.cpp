@@ -69,6 +69,18 @@ void screen_effects_shutter(ScreenEffects* effects, uint64_t now_ms)
     effects->shutter_start_ms = now_ms;
 }
 
+void screen_effects_test_snap(ScreenEffects* effects, uint64_t now_ms)
+{
+    effects->snap = true;
+    effects->snap_start_ms = now_ms;
+}
+
+void screen_effects_test_shutter(ScreenEffects* effects, uint64_t now_ms)
+{
+    effects->shutter = true;
+    effects->shutter_start_ms = now_ms;
+}
+
 void screen_effects_update(ScreenEffects* effects, uint64_t played_from_ms, uint64_t now_ms, bool enabled,
                            ScreenEffectParams* params)
 {

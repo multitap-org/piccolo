@@ -38,6 +38,10 @@ struct ScreenEffects
 // Starts SHUTTER (a screenshot was taken).
 void screen_effects_shutter(ScreenEffects* effects, uint64_t now_ms);
 
+// The debug window's tests: SNAP / SHUTTER now, whatever each one's switch.
+void screen_effects_test_snap(ScreenEffects* effects, uint64_t now_ms);
+void screen_effects_test_shutter(ScreenEffects* effects, uint64_t now_ms);
+
 // This frame's knobs. `played_from_ms` = DvrWidget::played_from_ms (a new
 // value starts SNAP); `enabled` = the EFFECTS setting (off: everything at
 // rest, and nothing starts).

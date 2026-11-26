@@ -229,7 +229,7 @@ quick_menu_config_help = CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND S
 core_config_title = CORE CONFIGURATION
 menu_core_config = CORE CONFIGURATION...
 quick_menu_keys = ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME.
-status_no_core_for_file = NO CORE FOR THIS FILE
+status_no_core_for_file = NO CORE FOUND FOR THIS FILE TYPE
 
 # IMAGE SETTINGS window
 image_title = IMAGE SETTINGS
@@ -1027,7 +1027,7 @@ value_memory_512 = 512 MB
 value_memory_1024 = 1 GB
 value_memory_2048 = 2 GB
 rewind_note_chose = THIS GAME: AUTO CHOSE
-rewind_note_current = CURRENT:
+rewind_note_current = CURRENT MODE:
 rewind_note_measuring = THIS GAME: AUTO IS MEASURING THE CORE.
 rewind_note_unsupported = THIS CORE HAS NO SAVESTATES: NO REWIND.
 rewind_measure_again = MEASURE AGAIN
@@ -1055,6 +1055,7 @@ dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)
 # Widgets
 input_action_hotkey_remap = REMAP (HOLD)
 input_action_hotkey_screenshot = SCREENSHOT
+input_action_hotkey_reset = RESET
 remap_card_port = PORT %u
 remap_card_hold = HOLD
 remap_card_to_remap = TO REMAP
