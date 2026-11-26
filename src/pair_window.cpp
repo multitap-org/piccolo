@@ -233,18 +233,6 @@ static void add_button(PairButtons* row, const char* id, const char* label, Pair
     row->count++;
 }
 
-static bool is_paired(const NetShareLinkStatus* link, const std::string* name)
-{
-    for (size_t i = 0; i < link->paired.size(); i++)
-    {
-        if (link->paired[i] == *name)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 // "<PREFIX> <NAME>", cut to the panel's width with "..." (all of it in the tooltip).
 static void draw_prefixed(const char* prefix, const char* name)
 {
@@ -311,8 +299,9 @@ static void draw_device(PairWindow* window, const PairWindowState* state, PairBu
                 continue;
             }
             const std::string* name = &found->name;
-            const char* note = is_paired(link, name) ? piccolo_text(strings, Str::pair_paired)
-                                                     : net_caps_ui_kind(strings, found->kind);
+            // By key (the library's answer), never by name: every install is called PICCOLO.
+            const char* note = found->paired ? piccolo_text(strings, Str::pair_paired)
+                                             : net_caps_ui_kind(strings, found->kind);
             bool selected = !window->enter_selected && window->selected == static_cast<int32_t>(i);
             if (retro_ui_list_item(row, name->c_str(), selected, note))
             {
@@ -382,6 +371,7 @@ static void draw_device(PairWindow* window, const PairWindowState* state, PairBu
             window->ask.cap = asked;
             window->ask.name = window->host_name;
             window->ask.target = ASK_DEVICE;
+            std::memcpy(window->ask.key, window->device_key, NET_KEY_SIZE);
         }
     }
     draw_granted_there(strings, window->host_name.c_str(), window->given, true);
@@ -607,6 +597,14 @@ void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiF
     if (window->ask.cap != 0 && window->ask.target == ASK_REQUEST &&
         (!window->request.active || window->request.peer != window->ask_peer ||
          window->ask.name != window->request.name))
+    {
+        window->ask.cap = 0;
+    }
+    // The same for the device just paired: asked about one key, dropped if
+    // the screen shows another (or none) now.
+    if (window->ask.cap != 0 && window->ask.target == ASK_DEVICE &&
+        (window->phase != PairDevicePhase::done ||
+         std::memcmp(window->ask.key, window->device_key, NET_KEY_SIZE) != 0))
     {
         window->ask.cap = 0;
     }

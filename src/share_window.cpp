@@ -553,17 +553,12 @@ static Str refusal_text(NetClientRefusal refusal)
 // The other side while no piccolo is connected with OWNER access: the
 // piccolos on this network, the code (only the first time) and CONNECT; or,
 // connected at a lower level, what to ask for there.
-// A piccolo on the LAN we paired with (by name: the list doesn't carry keys).
+// A piccolo on the LAN we paired with: the link says so by key (an older one
+// that sends no key id is never "paired" here: PAIR stays offered, and a
+// device that does know us just welcomes the pairing).
 static bool found_is_paired(const NetShareLinkStatus* link, int32_t index)
 {
-    for (size_t i = 0; i < link->paired.size(); i++)
-    {
-        if (link->paired[i] == link->found[static_cast<size_t>(index)].name)
-        {
-            return true;
-        }
-    }
-    return false;
+    return link->found[static_cast<size_t>(index)].paired;
 }
 
 static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, const PaneLayout* layout,
