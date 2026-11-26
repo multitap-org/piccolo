@@ -54,7 +54,8 @@ struct ContinuePanelView
     bool             shown = false;    // the desktop panel
     bool             phone = false;    // the phone's card instead (the debug window's preview)
     ContinueViewCard card;
-    char             detail[CONTINUE_TEXT_MAX] = {};
+    char             core[CONTINUE_TEXT_MAX] = {};
+    char             system[CONTINUE_TEXT_MAX] = {};
     char             when[CONTINUE_TEXT_MAX] = {};
     char             game[CONTINUE_TEXT_MAX] = {};
 };

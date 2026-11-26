@@ -333,18 +333,12 @@ void continue_panel_state(ContinuePanelView* view, const ContinuePanel* panel, c
     *card = ContinueViewCard{};
     view->phone = panel->preview == ContinuePreview::phone;
     std::snprintf(view->game, sizeof(view->game), "%s", record->game_name.c_str());
-    if (record->system_name.empty())
-    {
-        std::snprintf(view->detail, sizeof(view->detail), "%s", record->core_name.c_str());
-    }
-    else
-    {
-        std::snprintf(view->detail, sizeof(view->detail), "%s \xC2\xB7 %s", record->core_name.c_str(),
-                      record->system_name.c_str());
-    }
+    std::snprintf(view->core, sizeof(view->core), "%s", record->core_name.c_str());
+    std::snprintf(view->system, sizeof(view->system), "%s", record->system_name.c_str());
     when_text(view->when, sizeof(view->when), record, strings, now, panel->preview != ContinuePreview::none);
     card->game = view->game;
-    card->detail = view->detail;
+    card->core = view->core;
+    card->system = view->system;
     card->when = view->when;
     card->reason = reason_text(choice.reason, strings);
     const char* resume = piccolo_text(strings, Str::continue_resume);

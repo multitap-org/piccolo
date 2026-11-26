@@ -188,7 +188,10 @@ static float draw_continue(const TouchUi* ui, const MobileHomeState* state, floa
     float tall = continue_view_card_height(ui, &card, width);
     if (tall > room)
     {
-        float picture = CONTINUE_VIEW_CARD_PICTURE_HEIGHT - (tall - room);
+        float picture_width = 0.0f;
+        float picture_height = 0.0f;
+        continue_view_card_picture_size(&card, width, &picture_width, &picture_height);
+        float picture = picture_height - (tall - room);
         card.picture_max_height = picture > 24.0f ? picture : 24.0f;
     }
     float drawn = 0.0f;
