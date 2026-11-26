@@ -44,6 +44,7 @@ struct CoresWindow
 {
     bool    open = false;
     int32_t selected = -1;      // index into the updater's index entries
+    bool    was_refreshing = false;   // last frame's updater state: a refresh that just ended replaced (and re-sorted) the index
     bool    update_all = false; // UPDATE ALL: install the next outdated core whenever idle
     float   bottom_height = 0.0f;   // what's under the list, measured last frame (the list takes the rest)
     bool    confirm_non_free = false;   // the NON-FREE confirmation is up

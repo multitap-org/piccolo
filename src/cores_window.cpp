@@ -47,6 +47,16 @@ static bool listed(const CoresShow* show, const CoreUpdater* updater, int32_t en
 // (stops at the first error, or when none is left).
 void cores_window_update(CoresWindow* window, CoreUpdater* updater, const Settings* settings, const char* running_file)
 {
+    // `selected` is an index into the entries, and a new index comes sorted
+    // anew: the old number would point at another core. After a refresh that
+    // worked the selection goes to the first core; draw_selected's bounds check
+    // drops it when the list is empty or that core is hidden.
+    bool refreshing = updater->state == CoreUpdaterState::refreshing;
+    if (window->was_refreshing && !refreshing && !updater->message_is_error)
+    {
+        window->selected = 0;
+    }
+    window->was_refreshing = refreshing;
     if (!window->open || !window->update_all || updater->state != CoreUpdaterState::idle)
     {
         return;
