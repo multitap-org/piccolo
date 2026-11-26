@@ -516,10 +516,12 @@ static void draw_device_card(NetWindow* window, const DeviceColumns* columns, co
         retro_ui_text_colored(0xFFF0A8B4u, unsigned_chip);   // the red chip's text
     }
     retro_ui_set_cursor_x(x);
-    // GRANTED HERE: only what the device uses (its kind tells) and we offer.
+    // GRANTED HERE: what the device uses (its kind tells) and we offer, plus
+    // everything it is granted now, so a grant outside its kind's set (a
+    // hand-edited file, an older version) can always be seen and unticked.
     draw_card_heading(piccolo_text(strings, Str::pair_granted_here), width);
     retro_ui_item_tooltip(piccolo_text(strings, Str::net_device_grants_help));
-    NetCaps choices = net_caps_ui_kind_uses(record->kind) & state->offers;
+    NetCaps choices = (net_caps_ui_kind_uses(record->kind) & state->offers) | record->grants;
     if (choices == 0)
     {
         retro_ui_text(piccolo_text(strings, Str::cap_none));
@@ -534,7 +536,7 @@ static void draw_device_card(NetWindow* window, const DeviceColumns* columns, co
         if (net_caps_ui_checkboxes("grants", strings, choices, record->signed_build, &value, &asked))
         {
             action->set_grants = true;
-            action->grants = value | (record->grants & ~choices);
+            action->grants = value;   // every granted bit is among the choices: nothing is hidden
             std::memcpy(action->key, record->key, NET_KEY_SIZE);
         }
         retro_ui_pop_id();
