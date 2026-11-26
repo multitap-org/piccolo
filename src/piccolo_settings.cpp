@@ -318,14 +318,15 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_VIDEO_ASPECT, .type = SettingType::enumeration, .default_value = "core", .overridable = true,
      .values = ASPECT_VALUES, .value_count = ASPECT_COUNT, .label = text_id(Str::setting_aspect),
      .help = text_id(Str::setting_aspect_help)},
-    {.key = PICCOLO_VIDEO_SCALING, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
+    // FULL with SHARP BILINEAR (the filter below): the picture fills the screen
+    // and stays crisp, by default on every platform (Andrés, 2026-11-25).
+    {.key = PICCOLO_VIDEO_SCALING, .type = SettingType::enumeration, .default_value = "full", .overridable = true,
      .values = SCALING_VALUES, .value_count = SCALING_COUNT, .label = text_id(Str::setting_scaling),
      .help = text_id(Str::setting_scaling_help)},
     {.key = PICCOLO_VIDEO_MAX_OFFSCREEN, .type = SettingType::real, .default_value = "5", .overridable = true,
      .min_real = 0.0, .max_real = 50.0, .step_real = 0.5, .label = text_id(Str::setting_max_offscreen),
      .help = text_id(Str::setting_max_offscreen_help)},
-    // INTEGER (AUTO) with SHARP BILINEAR: the crispest full-screen picture by
-    // default, on every platform (Andrés, 2026-11-25).
+    // SHARP BILINEAR by default (with FULL, above), on every platform.
     {.key = PICCOLO_VIDEO_FILTER, .type = SettingType::enumeration, .default_value = "sharp_bilinear", .overridable = true,
      .values = FILTER_VALUES, .value_count = FILTER_COUNT, .label = text_id(Str::setting_filter),
      .help = text_id(Str::setting_filter_help)},

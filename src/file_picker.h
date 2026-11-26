@@ -5,6 +5,7 @@
 //   +- LOAD GAME ------------------------------------------+
 //   | CORE   [ Snes9x 1.63                             v ] |
 //   | FOLDER [ /home/user/roms                         v ] |
+//   | FILTER [ mario                                     ] |
 //   | +- files -----------------------+ +- folders -----+ |
 //   | | Super Mario World (USA).sfc   | | ..            | |
 //   | | ...                           | | Nintendo - .. | |
@@ -14,7 +15,9 @@
 //   +-------------------------------------------------------+
 //
 // The core is picked first; the file list shows only what that core says it
-// can load (its own extension list, from the core catalog). Double-click a
+// can load (its own extension list, from the core catalog). FILTER narrows
+// both lists to the names with its text in them. A phone held upright has
+// the folders above the files (a fifth of the room) instead of beside them. Double-click a
 // file or press LOAD to start it; click a folder to open it.
 //
 // Zip and 7z archives are always in the file list (never filtered: what's
@@ -83,6 +86,14 @@ struct FilePicker
     std::vector<std::string> folders;
     std::vector<std::string> files;
     int32_t selected_file = -1;
+    // FILTER: only the names with this text in them (any case) are listed;
+    // cleared when the folder changes. Typed in the window (the drawing edits
+    // it); file_picker_update lists the matches again when it changes.
+    char filter[FILE_PICKER_NAME_MAX] = {};
+    char filter_listed[FILE_PICKER_NAME_MAX] = {};    // what shown_* were made for
+    char filter_folder[LIBRETRO_PATH_MAX] = {};       // the folder it was typed in
+    std::vector<uint32_t> shown_folders;              // indices into folders / files
+    std::vector<uint32_t> shown_files;
     bool    listing_stale = true;
 
     // An archive's listing: the one browsed (`directory` is "a.7z#" or
