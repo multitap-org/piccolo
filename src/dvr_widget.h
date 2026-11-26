@@ -108,6 +108,13 @@ struct DvrWidget
     uint64_t hud_since_ms = 0;
     uint64_t played_from_ms = 0;   // the last PLAY FROM HERE: the PLAY state icon (state_widget)
 
+    // The phone's strip held by a finger (dvr_view_draw_phone): SCRUB moves
+    // faster the further it is from where it went down; SNAPSHOTS moves a
+    // snapshot per picture it slides.
+    bool     dragging = false;
+    uint64_t drag_last_ms = 0;
+    double   drag_frames = 0.0;   // SCRUB: the part of a frame due; SNAPSHOTS: of a picture
+
     char readout[16] = {};
     char kept[32]    = {};
     char mode[48]    = {};
@@ -144,7 +151,9 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
 // What the strip shows besides its view (the widget's own, from prepare).
 struct DvrWidgetState
 {
-    DvrViewText text;   // title, mode, kept, readout, BACK TO NOW, the lane
+    DvrViewText text;   // title, mode, kept, readout, BACK TO NOW, the lane, the phone's buttons
+    bool  phone = false;          // the phone UI: dvr_view_draw_phone, at the touch scale
+    float game_aspect = 4.0f / 3.0f;   // the game's picture (the phone's layout leaves it room)
 };
 
 // What a click / tap on the strip (or Space) did this frame.
@@ -153,9 +162,19 @@ struct DvrWidgetAction
     DvrViewAction press = DvrViewAction::none;
     int32_t       clicked = -1;      // a thumbnail clicked (-1 none): the cursor goes there
     bool          keyboard = false;  // Space was WATCH: the hints name the keyboard's keys
+    bool          dragging = false;  // the phone's strip held (dvr_view_draw_phone's)
+    float         drag_from = 0.0f;
+    float         drag_moved = 0.0f;
 };
 
-void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings);
+void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings, bool phone,
+                      float game_aspect);
+
+// The phone UI while the DVR is open: the game's room (window pixels) on a
+// screen this size, the panel taking the rest (dvr_view_phone_areas).
+// False when closed.
+bool dvr_widget_phone_game_area(const DvrWidget* widget, float screen_width, float screen_height, int32_t scale,
+                                float game_aspect, float* width, float* height);
 
 // The strip, above every window.
 void dvr_widget_draw(DvrWidget* widget, const DvrWidgetState* state, RetroUiFont* pixel_font, int32_t scale,

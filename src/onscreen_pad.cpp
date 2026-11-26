@@ -253,9 +253,12 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     ui.palette = *retro_ui_palette();
     ui.fingers = &pad->fingers;
     ui.pad = &pad->pad;
+    // Under the picture (upright) nothing shows through the pad: it's drawn
+    // solid; over the game, at OPACITY. (A layout's own, from EDIT LAYOUT, wins.)
+    float alpha = pad->below ? 1.0f : state->opacity;
     for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
     {
-        pad_layout_set_default_alpha(&pad->layouts.layouts[i], state->opacity);   // (a layout's own, from EDIT LAYOUT, wins)
+        pad_layout_set_default_alpha(&pad->layouts.layouts[i], alpha);
         pad->layouts.layouts[i].style = pad->styled ? &pad->style : nullptr;
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
@@ -273,7 +276,9 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     if (pad->below)
     {
         float top = pad->placement.picture_height;
-        touch_ui_rect(&ui, 0.0f, top, width, height - top, ui.palette.button_face);   // the pad's body
+        // Black, as the sides of a game held sideways (Andrés, 2026-11-25: the
+        // theme's color there made the pad nearly invisible; black felt better).
+        touch_ui_rect(&ui, 0.0f, top, width, height - top, 0xFF000000u);
     }
     if (pad->editor.active)
     {

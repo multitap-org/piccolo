@@ -72,17 +72,23 @@ bool recent_games_save(const RecentGames* recent, const char* path)
     return settings_file_save(&file, path, "piccolo: recent games, most recent first");
 }
 
+void recent_games_names(const RecentGame* game, const char* no_game, char* name, size_t name_size, char* core,
+                        size_t core_size)
+{
+    if (!libretro_core_short_name(game->core_path.c_str(), core, core_size))
+    {
+        std::snprintf(core, core_size, "?");
+    }
+    if (game->content_path.empty() || !content_archive_game_name(game->content_path.c_str(), name, name_size))
+    {
+        std::snprintf(name, name_size, "%s", no_game);
+    }
+}
+
 void recent_games_label(const RecentGame* game, const char* no_game, char* out, size_t out_size)
 {
     char core[256] = {};
     char content[256] = {};
-    if (!libretro_core_short_name(game->core_path.c_str(), core, sizeof(core)))
-    {
-        std::snprintf(core, sizeof(core), "?");
-    }
-    if (game->content_path.empty() || !content_archive_game_name(game->content_path.c_str(), content, sizeof(content)))
-    {
-        std::snprintf(content, sizeof(content), "%s", no_game);
-    }
+    recent_games_names(game, no_game, content, sizeof(content), core, sizeof(core));
     std::snprintf(out, out_size, "%s  [%s]", content, core);
 }

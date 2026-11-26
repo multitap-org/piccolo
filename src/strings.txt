@@ -49,6 +49,14 @@ menu_recent_empty = NO RECENT GAMES
 menu_clear_recents = CLEAR ALL
 recent_no_game = NO GAME
 
+# The phone UI (mobile_home.h): HOME and the ☰ sidebar
+mobile_recent_games = RECENT GAMES
+mobile_no_games = NO GAMES YET
+mobile_no_games_hint = LOAD ONE TO PLAY IT
+mobile_no_games_more = YOUR LAST GAMES SHOW HERE
+mobile_load_game = LOAD GAME
+mobile_menu = MENU
+
 # Messages (HUD cards: message_widget.h)
 status_reset = RESET
 status_undo_save = SAVE STATE UNDONE, SLOT %u
@@ -308,9 +316,9 @@ game_folder_remove_help = Removes this folder from the list. Nothing is deleted.
 setting_aspect = ASPECT RATIO
 setting_aspect_help = The shape of the whole picture. Square pixels: the frame's own width / height.
 setting_scaling = SCALING
-setting_scaling_help = Integer sizes keep every pixel the same size. Auto: one size up if it goes past the window by at most the % below.
-setting_max_offscreen = AUTO: MAX OFFSCREEN
-setting_max_offscreen_help = How much of the picture Auto may push past the window edges.
+setting_scaling_help = Integer sizes keep every pixel the same size. Integer (auto): one size up if it goes past the window by at most the % below.
+setting_max_offscreen = INTEGER (AUTO): MAX OFFSCREEN
+setting_max_offscreen_help = How much of the picture Integer (auto) may push past the window edges.
 setting_filter = FILTER
 setting_filter_help = Sharp bilinear: sharp pixels, soft only where a pixel lands between two screen pixels.
 setting_shader_preset = SHADER
@@ -528,7 +536,7 @@ value_aspect_stretch = STRETCH
 value_scaling_full = FULL
 value_scaling_integer_under = INTEGER (UNDER)
 value_scaling_integer_over = INTEGER (OVER)
-value_scaling_auto = AUTO
+value_scaling_auto = INTEGER (AUTO)
 value_osk_auto = AUTO
 value_osk_on = ON
 value_osk_off = OFF
@@ -1060,6 +1068,10 @@ dvr_pause = PAUSE
 dvr_back_to_now = BACK TO NOW
 dvr_hint_lane = OTHER LANE
 dvr_lane_kept = KEPT LANE
+dvr_tab_recorded = RECORDED
+dvr_tab_kept = KEPT
+dvr_jump_back = -5 S
+dvr_jump_forward = +5 S
 dvr_hud_nothing = REWIND: NOTHING RECORDED YET
 dvr_hud_unsupported = REWIND: THIS CORE HAS NO SAVESTATES
 dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)

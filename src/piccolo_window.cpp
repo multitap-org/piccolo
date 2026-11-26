@@ -58,7 +58,7 @@ static void set_window_pixels(SDL_Window* window, uint32_t width, uint32_t heigh
 
 void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Settings* settings)
 {
-    if (!state->has_saved || !settings_get_bool(settings, PICCOLO_WINDOW_REMEMBER))
+    if (state->phone_window || !state->has_saved || !settings_get_bool(settings, PICCOLO_WINDOW_REMEMBER))
     {
         return;   // the first piccolo_window_apply() sets the mode's size
     }
@@ -79,6 +79,10 @@ void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Sett
 void piccolo_window_apply(PiccoloWindow* state, SDL_Window* window, const Settings* settings,
                           const ViewportInput* picture)
 {
+    if (state->phone_window)
+    {
+        return;   // --mobile: the phone's size, turned only by ROTATE
+    }
     // A phone is always full screen, borderless (PICCOLO_MOBILE).
     bool fullscreen = PICCOLO_MOBILE || settings_get_bool(settings, PICCOLO_DISPLAY_FULLSCREEN);
     uint32_t fullscreen_type =
@@ -166,9 +170,9 @@ void piccolo_window_apply(PiccoloWindow* state, SDL_Window* window, const Settin
 void piccolo_window_capture(PiccoloWindow* state, SDL_Window* window)
 {
     SDL_WindowFlags flags = SDL_GetWindowFlags(window);
-    if (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED))
+    if (state->phone_window || (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_MAXIMIZED)))
     {
-        return;   // keep the windowed size we had
+        return;   // keep the windowed size we had (not --mobile's phone)
     }
     int width = 0;
     int height = 0;
@@ -184,4 +188,21 @@ void piccolo_window_capture(PiccoloWindow* state, SDL_Window* window)
     state->saved_x = x;
     state->saved_y = y;
     state->has_saved = true;
+}
+
+void piccolo_window_rotate(SDL_Window* window)
+{
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+#if defined(SDL_PLATFORM_ANDROID)
+    // As piccoletto: the orientations allowed, then the activity told again
+    // (SDL applies the hint when the window's resizable flag changes).
+    const char* other = (width > height) ? "Portrait" : "LandscapeLeft LandscapeRight";
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, other);
+    SDL_SetWindowResizable(window, false);
+    SDL_SetWindowResizable(window, true);
+#else
+    SDL_SetWindowSize(window, height, width);
+#endif
 }

@@ -217,6 +217,7 @@ set(PICCOLO_SOURCES
     src/debug_window.cpp
     src/debug_preview.cpp
     src/about_window.cpp
+    src/mobile_home.cpp
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp

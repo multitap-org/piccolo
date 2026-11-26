@@ -1,6 +1,7 @@
 #include "file_picker.h"
 
 #include <algorithm>   // std::sort (the names)
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -718,11 +719,20 @@ void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiF
         retro_ui_row_end(&filter_row);
 
         // Files (left) and folders (right), leaving room for two rows below.
+        // A phone held upright: the folders above the files, each the whole
+        // width, the folders a fifth of the room (Andrés, 2026-11-25).
         float row = retro_ui_line_step();
         float list_height = retro_ui_height_left() - row * 2.0f;
         if (choosing_folder)   // folders only: the whole room
         {
             draw_folders(picker, 0.0f, list_height, action);
+        }
+        else if (retro_ui_page_upright())
+        {
+            // (A row's height goes to the gap between them.)
+            float folders_height = std::floor((list_height - row) * 0.2f);
+            draw_folders(picker, 0.0f, folders_height, action);
+            draw_files(picker, strings, 0.0f, list_height - row - folders_height, action);
         }
         else
         {

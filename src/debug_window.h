@@ -43,6 +43,11 @@ enum class DebugPreview
     remote_no_guests,          // a link, nobody in
     remote_guests,             // a link, a player on a port and a spectator
     quick_menu,                // QUICK MENU with SAVE STATES open (quick_menu.h): no game needed
+    // The phone UI (mobile_home.h), at the phone's touch scale.
+    phone_home,                // HOME with recent games
+    phone_home_empty,          // HOME, no recent games yet
+    phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
+    phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
 };
 
 struct DebugWindowState

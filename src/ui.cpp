@@ -64,6 +64,12 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     draw_hud(view, pixel_font, scale);
     draw_menu_backdrop(view, pixel_font, scale);   // (after the tabs: behind them and every window)
     actions->menu_picked = draw_menu_bar(view, pixel_font, scale);
+    // The phone: HOME behind every window (a page covers it), the ☰ sidebar
+    // over it (never up with a window).
+    if (view->phone)
+    {
+        mobile_home_draw(windows->mobile_home, &view->mobile_home, pixel_font, scale, &actions->mobile_home);
+    }
 
     settings_window_draw(windows->settings, windows->network, &view->settings, pixel_font, scale,
                          &actions->settings);

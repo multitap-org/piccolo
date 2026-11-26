@@ -75,6 +75,7 @@
 #include "input_sdl.h"
 #include "input_window.h"
 #include "map_window.h"
+#include "mobile_home.h"
 #include "input_net.h"
 #include "net_access.h"
 #include "build_target.h"
@@ -292,6 +293,9 @@ struct App
     std::vector<std::string> recent_labels;
     std::vector<const char*> recent_label_pointers;
     std::vector<size_t>      recent_shown;   // RECENT's items: their index in recent.games
+    std::vector<std::string>   recent_names;   // the phone's HOME: each game's name and core apart
+    std::vector<std::string>   recent_cores;
+    std::vector<MobileGameRow> recent_rows;
     // The menu bar as retroui draws it (rebuilt with the labels: language, RECENT).
     std::vector<std::string>     menu_texts;   // the translated labels the items point to
     std::vector<RetroUiMenuItem> menu_items;   // every menu's items, back to back
@@ -381,6 +385,10 @@ struct App
     PortsWidget ports_widget;          // the ports' tabs over the game, and DEVICES (the ports hotkey)
     uint64_t    ports_ping_ms = 0;     // when the tabs' pings were last read
     OnscreenPad onscreen_pad;          // the touch gamepad over the game (onscreen_pad.h)
+    // The phone UI (mobile_home.h): always on Android, --mobile on the
+    // desktop. HOME and ☰ instead of the menu bar, the windows as pages.
+    bool        phone_ui = PICCOLO_MOBILE;
+    MobileHome  mobile_home;
     DvrWidget   dvr;                   // the rewind DVR: its history and its GUI (dvr_widget.h)
     RemapWidget remap;                 // HOLD START TO REMAP: a card per undecided controller (remap_widget.h)
     StateWidget state_icons;           // PAUSED, REWINDING, PLAY, FAST FORWARD in the top right (state_widget.h)
@@ -644,6 +652,9 @@ static void refresh_recent_labels(App* app)
     app->recent_labels.clear();
     app->recent_label_pointers.clear();
     app->recent_shown.clear();
+    app->recent_names.clear();
+    app->recent_cores.clear();
+    app->recent_rows.clear();
     const char* no_game = piccolo_text(&app->strings, Str::recent_no_game);
     // The browser: one page per core over one shared folder, so only the
     // games of the core this page has (the others can't start here).
@@ -661,11 +672,17 @@ static void refresh_recent_labels(App* app)
         char label[600] = {};
         recent_games_label(&app->recent.games[i], no_game, label, sizeof(label));
         app->recent_labels.push_back(label);
+        char name[300] = {};
+        char core_name[300] = {};
+        recent_games_names(&app->recent.games[i], no_game, name, sizeof(name), core_name, sizeof(core_name));
+        app->recent_names.push_back(name);
+        app->recent_cores.push_back(core_name);
     }
     // Pointers after all the strings exist (push_back may move them).
     for (size_t i = 0; i < app->recent_labels.size(); i++)
     {
         app->recent_label_pointers.push_back(app->recent_labels[i].c_str());
+        app->recent_rows.push_back(MobileGameRow{app->recent_names[i].c_str(), app->recent_cores[i].c_str()});
     }
     build_menus(app);
 }
@@ -2966,6 +2983,19 @@ static void ui_do_back(App* app)
     // closes before the window, while it's the top one.
     bool sub_view = ui_top_window(&app->ui) == UiWindow::core_config &&
                     (app->shader_picker.open || core_config_window_sub_view(&app->core_config));
+    // The phone's ☰: from a menu's items back to the names; then over HOME
+    // it closes (over a game, back goes to the game below).
+    if (app->phone_ui && app->ui.window_count == 0 && app->mobile_home.submenu > 0)
+    {
+        app->mobile_home.submenu = 0;
+        app->mobile_home.menu_scroll = 0.0f;
+        return;
+    }
+    if (app->phone_ui && app->mobile_home.menu_open && app->ui.window_count == 0)
+    {
+        app->mobile_home.menu_open = false;
+        return;
+    }
     switch (ui_back(&app->ui, sub_view))
     {
         case UiBack::none:
@@ -3765,13 +3795,36 @@ static void prepare_game_picture(App* app, UiView* view)
         // Upright with the touch gamepad under it: the picture keeps the top.
         input.window_height = static_cast<uint32_t>(app->onscreen_pad.picture_height);
     }
-    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale);
+    float strip = app->phone_ui ? 0.0f : dvr_widget_strip_height(&app->dvr, app->ui_scale);
     if (strip > 0.0f && static_cast<float>(input.window_height) > strip)
     {
         // The DVR's strip at the bottom: the game shrinks into the space above.
         input.window_height -= static_cast<uint32_t>(strip);
     }
+    // The phone's DVR: the game in the room its panel leaves (upright the
+    // top, full width; sideways the left), centered at the top of it.
+    float dvr_width = 0.0f;
+    float dvr_height = 0.0f;
+    bool phone_dvr = app->phone_ui && dvr_widget_phone_game_area(&app->dvr, screen_width, screen_height, app->ui_scale,
+                                                                 static_cast<float>(input.core_aspect), &dvr_width,
+                                                                 &dvr_height);
+    if (phone_dvr)
+    {
+        input.window_width = static_cast<uint32_t>(dvr_width);
+        input.window_height = static_cast<uint32_t>(dvr_height);
+    }
     piccolo_settings_viewport(&app->settings, &input);
+    if (phone_dvr)
+    {
+        input.anchor = ViewportAnchor::top;
+    }
+    // A phone held upright: the picture always at the top, centered, menu up
+    // or not (Andrés, 2026-11-25: opening the menu hid the pad and the picture
+    // moved to the middle; the top left corner looked lost).
+    if (app->phone_ui && screen_height > screen_width)
+    {
+        input.anchor = ViewportAnchor::top;
+    }
 
     update_shader_stages(app, input.filter);
 
@@ -5739,8 +5792,8 @@ static void net_update_locked(App* app)
 // picture, in the theme's color (Andrés, testing round 3: black looked like
 // the background had gone). One backdrop for everything (testing round 1):
 // with or without a game, and also for the windows that open over the game
-// itself (a pairing request, PAIR, REMOTE PLAY). Widgets and modals don't
-// dim the screen themselves. ARGB; alpha 0 for none.
+// itself (a pairing request, PAIR, REMOTE PLAY), but never under the DVR.
+// Widgets and modals don't dim the screen themselves. ARGB; alpha 0 for none.
 // BACKGROUND at its opacity (100 - BACKGROUND TRANSPARENCY) over black: the
 // screen's color without a game, as the backdrop looks over a game's borders.
 static uint32_t background_over_black(const RetroUiPalette* palette)
@@ -5763,6 +5816,12 @@ static uint32_t menu_backdrop(const App* app)
                             (app->pair_window.request.active && !pair_request_in_game(app));
     // (No game: the screen is that color already, background_over_black.)
     if ((!ui_is_up(app) && !window_over_game) || transparency >= 100 || !game_running(app))
+    {
+        return 0;
+    }
+    // The DVR is about the game's picture: never dimmed under it (Andrés,
+    // 2026-11-25: "the game darkens a lot on DVR"), on every platform.
+    if (app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::dvr)
     {
         return 0;
     }
@@ -5796,7 +5855,7 @@ static void hud_fill(App* app, UiView* view)
     area.right = view->screen_width / block;
     area.top = 0.0f;
     area.bottom = view->screen_height / block - HUD_VIEW_MARGIN;
-    float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
+    float strip = app->phone_ui ? 0.0f : dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
     if (strip > 0.0f && view->screen_height / block - strip - HUD_VIEW_GAP < area.bottom)
     {
         area.bottom = view->screen_height / block - strip - HUD_VIEW_GAP;
@@ -5946,11 +6005,39 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
 
 // Everything the frame shows, as plain data (ui.h), after the updates: no
 // GUI calls, nothing changes but what the states themselves fill in.
+// The phone's HOME and ☰ (mobile_home.h). HOME while no game runs; ☰ over
+// it when opened, or over a paused game whenever MAIN MENU has nothing open
+// (the pad's MENU: Andrés, 2026-11-25, the way back to the game must show).
+static void phone_view(const App* app, bool main_menu, MobileHomeState* state)
+{
+    bool running = game_running(app);
+    bool nothing_open = app->ui.window_count == 0 && !app->pair_window.open && !app->guest_window.open &&
+                        !debug_preview_shown(&app->debug_previews);
+    state->strings = &app->strings;
+    state->home_shown = main_menu && !running && !debug_preview_covers_screen(&app->debug_previews);
+    state->menu_in_game = main_menu && running && nothing_open;
+    state->menu_shown = nothing_open && (state->menu_in_game || (state->home_shown && app->mobile_home.menu_open));
+    state->games = app->recent_rows.data();
+    state->game_count = static_cast<int32_t>(app->recent_rows.size());
+    state->first_game_id = MENU_ID_RECENT;
+    state->load_game_id = static_cast<int32_t>(MenuAction::load_game);
+    state->clear_recents_id = static_cast<int32_t>(MenuAction::clear_recents);
+    state->menus = app->menus.data();
+    state->menu_count = static_cast<int32_t>(app->menus.size());
+}
+
 static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 {
     onscreen_pad_state(&view->pad, &app->settings, &app->strings);
     // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
-    view->menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
+    bool main_menu = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
+    // The phone has HOME and ☰ instead of the bar.
+    view->menu_shown = main_menu && !app->phone_ui;
+    view->phone = app->phone_ui;
+    if (app->phone_ui)
+    {
+        phone_view(app, main_menu, &view->mobile_home);
+    }
     ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
     hud_fill(app, view);
     view->backdrop = menu_backdrop(app);
@@ -5968,8 +6055,9 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
                              app->game_name, app->shader_library.loaded, frame->config_now);
     file_picker_state(&view->shader_picker, &app->shader_picker, &app->catalog, &app->strings);
     ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, SDL_GetTicks());
-    app->dvr.core_aspect = game_running(app) ? app->session.host->av_info.geometry.aspect_ratio : 0.0f;
-    dvr_widget_state(&view->dvr, &app->dvr, &app->strings);
+    float game_aspect = game_running(app) ? static_cast<float>(app->session.host->av_info.geometry.aspect_ratio) : 0.0f;
+    app->dvr.core_aspect = game_aspect;
+    dvr_widget_state(&view->dvr, &app->dvr, &app->strings, app->phone_ui, game_aspect);
     core_options_state(app, &view->manager);
     cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
 
@@ -6050,12 +6138,13 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         text_input_window_update(&app->text_input_window, &view->text_input);
     }
     about_window_state(&view->about, &app->strings, PICCOLO_VERSION);
-    view->debug_shown = app->show_debug_window;
+    view->debug_shown = app->show_debug_window && !debug_preview_covers_screen(&app->debug_previews);
     if (view->debug_shown)
     {
         debug_window_state(app, &view->debug);
     }
-    debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION);
+    debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION, app->menus.data(),
+                        static_cast<int32_t>(app->menus.size()));
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {
@@ -6069,6 +6158,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 static void app_ui_windows(App* app, UiWindows* windows)
 {
     windows->pad = &app->onscreen_pad;
+    windows->mobile_home = &app->mobile_home;
     windows->ports = &app->ports_widget;
     windows->settings = &app->settings_window;
     windows->network = &app->net_window;
@@ -6088,6 +6178,35 @@ static void app_ui_windows(App* app, UiWindows* windows)
     windows->text_input = &app->text_input_window;
     windows->about = &app->about_window;
     windows->previews = &app->debug_previews;
+}
+
+// A pick on the menu bar, or the phone's HOME / ☰ (the same ids): a recent
+// game starts, any other item is its MenuAction. RETRO_UI_MENU_NONE: nothing.
+static void apply_menu_pick(App* app, int32_t picked)
+{
+    int32_t recent_picked = -1;
+    MenuAction action = MenuAction::none;
+    if (picked >= MENU_ID_RECENT)
+    {
+        action = MenuAction::recent_game;
+        recent_picked = picked - MENU_ID_RECENT;
+    }
+    else if (picked >= 0)
+    {
+        action = static_cast<MenuAction>(picked);
+    }
+    if (action == MenuAction::recent_game && recent_picked >= 0)
+    {
+        // Started at the top of the next loop, like LOAD GAME (see pending_start).
+        const RecentGame* game = &app->recent.games[app->recent_shown[static_cast<size_t>(recent_picked)]];
+        app->pending_start = FilePickerChoice{};
+        std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
+                      game->core_path.c_str());
+        std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
+                      game->content_path.c_str());
+        app->has_pending_start = true;
+    }
+    handle_menu_action(app, action);
 }
 
 // What the user did this frame, applied in the order the windows are drawn
@@ -6115,30 +6234,21 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     if (view->menu_shown)
     {
         app->open_first_menu = false;
-        int32_t picked = actions->menu_picked;
-        int32_t recent_picked = -1;
-        MenuAction action = MenuAction::none;
-        if (picked >= MENU_ID_RECENT)
+        apply_menu_pick(app, actions->menu_picked);
+    }
+    if (view->phone)
+    {
+        const MobileHomeAction* phone = &actions->mobile_home;
+        mobile_home_apply(&app->mobile_home, phone, view->mobile_home.menu_shown);
+        if (phone->rotate)
         {
-            action = MenuAction::recent_game;
-            recent_picked = picked - MENU_ID_RECENT;
+            piccolo_window_rotate(app->shell.window);
         }
-        else if (picked >= 0)
+        if (phone->close_menu && view->mobile_home.menu_in_game)
         {
-            action = static_cast<MenuAction>(picked);
+            app_enter_game(app);   // RESUME, ›, a tap outside: back to the paused game
         }
-        if (action == MenuAction::recent_game && recent_picked >= 0)
-        {
-            // Started at the top of the next loop, like LOAD GAME (see pending_start).
-            const RecentGame* game = &app->recent.games[app->recent_shown[static_cast<size_t>(recent_picked)]];
-            app->pending_start = FilePickerChoice{};
-            std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s",
-                          game->core_path.c_str());
-            std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
-                          game->content_path.c_str());
-            app->has_pending_start = true;
-        }
-        handle_menu_action(app, action);
+        apply_menu_pick(app, phone->picked);
     }
 
     settings_apply(app, frame, &actions->settings);
@@ -6543,7 +6653,8 @@ static bool app_frame(App* app)
         float screen_width = 0.0f;
         float screen_height = 0.0f;
         ui_toolkit_screen_size(&screen_width, &screen_height);
-        app->ui_scale = ui_toolkit_scale_for_screen(screen_width, screen_height);
+        app->ui_scale = app->phone_ui ? ui_toolkit_scale_for_phone(screen_width, screen_height)
+                                      : ui_toolkit_scale_for_screen(screen_width, screen_height);
         ui_toolkit_set_scale(app->ui_scale);
         // A phone turned (or the window resized): the open windows back to
         // the middle, or they'd keep the old one, half off the screen. Not on
@@ -6717,6 +6828,43 @@ int main(int argc, char** argv)
     config.icons      = app_icon_images;
     config.icon_count = app_icon_image_count;
 
+    // Desktop testing of the phone UI (Andrés, 2026-11-25): --mobile opens a
+    // phone-shaped window with HOME, ☰ and the windows as pages (Android
+    // always has them); --landscape turns it on its side (ROTATE does too).
+    // --menu NAME runs a menu item at start, by its log name (menus.cpp:
+    // SOUND, LOAD_GAME); --phone-menu opens ☰. For trying screens out.
+    bool landscape = false;
+    const char* start_menu = nullptr;
+    for (int i = 1; i < argc; i++)
+    {
+        if (std::strcmp(argv[i], "--mobile") == 0)
+        {
+            app->phone_ui = true;
+            app->window.phone_window = !PICCOLO_MOBILE;
+        }
+        else if (std::strcmp(argv[i], "--landscape") == 0)
+        {
+            landscape = true;
+        }
+        else if (std::strcmp(argv[i], "--phone-menu") == 0)
+        {
+            app->mobile_home.menu_open = true;
+        }
+        else if (std::strcmp(argv[i], "--menu") == 0 && i + 1 < argc)
+        {
+            start_menu = argv[i + 1];
+            i++;
+        }
+    }
+    if (app->window.phone_window)
+    {
+        // piccoletto's desktop window: a phone's shape, 2 window pixels per
+        // retro pixel (its short side holds touch_ui's 195).
+        config.window_width  = landscape ? 900 : 420;
+        config.window_height = landscape ? 420 : 900;
+        SDL_Log("Phone UI: %s window", landscape ? "landscape" : "portrait");
+    }
+
     remap_widget_create(&app->remap);
     if (!pixel_font_init() || !core_session_create(&app->session))
     {
@@ -6739,6 +6887,7 @@ int main(int argc, char** argv)
     }
     app_loop_prepare_window(app->shell.window);
     app->pixel_font = ui_toolkit_start();
+    ui_toolkit_set_phone(app->phone_ui);
     if (app->pixel_font == nullptr)
     {
         core_session_destroy(&app->session, &app->shell);
@@ -6878,6 +7027,31 @@ int main(int argc, char** argv)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Audio subsystem: %s", SDL_GetError());
     }
     refresh_audio_devices(app);
+
+    if (start_menu != nullptr)
+    {
+        // "LOAD_GAME" works as "LOAD GAME" (no quotes needed in a shell).
+        char wanted[64] = {};
+        std::snprintf(wanted, sizeof(wanted), "%s", start_menu);
+        for (size_t i = 0; wanted[i] != '\0'; i++)
+        {
+            wanted[i] = wanted[i] == '_' ? ' ' : wanted[i];
+        }
+        bool found = false;
+        for (int32_t i = 0; i <= static_cast<int32_t>(MenuAction::separator); i++)
+        {
+            MenuAction action = static_cast<MenuAction>(i);
+            if (SDL_strcasecmp(menu_action_name(action), wanted) == 0)
+            {
+                handle_menu_action(app, action);
+                found = true;
+            }
+        }
+        if (!found)
+        {
+            SDL_Log("--menu %s: no such menu item", start_menu);
+        }
+    }
 
     app->running = true;
     app_loop_on_leave(app_save_on_leave, app);
