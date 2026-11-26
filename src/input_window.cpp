@@ -1121,7 +1121,11 @@ static void draw_device(const InputWindowState* state, const InputDevice* device
                 if (removable)
                 {
                     retro_ui_same_line();
-                    if (retro_ui_button(remove))
+                    // Not while a SET waits: removing shifts the controller indexes under it.
+                    retro_ui_begin_disabled(input->capture.active);
+                    bool removed = retro_ui_button(remove);
+                    retro_ui_end_disabled();
+                    if (removed)
                     {
                         action->press = InputWindowPress::remove_player;
                         action->controller = c;
@@ -1131,7 +1135,10 @@ static void draw_device(const InputWindowState* state, const InputDevice* device
                 }
                 retro_ui_pop_id();
             }
-            if (retro_ui_button(piccolo_text(strings, Str::input_add_part)))
+            retro_ui_begin_disabled(input->capture.active);
+            bool added = retro_ui_button(piccolo_text(strings, Str::input_add_part));
+            retro_ui_end_disabled();
+            if (added)
             {
                 action->press = InputWindowPress::add_player;
                 action->device_id = device->id;
@@ -1259,6 +1266,19 @@ static void add_player(InputWindow* window, InputSystem* input, uint32_t device_
     window->mapping_picked = true;
 }
 
+// Stops a waiting SET / BIND ALL and puts the controller's bindings back as
+// they were when it began.
+static void cancel_capture(InputWindow* window, InputSystem* input)
+{
+    if (window->capture_controller < input->controllers.size())
+    {
+        input->controllers[window->capture_controller].bindings = window->capture_backup;
+    }
+    input_capture_cancel(input);
+    window->capturing = false;
+    window->bind_all = false;
+}
+
 InputWindowRequest input_window_apply(InputWindow* window, const InputWindowAction* action, InputSystem* input,
                                       Settings* settings, uint64_t now_ms)
 {
@@ -1323,10 +1343,7 @@ InputWindowRequest input_window_apply(InputWindow* window, const InputWindowActi
         break;
     }
     case InputWindowPress::cancel:
-        input->controllers[controller].bindings = window->capture_backup;
-        input_capture_cancel(input);
-        window->capturing = false;
-        window->bind_all = false;
+        cancel_capture(window, input);
         break;
     case InputWindowPress::hotkey_mode:
         input->controllers[controller].hotkey_mode = action->hotkey_mode;
@@ -1350,6 +1367,10 @@ InputWindowRequest input_window_apply(InputWindow* window, const InputWindowActi
         window->map_request = action->joystick;
         break;
     case InputWindowPress::remove_player:
+        if (window->capturing)
+        {
+            cancel_capture(window, input);   // before the indexes move
+        }
         input_remove_controller(input, controller);
         window->mapping = UINT32_MAX;   // indices moved
         window->mapping_picked = false;
