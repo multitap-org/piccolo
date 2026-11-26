@@ -1619,7 +1619,17 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     {
         dvr_widget_game_started(&app->dvr, &app->session, &app->settings);   // the game's REWIND settings
         remap_widget_game_started(&app->remap);   // nothing asked yet for this game
-        // The emulated device on each port, as kept for this core (or game).
+        // The adapter on each physical port (cores with port adapters), then
+        // the emulated device on each port (player), as kept for this core (or game).
+        for (uint32_t physical = 0; physical < app->session.host->port_layout.port_count; physical++)
+        {
+            int32_t adapter = settings_get_int(&app->settings, PICCOLO_INPUT_PORT_ADAPTERS[physical]);
+            unsigned wanted = adapter < 0 ? LIBRETRO_ADAPTER_AUTO : static_cast<unsigned>(adapter);
+            if (wanted != app->session.host->port_layout.wanted[physical])
+            {
+                libretro_host_set_port_adapter(app->session.host, physical, wanted);
+            }
+        }
         for (unsigned port = 0; port < LIBRETRO_MAX_PORTS; port++)
         {
             int32_t device = settings_get_int(&app->settings, PICCOLO_INPUT_PORT_DEVICES[port]);
@@ -3499,6 +3509,9 @@ static void app_update_input(App* app)
     // The browser's page pad (web_pad.h) takes its place while it shows.
     bool onscreen_on = onscreen_pad_enabled(&app->onscreen_pad, show) && !web_pad_active();
     onscreen_pad_update(&app->onscreen_pad, &app->input, onscreen_on, show, app->ui_derived.overlay_active);
+    // START joins the ports the core described (4 when it says nothing, as before 8 ports).
+    uint32_t core_ports = app->session.host->input_info.port_count;
+    app->input.join_ports = core_ports > 0 ? core_ports : 4;
     InputFrame frame = {};
     input_update(&app->input, SDL_GetTicks(), &frame);
     offer_mapping(app, &frame);
