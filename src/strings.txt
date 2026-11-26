@@ -51,6 +51,7 @@ recent_no_game = NO GAME
 
 # The phone UI (mobile_home.h): HOME and the ☰ sidebar
 mobile_recent_games = RECENT GAMES
+mobile_continue = CONTINUE
 mobile_no_games = NO GAMES YET
 mobile_no_games_hint = LOAD ONE TO PLAY IT
 mobile_no_games_more = YOUR LAST GAMES SHOW HERE
@@ -64,6 +65,27 @@ status_undo_load = LOAD STATE UNDONE
 status_undo_nothing = NOTHING TO UNDO
 status_resumed = RESUMED WHERE YOU LEFT OFF
 status_resume_failed = COULD NOT RESUME WHERE YOU LEFT OFF
+
+# The CONTINUE card (continue_panel.h): the last game, with no game running
+continue_resume = RESUME
+continue_start = START
+continue_hint = A / ENTER: RESUME · OTHER GAMES: ☰
+continue_played_today = PLAYED TODAY AT
+continue_played_yesterday = PLAYED YESTERDAY AT
+continue_played_on = PLAYED ON
+continue_at = AT
+continue_monday = MONDAY
+continue_tuesday = TUESDAY
+continue_wednesday = WEDNESDAY
+continue_thursday = THURSDAY
+continue_friday = FRIDAY
+continue_saturday = SATURDAY
+continue_sunday = SUNDAY
+continue_why_no_states = THIS CORE CAN'T SAVE STATES: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT.
+continue_why_incomplete = THIS CORE'S STATES ARE INCOMPLETE: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT.
+continue_why_off = SAVE STATE ON EXIT IS OFF: THE GAME STARTS FROM THE BEGINNING.
+continue_why_missing = ITS AUTOMATIC STATE IS GONE: THE GAME STARTS FROM THE BEGINNING.
+continue_why_newer_save = ITS SAVE FILE IS NEWER THAN THIS POINT (COPIED, OR PLAYED ELSEWHERE). RESUMING GOES BACK TO BEFORE THAT SAVE.
 
 # LOAD GAME window
 picker_title = LOAD GAME

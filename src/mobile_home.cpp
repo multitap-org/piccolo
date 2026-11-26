@@ -127,12 +127,14 @@ static bool draw_empty(const TouchUi* ui, const Localization* strings, float x, 
 }
 
 // The games' list: one column upright, two sideways; scrolls when it doesn't fit.
+// `first`: the first game listed (1 when the CONTINUE card shows games[0]);
+// `columns`: two sideways, one when the card takes half the room.
 static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeState* state, float x, float y, float width,
-                       float height, MobileHomeAction* action)
+                       float height, int32_t first, int32_t columns, MobileHomeAction* action)
 {
-    int32_t columns = landscape(ui) ? 2 : 1;
     float column_width = std::floor((width - static_cast<float>(columns - 1) * ROW_GAP) / static_cast<float>(columns));
-    int32_t rows = (state->game_count + columns - 1) / columns;
+    int32_t listed = state->game_count - first;
+    int32_t rows = (listed + columns - 1) / columns;
     float content = static_cast<float>(rows) * (GAME_ROW + ROW_GAP);
     // Every row is submitted, the ones scrolled away too (clipped), so the
     // keyboard and gamepad can move onto them; the list follows the focus.
@@ -140,10 +142,10 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
     TouchUi list_ui = *ui;
     list_ui.focus = &focus;
     touch_ui_push_clip(ui, x, y, width, height);
-    for (int32_t i = 0; i < state->game_count; i++)
+    for (int32_t i = first; i < state->game_count; i++)
     {
-        int32_t column = i % columns;
-        int32_t row = i / columns;
+        int32_t column = (i - first) % columns;
+        int32_t row = (i - first) / columns;
         float row_x = x + static_cast<float>(column) * (column_width + ROW_GAP);
         float row_y = y + static_cast<float>(row) * (GAME_ROW + ROW_GAP) - home->scroll;
         if (draw_game(&list_ui, &state->games[i], i, row_x, row_y, column_width))
@@ -156,9 +158,50 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
     touch_ui_pop_clip();
 }
 
+float mobile_home_card_width(float width, float height)
+{
+    if (width > height)
+    {
+        float list_width = width - 3.0f * MARGIN - SIDE_COLUMN;
+        return std::floor((list_width - ROW_GAP) * 0.5f);
+    }
+    return width - 2.0f * MARGIN;
+}
+
+// A section's name at the left of a SMALL_BUTTON-tall row (RECENT GAMES,
+// CONTINUE).
+static void section_name(const TouchUi* ui, float x, float y, const char* name)
+{
+    touch_ui_text(ui, x + 2.0f, touch_ui_centered_text_y(ui, y, SMALL_BUTTON, TouchText::normal), name,
+                  ui->palette.text_disabled, TouchText::normal);
+}
+
+// CONTINUE and its card at (x, y), `width` wide, no taller than `room`
+// (its picture gets shorter first). Returns its bottom.
+static float draw_continue(const TouchUi* ui, const MobileHomeState* state, float x, float y, float width, float room,
+                           MobileHomeAction* action)
+{
+    section_name(ui, x, y, piccolo_text(state->strings, Str::mobile_continue));
+    float card_y = y + SMALL_BUTTON + 6.0f;
+    room -= SMALL_BUTTON + 6.0f;
+    ContinueViewCard card = *state->card;
+    float tall = continue_view_card_height(ui, &card, width);
+    if (tall > room)
+    {
+        float picture = CONTINUE_VIEW_CARD_PICTURE_HEIGHT - (tall - room);
+        card.picture_max_height = picture > 24.0f ? picture : 24.0f;
+    }
+    float drawn = 0.0f;
+    ContinueViewButton pressed = continue_view_draw_card(ui, &card, x, card_y, width, &drawn);
+    if (pressed != ContinueViewButton::none)
+    {
+        action->continue_pressed = pressed;
+    }
+    return card_y + drawn;
+}
+
 static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState* state, MobileHomeAction* action)
 {
-    const RetroUiPalette* palette = &ui->palette;
     const Localization* strings = state->strings;
     float width = touch_ui_width(ui);
     float height = touch_ui_height(ui);
@@ -191,24 +234,49 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
     float list_width = wide ? width - 3.0f * MARGIN - SIDE_COLUMN : width - 2.0f * MARGIN;
     float list_bottom = wide ? height - MARGIN : height - 2.0f * MARGIN - MAIN_BUTTON;
 
+    // The CONTINUE card first (the mockup): upright above the games, leaving
+    // room for two of them; sideways in the left half, the games at its right.
+    float list_x = MARGIN;
+    float list_y = content_y;
+    int32_t first = 0;
+    int32_t columns = wide ? 2 : 1;
+    if (state->card != nullptr)
+    {
+        first = 1;   // the card's game
+        if (wide)
+        {
+            float card_width = mobile_home_card_width(width, height);
+            draw_continue(ui, state, list_x, content_y, card_width, list_bottom - content_y, action);
+            list_x += card_width + ROW_GAP;
+            list_width -= card_width + ROW_GAP;
+            columns = 1;
+        }
+        else
+        {
+            float room = list_bottom - content_y - SMALL_BUTTON - 6.0f - 2.0f * (GAME_ROW + ROW_GAP);
+            list_y = draw_continue(ui, state, list_x, content_y, list_width, room, action) + 8.0f;
+        }
+    }
+
     // RECENT GAMES, CLEAR ALL at its right.
     const char* clear = piccolo_text(strings, Str::menu_clear_recents);
     float clear_width = touch_ui_text_width(ui, clear, TouchText::normal) + 12.0f;
-    touch_ui_text(ui, MARGIN + 2.0f, touch_ui_centered_text_y(ui, content_y, SMALL_BUTTON, TouchText::normal),
-                  piccolo_text(strings, Str::mobile_recent_games), palette->text_disabled, TouchText::normal);
-    if (touch_ui_button(ui, "##clear_recents", MARGIN + list_width - clear_width, content_y, clear_width, SMALL_BUTTON,
+    section_name(ui, list_x, list_y, piccolo_text(strings, Str::mobile_recent_games));
+    if (touch_ui_button(ui, "##clear_recents", list_x + list_width - clear_width, list_y, clear_width, SMALL_BUTTON,
                         clear, TouchButton::normal, TouchText::normal))
     {
         action->picked = state->clear_recents_id;
     }
-    float list_y = content_y + SMALL_BUTTON + 6.0f;
-    draw_games(home, ui, state, MARGIN, list_y, list_width, list_bottom - list_y, action);
+    list_y += SMALL_BUTTON + 6.0f;
+    draw_games(home, ui, state, list_x, list_y, list_width, list_bottom - list_y, first, columns, action);
 
     float button_x = wide ? width - MARGIN - SIDE_COLUMN : MARGIN;
     float button_width = wide ? SIDE_COLUMN : width - 2.0f * MARGIN;
     float button_y = height - MARGIN - MAIN_BUTTON;
+    // With the CONTINUE card RESUME is the main action, not LOAD GAME.
+    TouchButton load_style = state->card != nullptr ? TouchButton::normal : TouchButton::primary;
     if (touch_ui_button(ui, "##load_game", button_x, button_y, button_width, MAIN_BUTTON,
-                        piccolo_text(strings, Str::mobile_load_game), TouchButton::primary, TouchText::big))
+                        piccolo_text(strings, Str::mobile_load_game), load_style, TouchText::big))
     {
         action->picked = state->load_game_id;
     }

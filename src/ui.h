@@ -17,6 +17,7 @@
 
 #include "about_window.h"
 #include "core_config_window.h"
+#include "continue_panel.h"
 #include "core_options_ui.h"
 #include "cores_window.h"
 #include "debug_preview.h"
@@ -76,6 +77,7 @@ struct UiView
     const HudStack*  hud = nullptr;     // the App's, built this frame
     HudArea          hud_area = {};     // retro pixels
     uint64_t         hud_now_ms = 0;
+    ContinuePanelView continue_card;  // the CONTINUE card on the empty screen (or the debug window's fake one)
     uint32_t         backdrop = 0;   // ARGB behind the windows: BACKGROUND, at 100 - BACKGROUND TRANSPARENCY (alpha 0: none)
 
     // The menu bar (messages are HUD cards: message_widget.h).
@@ -166,6 +168,7 @@ struct UiActions
     OnscreenPadAction        pad = {};
     int32_t                  menu_picked = -1;   // the menu bar's item id (-1: none)
     MobileHomeAction         mobile_home = {};   // the phone's HOME and ☰ (their picks are the bar's ids)
+    ContinueViewButton       continue_pressed = ContinueViewButton::none;   // the CONTINUE card's button
     SettingsWindowAction     settings = {};
     FilePickerAction         picker = {};
     QuickMenuAction          quick = {};
@@ -188,8 +191,8 @@ struct UiActions
     AboutWindowAction        about = {};
 };
 
-// All the frame's drawing, back to front: the game, the menu snow, the touch gamepad, the
-// ports' tabs, the HUD, the backdrop, the menu bar, the
+// All the frame's drawing, back to front: the game, the menu snow, the touch
+// gamepad, the ports' tabs, the HUD, the CONTINUE card, the backdrop, the menu bar, the
 // windows, the debug window, the FPS meter, the scrollbars, the cursor.
 // Between the toolkit's begin and end of frame.
 void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, int32_t scale, UiActions* actions);

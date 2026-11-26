@@ -4,7 +4,9 @@
 
 #include "ui.h"
 
+#include "continue_view.h"
 #include "game_view.h"
+#include "touch_ui.h"
 
 // ---------------------------------------------------------------------------
 // Drawing helpers
@@ -51,6 +53,46 @@ static int32_t draw_menu_bar(const UiView* view, RetroUiFont* pixel_font, int32_
     return retro_ui_menu_bar(pixel_font, scale, view->menus, view->menu_count, view->open_first_menu);
 }
 
+// The CONTINUE card on the empty screen: a panel behind every window and
+// menu (drawn back before the backdrop, which goes further back), under the
+// menu bar. Returns its button pressed.
+static ContinueViewButton draw_continue_panel(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
+{
+    if (!view->continue_card.shown || view->continue_card.phone)
+    {
+        return ContinueViewButton::none;
+    }
+    float bar = view->menu_shown ? retro_ui_menu_bar_height(scale) : 0.0f;
+    return continue_view_draw_panel(pixel_font, scale, &view->continue_card.card, bar);
+}
+
+// The debug window's preview of the phone's HOME card: a phone-wide card in
+// the touch look, over everything, with the screen dimmed behind it. Any
+// button ends the preview (main.cpp).
+static ContinueViewButton draw_continue_phone(const UiView* view, RetroUiFont* pixel_font)
+{
+    if (!view->continue_card.shown || !view->continue_card.phone)
+    {
+        return ContinueViewButton::none;
+    }
+    TouchUi ui = {};
+    ui.font = pixel_font;
+    ui.scale = touch_ui_scale_for(view->screen_width, view->screen_height);
+    ui.palette = *retro_ui_palette();
+    touch_ui_begin_overlay(&ui, "##continue_phone");
+    float screen_width = touch_ui_width(&ui);
+    float screen_height = touch_ui_height(&ui);
+    touch_ui_rect(&ui, 0.0f, 0.0f, screen_width, screen_height, 0x99000000u);
+    float phone = screen_width < 195.0f ? screen_width : 195.0f;   // a phone's width (touch_ui.h)
+    float x = static_cast<float>(static_cast<int32_t>((screen_width - phone) * 0.5f));
+    touch_ui_rect(&ui, x, 0.0f, phone, screen_height, ui.palette.background);
+    float height = 0.0f;
+    ContinueViewButton pressed = continue_view_draw_card(&ui, &view->continue_card.card, x + 8.0f, 16.0f,
+                                                         phone - 16.0f, &height);
+    touch_ui_end_screen();
+    return pressed;
+}
+
 // ---------------------------------------------------------------------------
 // The frame
 
@@ -68,7 +110,8 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     // The ports' tabs, behind every window (they peek while the menu is up).
     ports_widget_draw_tabs(windows->ports, &view->ports_tabs, pixel_font, scale);
     draw_hud(view, pixel_font, scale);
-    draw_menu_backdrop(view, pixel_font, scale);   // (after the tabs: behind them and every window)
+    actions->continue_pressed = draw_continue_panel(view, pixel_font, scale);
+    draw_menu_backdrop(view, pixel_font, scale);   // (after the tabs and the card: behind them and every window)
     actions->menu_picked = draw_menu_bar(view, pixel_font, scale);
     // The phone: HOME behind every window (a page covers it), the ☰ sidebar
     // over it (never up with a window).
@@ -127,6 +170,11 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     if (view->debug_shown)
     {
         debug_window_draw(&view->debug, pixel_font, scale, &actions->debug);
+    }
+    ContinueViewButton phone = draw_continue_phone(view, pixel_font);
+    if (phone != ContinueViewButton::none)
+    {
+        actions->continue_pressed = phone;
     }
     if (view->fps_shown)
     {

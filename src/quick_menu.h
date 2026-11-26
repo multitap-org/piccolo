@@ -44,7 +44,7 @@
 
 #include "core_session.h"
 #include "localization.h"
-#include "video_texture.h"
+#include "ui_picture.h"
 
 struct AppShell;
 #include "retro_ui_font.h"
@@ -77,19 +77,6 @@ enum class QuickMenuPress
 constexpr uint32_t QUICK_MENU_SLOTS = QUICK_MENU_SLOT_LAST + 1;   // [FIRST..LAST] used
 constexpr size_t   QUICK_MENU_LABEL_MAX = 24;
 
-// A picture loaded from a slot's PNG (B8G8R8A8, opaque) and its texture.
-struct QuickMenuPicture
-{
-    VideoTexture          texture;   // texture.ui_texture: what the toolkit draws; made the picture's size
-    std::vector<uint32_t> pixels;
-    uint32_t              width = 0;
-    uint32_t              height = 0;
-    bool                  upload_pending = false;
-    bool                  shown = false;      // the texture holds `pixels`
-    int64_t               modified = 0;       // the state's date the pixels are for (0: none)
-    bool                  replace_wait = false;   // its texture is made again (another size) next frame
-};
-
 struct QuickMenu
 {
     bool          open = false;
@@ -105,8 +92,8 @@ struct QuickMenu
     // Each slot's thumbnail as saved (the picture at x1, at the aspect in
     // use: core_session.h), and the selected one scaled up by a whole number
     // (`preview_scale`) for the big picture.
-    QuickMenuPicture thumbs[QUICK_MENU_SLOTS];
-    QuickMenuPicture preview;
+    UiPicture thumbs[QUICK_MENU_SLOTS];
+    UiPicture preview;
     uint32_t         preview_slot = 0;
     uint32_t         preview_scale = 0;
     // The big picture's size on screen at the last draw (window pixels):

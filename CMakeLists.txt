@@ -227,6 +227,9 @@ set(PICCOLO_SOURCES
     src/safe_start_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
+    src/ui_picture.cpp
+    src/continue_card.cpp
+    src/continue_panel.cpp
     src/core_config_window.cpp
     src/ports_widget.cpp
     src/dvr_widget.cpp
@@ -540,6 +543,17 @@ if(MULTITAP_BUILD_TESTS)
              COMMAND piccolo_recent_games_test "${CMAKE_CURRENT_BINARY_DIR}/recent_games_test")
     set_tests_properties(piccolo_recent_games PROPERTIES
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # The CONTINUE card's model: which card for which files, its record, the dates.
+    add_executable(piccolo_continue_card_test tools/continue_card_test.cpp src/continue_card.cpp)
+    target_include_directories(piccolo_continue_card_test PRIVATE src)
+    target_link_libraries(piccolo_continue_card_test PRIVATE host_common)
+    multitap_set_project_flags(piccolo_continue_card_test)
+    add_test(NAME piccolo_continue_card
+             COMMAND piccolo_continue_card_test "${CMAKE_CURRENT_BINARY_DIR}/continue_card_test")
+    set_tests_properties(piccolo_continue_card PROPERTIES
+        PASS_REGULAR_EXPRESSION "continue card: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     # UNDO SAVE STATE's files: the slot and its undo swapped, no core.
     add_executable(piccolo_state_undo_test tools/state_undo_test.cpp src/state_undo.cpp)
