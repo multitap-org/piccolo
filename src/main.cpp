@@ -42,6 +42,9 @@
 #include "core_config_window.h"
 #include "quick_menu.h"
 #include "recent_games.h"
+#include "continue_panel.h"
+#include "continue_view.h"
+#include "touch_ui.h"
 #include "safe_start_window.h"
 #include "shader_check.h"
 #include "shader_check_view.h"
@@ -55,6 +58,7 @@
 #include "settings_file.h"
 #include "core_catalog.h"
 #include "core_updater.h"
+#include "content_archive.h"
 #include "cores_window.h"
 #include "share_window.h"
 #include "pair_window.h"
@@ -216,7 +220,8 @@ struct App
     uint32_t   undo_save_checked = UINT32_MAX;   // ...checked for this slot
     bool       menus_built_undo_save = false;    // UNDO SAVE STATE was enabled when the menus were built
     bool       menus_built_undo_load = false;    // UNDO LOAD STATE too
-    bool       resume_skip = false;   // the next start doesn't load the AUTO state (HARD RESET)
+    bool       resume_skip = false;   // the next start doesn't load the AUTO state (HARD RESET, the card's START)
+    ContinuePanel continue_panel;     // the CONTINUE card: the last game closed (continue_panel.h)
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -570,6 +575,8 @@ constexpr int32_t MENU_ID_RECENT = 1000;
 // Built when the labels change, the pause and whether a game runs, never
 // per frame.
 static bool game_running(const App* app);   // (Game control, further down)
+static bool continue_card_active(const App* app);   // (The CONTINUE card, further down)
+static void continue_card_press(App* app, ContinueViewButton button);
 
 static bool menu_item_listed(int32_t menu, int32_t item, bool running)
 {
@@ -878,26 +885,136 @@ static bool auto_state_path(const App* app, char* out, size_t out_size)
     return written > 0 && static_cast<size_t>(written) < out_size;
 }
 
-// Before the running game stops (between frames). A core without savestates
-// saves nothing.
+// The picture of the game as shown, at x1 (IMAGE SETTINGS' crop and aspect):
+// a slot's thumbnail is made at that size; `aspect_*` gets it too (the
+// CONTINUE card draws the cropped frame at that shape itself).
+static StateThumbnail picture_thumbnail(const App* app, uint32_t* aspect_width, uint32_t* aspect_height)
+{
+    StateThumbnail thumbnail = {};
+    *aspect_width = 0;
+    *aspect_height = 0;
+    const LibretroVideoFrame* video = &app->session.host->video;
+    if (game_running(app) && video->width > 0 && video->height > 0)
+    {
+        ViewportInput input = {};
+        input.frame_width = video->width;
+        input.frame_height = video->height;
+        input.core_aspect = static_cast<double>(app->session.host->av_info.geometry.aspect_ratio);
+        piccolo_settings_viewport(&app->settings, &input);
+        thumbnail.crop = input.crop;
+        if (!viewport_picture_size(&input, 1, &thumbnail.width, &thumbnail.height))
+        {
+            thumbnail.width = 0;
+            thumbnail.height = 0;
+        }
+        *aspect_width = thumbnail.width;
+        *aspect_height = thumbnail.height;
+    }
+    return thumbnail;
+}
+
+// The system the core plays, from the core downloader's index when it has
+// been read ("" otherwise: the card shows the core alone).
+static std::string core_systems(const App* app)
+{
+    const char* name = app->session.host->core_path;
+    const char* slash = std::strrchr(name, '/');
+    const char* file = slash != nullptr ? slash + 1 : name;
+    int32_t entry = core_index_find_file(&app->core_updater.index, file);
+    if (entry < 0)
+    {
+        return std::string();
+    }
+    std::string systems = app->core_updater.index.entries[static_cast<size_t>(entry)].systems;
+    for (size_t i = 0; i < systems.size(); i++)
+    {
+        if (systems[i] == '|')
+        {
+            systems[i] = '/';
+        }
+    }
+    return systems;
+}
+
+// Before the running game stops (between frames): its AUTO state (SAVE
+// STATE ON EXIT), and for the CONTINUE card its last frame and record
+// (continue_card.h), even when there's no state to save. No state for a core
+// without savestates, nor one whose states are incomplete (the card says
+// START for both; an incomplete state's old file goes, so it never loads).
 static void save_state_on_exit(App* app)
 {
     char path[LIBRETRO_PATH_MAX + 8] = {};
-    if (!settings_get_bool(&app->settings, PICCOLO_SAVESTATE_ON_EXIT) || !auto_state_path(app, path, sizeof(path)))
+    if (!auto_state_path(app, path, sizeof(path)))
     {
         return;
     }
     LibretroHost* host = app->session.host;
-    size_t size = libretro_host_state_size(host);
-    std::vector<uint8_t> state;   // once, as the game closes: not a hot path
-    if (size == 0 || !libretro_host_serialize(host, &state))
+    ContinueRecord record = {};
+    record.saved = ContinueSaved::off;
+    if (settings_get_bool(&app->settings, PICCOLO_SAVESTATE_ON_EXIT))
     {
-        return;
+        size_t size = libretro_host_state_size(host);
+        std::vector<uint8_t> state;   // once, as the game closes: not a hot path
+        if ((host->serialization_quirks & RETRO_SERIALIZATION_QUIRK_INCOMPLETE) != 0)
+        {
+            record.saved = ContinueSaved::incomplete;
+            if (host_fs_exists(path))
+            {
+                host_fs_remove_file(path);
+            }
+        }
+        else if (size == 0 || !libretro_host_serialize(host, &state))
+        {
+            record.saved = ContinueSaved::no_states;
+        }
+        else if (host_fs_write_file(path, state.data(), size))
+        {
+            record.saved = ContinueSaved::state;
+            SDL_Log("Save state on exit: %s (%zu bytes)", path, size);
+        }
+        else
+        {
+            record.saved = ContinueSaved::no_states;   // (logged) nothing to resume
+        }
     }
-    if (host_fs_write_file(path, state.data(), size))
+
+    // The card's picture: the cropped frame, not scaled (sharp later).
+    std::string picture = std::string(path) + ".png";
+    StateThumbnail thumbnail = picture_thumbnail(app, &record.aspect_width, &record.aspect_height);
+    thumbnail.native = true;
+    if (thumbnail.width == 0 || !core_session_save_picture(&app->session, &thumbnail, picture.c_str()))
     {
-        SDL_Log("Save state on exit: %s (%zu bytes)", path, size);
+        if (host_fs_exists(picture.c_str()))
+        {
+            host_fs_remove_file(picture.c_str());   // never an older game's picture
+        }
     }
+    record.core_path = app->marker_core_path;
+    record.content_path = app->marker_content_path;
+    char game[LIBRETRO_PATH_MAX] = {};
+    if (record.content_path.empty() ||
+        !content_archive_game_name(record.content_path.c_str(), game, sizeof(game)))
+    {
+        std::snprintf(game, sizeof(game), "%s", host->game_name);
+    }
+    record.game_name = game;
+    record.core_name = host->system_info.library_name != nullptr ? host->system_info.library_name : "";
+    record.system_name = core_systems(app);
+    record.state_path = path;
+    record.picture_path = picture;
+    // The save file a newer copy of would make resuming go back (SRAM).
+    for (size_t i = 0; i < host->memory_files.size(); i++)
+    {
+        if (host->memory_files[i].type == RETRO_MEMORY_SAVE_RAM)
+        {
+            record.save_path = host->memory_files[i].path;
+            break;
+        }
+    }
+    SDL_Time now = 0;
+    SDL_GetCurrentTime(&now);
+    record.closed = static_cast<uint64_t>(now / SDL_NS_PER_SECOND);
+    continue_panel_closed(&app->continue_panel, &record);
 }
 
 // Right after a game started: its AUTO state, if it has one. The fresh start
@@ -1576,21 +1693,9 @@ static bool start_game(App* app, const FilePickerChoice* choice)
 // Picture settings' crop and aspect, at x1 (core_session.h).
 static bool save_state_with_thumbnail(App* app)
 {
-    StateThumbnail thumbnail = {};
-    const LibretroVideoFrame* video = &app->session.host->video;
-    if (game_running(app) && video->width > 0 && video->height > 0)
-    {
-        ViewportInput input = {};
-        input.frame_width = video->width;
-        input.frame_height = video->height;
-        input.core_aspect = static_cast<double>(app->session.host->av_info.geometry.aspect_ratio);
-        piccolo_settings_viewport(&app->settings, &input);
-        thumbnail.crop = input.crop;
-        if (!viewport_picture_size(&input, 1, &thumbnail.width, &thumbnail.height))
-        {
-            thumbnail.width = 0;
-        }
-    }
+    uint32_t aspect_width = 0;
+    uint32_t aspect_height = 0;
+    StateThumbnail thumbnail = picture_thumbnail(app, &aspect_width, &aspect_height);
     // UNDO SAVE STATE: the slot's old files moved aside first (state_undo.h).
     char path[LIBRETRO_PATH_MAX] = {};
     bool kept = game_running(app) &&
@@ -1670,7 +1775,7 @@ static void share_folder_paths(const App* app, NetShareFolderPaths* paths)
     paths->states = folder_setting(app, PICCOLO_PATH_STATES, app->paths.states);
     paths->screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
     paths->config = app->paths.settings;
-    paths->config_refused = {"piccolo.cfg",        "recent.cfg",      "last_used.cfg",   "imgui.ini",
+    paths->config_refused = {"piccolo.cfg",        "recent.cfg",      "last_used.cfg",   "imgui.ini",   "continue.cfg",
                              "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig"};
     // The default screenshots folder is made by the first screenshot; made
     // here too, so SCREENSHOTS is offered (and can receive) before that, like
@@ -3200,6 +3305,14 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     {
         app->open_first_menu = true;
     }
+    // The CONTINUE card's first button (A / Enter), while nothing covers it.
+    if (bar_alone && !app->phone_ui && frame->joined_port == INPUT_NO_PORT &&
+        frame->pressed[static_cast<uint32_t>(InputAction::ui_accept)] && continue_card_active(app) &&
+        app->continue_panel.preview != ContinuePreview::phone)
+    {
+        ContinueKind kind = continue_panel_choice(&app->continue_panel).kind;
+        continue_card_press(app, kind == ContinueKind::resume ? ContinueViewButton::resume : ContinueViewButton::start);
+    }
 }
 
 // MAP CONTROLLER offered: once per session for a controller SDL doesn't
@@ -4442,6 +4555,21 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::sleigh_now:
         snow_view_sleigh_now(&app->snow);
+        break;
+    case DebugWindowPress::continue_resume:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::resume);
+        break;
+    case DebugWindowPress::continue_no_states:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::no_states);
+        break;
+    case DebugWindowPress::continue_newer_save:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::newer_save);
+        break;
+    case DebugWindowPress::continue_phone:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::phone);
+        break;
+    case DebugWindowPress::continue_real:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::none);
         break;
     }
     if (dvr_card < 3)
@@ -5948,6 +6076,144 @@ static void snow_fill(App* app, UiView* view)
 // different GUI toolkit would leave them as they are.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The CONTINUE card (continue_panel.h): the last game closed, on the empty
+// screen. Part of it, not a window: no game running, MAIN MENU's bar alone
+// or with things over it; it's never in Esc's chain. A, Enter or a click
+// press its first button only while nothing is open over it.
+// ---------------------------------------------------------------------------
+
+static const RecentGame* recent_top(const App* app)
+{
+    if (app->recent_shown.empty())
+    {
+        return nullptr;
+    }
+    return &app->recent.games[app->recent_shown[0]];
+}
+
+static bool continue_card_wanted(const App* app)
+{
+    return !game_running(app) && app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
+}
+
+// Shown at all this frame (the real one has a card to show; a fake one
+// from the debug window shows over a game too).
+static bool continue_card_shown(const App* app)
+{
+    if (app->continue_panel.preview != ContinuePreview::none)
+    {
+        return true;
+    }
+    return continue_card_wanted(app) && continue_panel_choice(&app->continue_panel).kind != ContinueKind::none;
+}
+
+// Nothing open over it: its first button is highlighted and takes A / Enter.
+static bool continue_card_active(const App* app)
+{
+    if (app->continue_panel.preview == ContinuePreview::phone)
+    {
+        return true;   // over everything
+    }
+    bool nothing_open = app->ui.window_count == 0 && !ui_toolkit_has_popup() && !app->pair_window.open &&
+                        !app->guest_window.open && !debug_preview_shown(&app->debug_previews) &&
+                        app->ui.mode == UiMode::main_menu;
+    return continue_card_shown(app) && nothing_open;
+}
+
+// What the card's button does: RESUME starts the top of RECENT with its core
+// (SAVE STATE ON EXIT loads the AUTO state); START starts it without that.
+// A fake card's buttons only end the preview.
+static void continue_card_press(App* app, ContinueViewButton button)
+{
+    if (button == ContinueViewButton::none)
+    {
+        return;
+    }
+    if (app->continue_panel.preview != ContinuePreview::none)
+    {
+        continue_panel_preview(&app->continue_panel, ContinuePreview::none);
+        return;
+    }
+    const RecentGame* top = recent_top(app);
+    if (top == nullptr || game_running(app))
+    {
+        return;
+    }
+    app->pending_start = FilePickerChoice{};
+    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s", top->core_path.c_str());
+    std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
+                  top->content_path.c_str());
+    app->has_pending_start = true;   // started at the top of the next loop, like RECENT
+    app->resume_skip = button == ContinueViewButton::start;
+}
+
+// Before the view: the files and the picture, scaled for its size on screen.
+static void continue_card_update(App* app, const UiView* view)
+{
+    ContinuePanel* panel = &app->continue_panel;
+    const ContinueRecord* record = continue_panel_record(panel);
+    ContinueViewCard card = {};
+    card.aspect_width = record->aspect_width;
+    card.aspect_height = record->aspect_height;
+    float width = 0.0f;
+    float height = 0.0f;
+    if (panel->preview == ContinuePreview::phone)
+    {
+        int32_t touch_scale = touch_ui_scale_for(view->screen_width, view->screen_height);
+        float phone = view->screen_width / static_cast<float>(touch_scale);
+        phone = phone < 195.0f ? phone : 195.0f;
+        continue_view_card_picture_size(&card, phone - 16.0f, &width, &height);
+        width *= static_cast<float>(touch_scale);
+        height *= static_cast<float>(touch_scale);
+    }
+    else if (app->phone_ui)
+    {
+        // HOME's card (mobile_home.h), at the phone UI's scale. Sideways its
+        // picture may be drawn a little shorter: still sharp, a touch softer.
+        float scale = static_cast<float>(app->ui_scale);
+        float card_width = mobile_home_card_width(std::floor(view->screen_width / scale),
+                                                  std::floor(view->screen_height / scale));
+        continue_view_card_picture_size(&card, card_width, &width, &height);
+        width *= scale;
+        height *= scale;
+    }
+    else
+    {
+        continue_view_panel_picture_size(&card, app->ui_scale, &width, &height);
+    }
+    continue_panel_update(panel, recent_top(app), continue_card_wanted(app), width, height, SDL_GetTicks());
+}
+
+// The desktop's panel, or the card on the phone's HOME (or a fake one).
+static void continue_card_view(const App* app, UiView* view)
+{
+    bool fake = app->continue_panel.preview != ContinuePreview::none;
+    bool real = !fake && continue_card_shown(app);
+    view->continue_card.shown = fake || (real && !app->phone_ui);
+    if (!fake && !real)
+    {
+        return;
+    }
+    SDL_Time now_time = 0;
+    SDL_GetCurrentTime(&now_time);
+    SDL_DateTime date = {};
+    SDL_TimeToDateTime(now_time, &date, true);
+    ContinueDate now = {};
+    now.year = date.year;
+    now.month = date.month;
+    now.day = date.day;
+    now.weekday = date.day_of_week;
+    now.hour = date.hour;
+    now.minute = date.minute;
+    continue_panel_state(&view->continue_card, &app->continue_panel, &app->strings, &now, continue_card_active(app));
+    if (real && app->phone_ui && view->mobile_home.home_shown)
+    {
+        view->continue_card.card.hint = "";   // the phone shows no keys
+        view->mobile_home.card = &view->continue_card.card;
+    }
+}
+
 // Before the view: what moves on its own each frame (placing the picture and
 // the touch gamepad, the windows' polling of jobs and connections), in the
 // order the loop always did it.
@@ -5964,6 +6230,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
                            view->screen_height);
     }
     prepare_game_picture(app, view);   // background, behind everything
+    continue_card_update(app, view);
     // The browser's page: its strip hides while a game is played, and an
     // upright phone gives the picture only the height its shape needs.
     web_pad_tell_page(game_has_keyboard(app), app->shown_aspect);
@@ -6119,6 +6386,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
     snow_fill(app, view);
     hud_fill(app, view);
+    continue_card_view(app, view);
     view->backdrop = menu_backdrop(app);
     view->menus = app->menus.data();
     view->menu_count = static_cast<int32_t>(app->menus.size());
@@ -6301,6 +6569,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     bool shader_picker_drawn = app->shader_picker.open;
 
     onscreen_pad_apply(&app->onscreen_pad, &actions->pad);
+    continue_card_press(app, actions->continue_pressed);
     if (actions->pad.menu && game_has_keyboard(app))
     {
         app_enter_main_menu(app);
@@ -6328,6 +6597,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
             app_enter_game(app);   // RESUME, ›, a tap outside: back to the paused game
         }
         apply_menu_pick(app, phone->picked);
+        continue_card_press(app, phone->continue_pressed);
     }
 
     settings_apply(app, frame, &actions->settings);
@@ -6763,6 +7033,7 @@ static bool app_frame(App* app)
         dvr_widget_upload(&app->dvr, &app->session, &app->shell);   // a thumbnail (moves the core and back)
         core_session_upload_video(&app->session, &app->shell);
         quick_menu_upload(&app->quick_menu, &app->shell);
+        continue_panel_upload(&app->continue_panel, &app->shell);
         guest_window_upload(&app->guest_window, &app->shell);
         // The loop's work, before the display may make it wait (acquire / present).
         uint64_t now_ns = SDL_GetTicksNS();
@@ -6998,6 +7269,7 @@ int main(int argc, char** argv)
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
         recent_games_load(&app->recent, app->recent_path.c_str());
+        continue_panel_load(&app->continue_panel, (app->paths.settings + "/continue.cfg").c_str());
         app->audio_learned_path = app->paths.settings + "/audio_latency.cfg";
         settings_file_load(&app->audio_learned, app->audio_learned_path.c_str());
         app->running_marker_path = app->paths.settings + "/running.cfg";
@@ -7158,6 +7430,7 @@ int main(int argc, char** argv)
     }
     screenshot_writer_destroy(&app->screenshot_writer);   // writes what's still waiting
     quick_menu_destroy(&app->quick_menu, &app->shell);
+    continue_panel_destroy(&app->continue_panel, &app->shell);
     guest_window_destroy(&app->guest_window, &app->shell);
     video_output_destroy(&app->video, &app->shader_library, &app->shell);
     shader_library_unload(&app->shader_library);

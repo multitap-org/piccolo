@@ -118,6 +118,10 @@ msgctxt "mobile_recent_games"
 msgid "RECENT GAMES"
 msgstr "JUEGOS RECIENTES"
 
+msgctxt "mobile_continue"
+msgid "CONTINUE"
+msgstr "SEGUIR JUGANDO"
+
 msgctxt "mobile_no_games"
 msgid "NO GAMES YET"
 msgstr "TODAVÍA NO HAY JUEGOS"
@@ -165,6 +169,82 @@ msgstr "SIGUES DONDE LO DEJASTE"
 msgctxt "status_resume_failed"
 msgid "COULD NOT RESUME WHERE YOU LEFT OFF"
 msgstr "NO SE PUDO SEGUIR DONDE LO DEJASTE"
+
+msgctxt "continue_resume"
+msgid "RESUME"
+msgstr "CONTINUAR"
+
+msgctxt "continue_start"
+msgid "START"
+msgstr "EMPEZAR"
+
+msgctxt "continue_hint"
+msgid "A / ENTER: RESUME · OTHER GAMES: ☰"
+msgstr "A / ENTER: CONTINUAR · OTROS JUEGOS: ☰"
+
+msgctxt "continue_played_today"
+msgid "PLAYED TODAY AT"
+msgstr "JUGADO HOY A LAS"
+
+msgctxt "continue_played_yesterday"
+msgid "PLAYED YESTERDAY AT"
+msgstr "JUGADO AYER A LAS"
+
+msgctxt "continue_played_on"
+msgid "PLAYED ON"
+msgstr "JUGADO EL"
+
+msgctxt "continue_at"
+msgid "AT"
+msgstr "A LAS"
+
+msgctxt "continue_monday"
+msgid "MONDAY"
+msgstr "LUNES"
+
+msgctxt "continue_tuesday"
+msgid "TUESDAY"
+msgstr "MARTES"
+
+msgctxt "continue_wednesday"
+msgid "WEDNESDAY"
+msgstr "MIÉRCOLES"
+
+msgctxt "continue_thursday"
+msgid "THURSDAY"
+msgstr "JUEVES"
+
+msgctxt "continue_friday"
+msgid "FRIDAY"
+msgstr "VIERNES"
+
+msgctxt "continue_saturday"
+msgid "SATURDAY"
+msgstr "SÁBADO"
+
+msgctxt "continue_sunday"
+msgid "SUNDAY"
+msgstr "DOMINGO"
+
+msgctxt "continue_why_no_states"
+msgid "THIS CORE CAN'T SAVE STATES: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT."
+msgstr "ESTE CORE NO GUARDA ESTADOS: EL JUEGO EMPIEZA DESDE EL PRINCIPIO. SUS PARTIDAS GUARDADAS SE CONSERVAN."
+
+msgctxt "continue_why_incomplete"
+msgid "THIS CORE'S STATES ARE INCOMPLETE: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT."
+msgstr "LOS ESTADOS DE ESTE CORE SON INCOMPLETOS: EL JUEGO EMPIEZA DESDE EL PRINCIPIO. SUS PARTIDAS GUARDADAS SE CONSERVAN."
+
+msgctxt "continue_why_off"
+msgid "SAVE STATE ON EXIT IS OFF: THE GAME STARTS FROM THE BEGINNING."
+msgstr "GUARDAR ESTADO AL SALIR ESTÁ APAGADO: EL JUEGO EMPIEZA DESDE EL PRINCIPIO."
+
+msgctxt "continue_why_missing"
+msgid "ITS AUTOMATIC STATE IS GONE: THE GAME STARTS FROM THE BEGINNING."
+msgstr "SU ESTADO AUTOMÁTICO YA NO ESTÁ: EL JUEGO EMPIEZA DESDE EL PRINCIPIO."
+
+msgctxt "continue_why_newer_save"
+msgid "ITS SAVE FILE IS NEWER THAN THIS POINT (COPIED, OR PLAYED ELSEWHERE). RESUMING GOES BACK TO BEFORE THAT SAVE."
+msgstr "SU PARTIDA GUARDADA ES MÁS NUEVA QUE ESTE PUNTO (COPIADA, O JUGADA EN OTRO LADO). CONTINUAR VUELVE A ANTES DE ESA PARTIDA."
 
 msgctxt "picker_title"
 msgid "LOAD GAME"

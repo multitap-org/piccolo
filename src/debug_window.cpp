@@ -109,6 +109,22 @@ static void draw_screen_effects(const DebugWindowState* state, DebugWindowAction
     retro_ui_end_disabled();
 }
 
+// The CONTINUE card (continue_panel.h), fake, on the empty screen behind
+// this window (close it to see the first button highlighted); the phone's
+// card over everything. A fake card's button ends it.
+static void draw_continue_card(DebugWindowAction* action)
+{
+    press(action, retro_ui_button("RESUME"), DebugWindowPress::continue_resume);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NO SAVESTATES"), DebugWindowPress::continue_no_states);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NEWER SAVE"), DebugWindowPress::continue_newer_save);
+    press(action, retro_ui_button("PHONE (HOME card)"), DebugWindowPress::continue_phone);
+    retro_ui_same_line();
+    press(action, retro_ui_button("REAL CARD"), DebugWindowPress::continue_real);
+    retro_ui_dim_text("Drawn behind the windows: close this one to see it active.", nullptr);
+}
+
 static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)
 {
     if (same_line)
@@ -228,6 +244,10 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         if (retro_ui_section_header("effects", "Screen effects (a game must run)", false))
         {
             draw_screen_effects(state, action);
+        }
+        if (retro_ui_section_header("continue", "CONTINUE card (fake)", false))
+        {
+            draw_continue_card(action);
         }
         if (retro_ui_section_header("previews", "Dialogs (preview)", false))
         {

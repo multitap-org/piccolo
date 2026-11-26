@@ -8,6 +8,8 @@
 //            header (piccolo at the left, ROTATE and ☰ at the right), the
 //            recent games as big rows (tap one: it starts), LOAD GAME at the
 //            bottom. No recent games: a card that says so, with LOAD GAME.
+//            The last game closed, when it's RECENT's first: the CONTINUE
+//            card above the others (beside them sideways), RESUME its button.
 //   ☰        a sidebar from the right with the menu bar's menus (the same
 //            RetroUiMenu data main.cpp builds for the bar, so items show,
 //            grey and hide by the same rules), RECENT left out: it is HOME.
@@ -26,6 +28,7 @@
 
 #include <cstdint>
 
+#include "continue_view.h"
 #include "localization.h"
 #include "retro_ui.h"   // RetroUiMenu
 
@@ -61,6 +64,11 @@ struct MobileHomeState
 
     const RetroUiMenu* menus = nullptr;     // the menu bar's; menus[0] is RECENT (left out)
     int32_t menu_count = 0;
+
+    // The CONTINUE card (continue_panel.h) above the recent games, which
+    // then skip games[0] (its game); nullptr: none, HOME as before. RESUME
+    // is then the main action: LOAD GAME isn't highlighted.
+    const ContinueViewCard* card = nullptr;
 };
 
 struct MobileHomeAction
@@ -71,7 +79,13 @@ struct MobileHomeAction
     bool    close_menu = false;            // ›, a tap outside, RESUME
     int32_t open_submenu = 0;              // a menu's name tapped: its index
     bool    submenu_back = false;          // ◀ in the sidebar's header: back to the names
+    ContinueViewButton continue_pressed = ContinueViewButton::none;   // the CONTINUE card's button
 };
+
+// The CONTINUE card's width on HOME for a screen `width` x `height` (touch
+// retro pixels): upright across the screen, sideways the left half of the
+// games' column (the games at its right).
+float mobile_home_card_width(float width, float height);
 
 // Draws HOME and the sidebar, each when shown. `scale`: the touch scale
 // (touch_ui_scale_for).

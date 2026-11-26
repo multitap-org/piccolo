@@ -126,6 +126,11 @@ enum class DebugWindowPress
     effect_snap,          // the REWIND screen effect (SNAP), as after PLAY FROM HERE
     effect_shutter,       // the SCREENSHOT screen effect (SHUTTER), without a screenshot
     sleigh_now,           // the December 25 sleigh crosses now (the snow must be falling)
+    continue_resume,      // the CONTINUE card, fake: RESUME
+    continue_no_states,   // ... START, the core can't save states
+    continue_newer_save,  // ... START / RESUME, the save file is newer
+    continue_phone,       // ... the phone's HOME card
+    continue_real,        // the real card again (or none)
 };
 
 struct DebugWindowAction
