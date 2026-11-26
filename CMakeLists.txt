@@ -418,7 +418,7 @@ endif()
 
 # piccolo's version: piccolo_version.h,
 # PICCOLO_VERSION. The branch suffix is piccolo's own branch.
-set(PICCOLO_VERSION_BASE 0.3.0)
+set(PICCOLO_VERSION_BASE 0.3.1)
 multitap_version(PICCOLO_VERSION ${PICCOLO_VERSION_BASE} "${CMAKE_CURRENT_SOURCE_DIR}")
 multitap_write_version_header("${PICCOLO_GENERATED}" piccolo PICCOLO_VERSION "${PICCOLO_VERSION}")
 message(STATUS "piccolo ${PICCOLO_VERSION}")

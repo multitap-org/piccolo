@@ -41,6 +41,7 @@
 #include "settings_window.h"
 #include "shader_check_view.h"
 #include "share_window.h"
+#include "snow_view.h"
 #include "shown_image.h"
 #include "text_input_window.h"
 
@@ -65,6 +66,9 @@ struct UiView
     // The game's picture, behind everything (none while no game shows).
     bool       game_shown = false;
     ShownImage game_image = {};
+
+    // The menu snow over it (behind every window and the menu bar), when it falls.
+    const SnowView* snow = nullptr;
 
     // The touch gamepad over the game, the ports' tabs, the HUD.
     OnscreenPadState pad = {};
@@ -184,7 +188,7 @@ struct UiActions
     AboutWindowAction        about = {};
 };
 
-// All the frame's drawing, back to front: the game, the touch gamepad, the
+// All the frame's drawing, back to front: the game, the menu snow, the touch gamepad, the
 // ports' tabs, the HUD, the backdrop, the menu bar, the
 // windows, the debug window, the FPS meter, the scrollbars, the cursor.
 // Between the toolkit's begin and end of frame.
