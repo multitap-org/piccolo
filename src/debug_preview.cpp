@@ -40,6 +40,35 @@ static bool is_phone(DebugPreview preview)
     return preview >= DebugPreview::phone_home && preview <= DebugPreview::phone_menu;
 }
 
+// DEVICES: nobody OUT, the touch pad (the viewer's) and a gamepad on port 1,
+// a phone over the network on port 2, nobody on 3 and 4.
+static void show_devices(DebugPreviews* previews)
+{
+    PortsWidget* widget = &previews->devices;
+    *widget = PortsWidget{};
+    PortsView* view = &widget->view;
+    view->port_count = 4;
+    view->chip_height = 18.0f;   // the touch size
+    PortsViewChip touch;
+    touch.key = 1;
+    touch.label = "TOUCH PAD";
+    touch.yours = true;
+    PortsViewChip pad;
+    pad.key = 2;
+    pad.label = "XBOX PAD 1";
+    PortsViewChip phone;
+    phone.key = 3;
+    phone.label = "PIXEL 8";
+    phone.has_ping = true;
+    phone.ping_known = true;
+    phone.ping_ms = 24;
+    view->ports[0].chips.push_back(touch);
+    view->ports[0].chips.push_back(pad);
+    view->ports[1].chips.push_back(phone);
+    widget->open = true;
+    ports_view_open_board(view);
+}
+
 // The DVR's phone panel: SCRUB 27 s back, five pictures (not made: empty
 // cards), a kept lane from between the third and fourth.
 static void show_phone_dvr(DebugPreviews* previews)
@@ -269,6 +298,10 @@ void debug_preview_show(DebugPreviews* previews, DebugPreview which)
     {
         show_phone_dvr(previews);
     }
+    else if (which == DebugPreview::devices)
+    {
+        show_devices(previews);
+    }
 }
 
 void debug_preview_end(DebugPreviews* previews)
@@ -279,6 +312,7 @@ void debug_preview_end(DebugPreviews* previews)
     previews->guest = {};
     previews->quick = {};
     previews->phone = {};
+    previews->devices.open = false;
 }
 
 bool debug_preview_shown(const DebugPreviews* previews)
@@ -330,8 +364,12 @@ static void guest_state(GuestWindowState* state, const Localization* strings, De
 }
 
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version, const RetroUiMenu* menus, int32_t menu_count)
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright)
 {
+    if (previews->shown == DebugPreview::devices)
+    {
+        ports_widget_state(&view->devices, strings, false, phone_upright, SDL_GetTicks());
+    }
     view->shown = previews->shown;
     if (previews->shown == DebugPreview::phone_dvr)
     {
@@ -410,6 +448,10 @@ void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, R
     {
         quick_menu_draw(&previews->quick, &view->quick, pixel_font, scale, &actions->quick);
     }
+    else if (view->shown == DebugPreview::devices)
+    {
+        ports_widget_draw_board(&previews->devices, &view->devices, pixel_font, scale, &actions->devices);
+    }
     else if (view->shown == DebugPreview::phone_dvr)
     {
         // At the phone's touch scale; the game's room is left empty.
@@ -452,6 +494,8 @@ void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* act
     {
         previews->shown = DebugPreview::phone_menu;
     }
+    // DEVICES: DONE ends it; a move is ignored (the pick still shows).
+    closed = closed || (previews->shown == DebugPreview::devices && actions->devices.done);
     // The DVR's: BACK TO NOW or PLAY FROM HERE ends it; the rest is ignored.
     closed = closed || (previews->shown == DebugPreview::phone_dvr && (actions->dvr.action == DvrViewAction::back_to_now ||
                                                                         actions->dvr.action == DvrViewAction::play_here));

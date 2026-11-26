@@ -73,6 +73,7 @@ struct PortsWidgetState
 {
     PortsViewText text;          // the words, in the player's language
     bool          menu_shown = false;   // the tabs peek
+    bool          rows = false;         // the phone held upright: DEVICES has a row per port
     uint64_t      now_ms = 0;
 };
 
@@ -85,7 +86,8 @@ struct PortsWidgetAction
     bool     done = false;   // DONE: closes it
 };
 
-void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, uint64_t now_ms);
+// `rows`: the phone UI held upright (the board's ports under each other).
+void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, bool rows, uint64_t now_ms);
 
 // The tabs, behind every window.
 void ports_widget_draw_tabs(PortsWidget* widget, const PortsWidgetState* state, RetroUiFont* pixel_font, int32_t scale);

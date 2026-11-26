@@ -6116,7 +6116,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     {
         phone_view(app, main_menu, &view->mobile_home);
     }
-    ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
+    ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, false, SDL_GetTicks());
     snow_fill(app, view);
     hud_fill(app, view);
     view->backdrop = menu_backdrop(app);
@@ -6133,7 +6133,9 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
                              app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
                              app->game_name, app->shader_library.loaded, frame->config_now);
     file_picker_state(&view->shader_picker, &app->shader_picker, &app->catalog, &app->strings);
-    ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, SDL_GetTicks());
+    // A phone held upright: DEVICES has a row per port (five columns don't fit).
+    bool upright_phone = app->phone_ui && view->screen_height > view->screen_width;
+    ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, upright_phone, SDL_GetTicks());
     float game_aspect = game_running(app) ? static_cast<float>(app->session.host->av_info.geometry.aspect_ratio) : 0.0f;
     app->dvr.core_aspect = game_aspect;
     dvr_widget_state(&view->dvr, &app->dvr, &app->strings, app->phone_ui, game_aspect);
@@ -6223,7 +6225,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         debug_window_state(app, &view->debug);
     }
     debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION, app->menus.data(),
-                        static_cast<int32_t>(app->menus.size()));
+                        static_cast<int32_t>(app->menus.size()), app->phone_ui && view->screen_height > view->screen_width);
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {
