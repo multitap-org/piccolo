@@ -393,6 +393,7 @@ static void draw_sound(const SettingsUiContext* ui, const SettingsWindowState* s
 struct ThemeChoice
 {
     std::string           label;
+    std::string           id;        // ui_theme's value
     const RetroUiPalette* palette = nullptr;
 };
 
@@ -455,6 +456,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
     {
         ThemeChoice choice = {};
         choice.label = piccolo_text(strings, piccolo_settings_ui_theme_name(static_cast<RetroUiTheme>(i)));
+        choice.id = piccolo_ui_theme_id(static_cast<RetroUiTheme>(i));
         choice.palette = retro_ui_theme_palette(static_cast<RetroUiTheme>(i));
         shipped.push_back(choice);
     }
@@ -462,6 +464,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
     {
         ThemeChoice choice = {};
         choice.label = (*files)[i].name;
+        choice.id = piccolo_ui_theme_file_id(&(*files)[i]);
         choice.palette = &(*files)[i].palette;
         if ((*files)[i].custom)
         {
@@ -497,6 +500,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             {
                 action->set_palette = true;
                 action->palette = *shipped[i].palette;
+                action->theme_id = shipped[i].id;
                 window->theme_choice = shipped[i].label;
                 window->theme_custom = false;
             }
@@ -528,6 +532,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             {
                 action->set_palette = true;
                 action->palette = *custom[i].palette;
+                action->theme_id = custom[i].id;
                 window->theme_choice = custom[i].label;
                 window->theme_custom = true;
             }
@@ -922,6 +927,10 @@ bool settings_window_apply(const SettingsWindowAction* action, Settings* setting
     if (action->set_palette)
     {
         changed = piccolo_settings_apply_ui_palette(settings, &action->palette) || changed;
+        if (!action->theme_id.empty())
+        {
+            changed = settings_set(settings, SettingLayer::global, PICCOLO_UI_THEME, action->theme_id.c_str()) || changed;
+        }
     }
     return changed;
 }

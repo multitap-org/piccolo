@@ -539,7 +539,7 @@ static void save_settings(App* app)
 {
     if (app->settings.dirty && !app->settings_path.empty())
     {
-        settings_save(&app->settings, app->settings_path.c_str(), "piccolo settings");
+        piccolo_settings_save(&app->settings, app->settings_path.c_str());
     }
 }
 
@@ -4331,6 +4331,16 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
         {
             app->settings_window.theme_choice = name;   // CUSTOM THEME shows the saved theme
             app->settings_window.theme_custom = true;
+            for (size_t i = 0; i < app->themes.size(); i++)
+            {
+                if (app->themes[i].custom && app->themes[i].name == name)
+                {
+                    // The saved theme is piccolo's theme from now on.
+                    settings_set(&app->settings, SettingLayer::global, PICCOLO_UI_THEME,
+                                 piccolo_ui_theme_file_id(&app->themes[i]).c_str());
+                }
+            }
+            save_settings(app);
         }
     }
 
@@ -7251,7 +7261,6 @@ int main(int argc, char** argv)
         ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
         settings_load(&app->settings, app->settings_path.c_str());
-        piccolo_settings_complete_ui_theme(&app->settings);
         apply_folders(app);
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
@@ -7344,6 +7353,9 @@ int main(int argc, char** argv)
     {
         piccolo_themes_load_directory(&app->themes, (app->paths.root + "/themes").c_str());
     }
+    // The interface's colors from the theme piccolo.cfg names (never its own colors).
+    piccolo_settings_start_ui_theme(&app->settings, &app->themes,
+                                    app->paths.root.empty() ? "" : (app->paths.root + "/themes").c_str());
     // settings/input.cfg first: controllers are made from its profiles as their devices appear.
     app->input_config_path = app->paths.settings.empty() ? "" : app->paths.settings + "/input.cfg";
     if (!app->input_config_path.empty())

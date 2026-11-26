@@ -122,6 +122,7 @@ struct SettingsWindowAction
     SettingLayer   latency_scope = SettingLayer::global;
     bool           set_palette = false;        // THEME or CUSTOM THEME picked: every interface color
     RetroUiPalette palette = {};
+    std::string    theme_id;                   // ... and the theme piccolo.cfg names (ui_theme)
     const char*    choose_folder = nullptr;    // a folder field or "+": that setting (CHOOSE FOLDER)
     bool           search_frame_delay = false; // SEARCH AGAIN
     bool           rewind_measure_again = false;   // MEASURE AGAIN

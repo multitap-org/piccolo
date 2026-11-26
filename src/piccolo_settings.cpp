@@ -437,6 +437,7 @@ static const SettingDescriptor SETTINGS[] = {
 
     // Interface (global-only): MENU TITLE BOXES and the palette; defaults =
     // the BLUE theme (retro_ui.cpp). The THEME presets set them all.
+    {.key = PICCOLO_UI_THEME, .type = SettingType::text, .default_value = "blue"},
     {.key = PICCOLO_UI_MENU_BOXES, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_menu_boxes), .help = text_id(Str::setting_ui_menu_boxes_help)},
     {.key = PICCOLO_UI_BACKGROUND_TRANSPARENCY, .type = SettingType::integer, .default_value = "40", .min = 0, .max = 100,
@@ -500,13 +501,13 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_ui_color_section), .help = text_id(Str::setting_ui_color_section_help)},
     {.key = PICCOLO_UI_THEME_CURSOR, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_theme_cursor), .help = text_id(Str::setting_ui_theme_cursor_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button), .help = text_id(Str::setting_ui_color_button_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_BOTTOM, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_BOTTOM, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_bottom), .help = text_id(Str::setting_ui_color_button_bottom_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_LIGHT, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_LIGHT, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_light), .help = text_id(Str::setting_ui_color_button_light_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_DARK, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_DARK, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_dark), .help = text_id(Str::setting_ui_color_button_dark_help)},
     {.key = PICCOLO_UI_COLOR_BUTTON_TEXT, .type = SettingType::color, .default_value = "#E0E6F0",
      .label = text_id(Str::setting_ui_color_button_text), .help = text_id(Str::setting_ui_color_button_text_help)},
@@ -958,6 +959,7 @@ void piccolo_themes_load_directory(std::vector<PiccoloThemeFile>* themes, const 
 
         PiccoloThemeFile theme = {};
         theme.path = path;
+        theme.file = file_name;
         theme.custom = file_name.size() > 11 && file_name.compare(file_name.size() - 11, 11, "-custom.cfg") == 0;
         theme.palette = *retro_ui_theme_palette(RetroUiTheme::blue);
         const char* name = settings_file_get(&file, "", "name");
@@ -1042,6 +1044,8 @@ bool piccolo_themes_save(const Settings* settings, const char* name, const char*
         SDL_Log("Couldn't save the theme %s to %s", theme.name.c_str(), theme.path.c_str());
         return false;
     }
+    size_t slash = theme.path.find_last_of('/');
+    theme.file = slash == std::string::npos ? theme.path : theme.path.substr(slash + 1);
     SDL_Log("Theme %s saved to %s", theme.name.c_str(), theme.path.c_str());
     add_theme(themes, &theme);
     std::sort(themes->begin(), themes->end(), theme_name_before);
@@ -1198,4 +1202,158 @@ bool piccolo_settings_osk(const Settings* settings)
     }
     return SDL_HasScreenKeyboardSupport();
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// The theme piccolo.cfg names (ui_theme), not its colors
+
+std::string piccolo_ui_theme_id(RetroUiTheme theme)
+{
+    switch (theme)
+    {
+    case RetroUiTheme::blue:
+        return "blue";
+    case RetroUiTheme::purple:
+        return "purple";
+    case RetroUiTheme::zsnes:
+        return "zsnes";
+    case RetroUiTheme::black:
+        return "black";
+    case RetroUiTheme::count:
+        break;
+    }
+    return "blue";
+}
+
+std::string piccolo_ui_theme_file_id(const PiccoloThemeFile* theme)
+{
+    return "file:" + theme->file;
+}
+
+bool piccolo_ui_theme_palette(const char* id, const std::vector<PiccoloThemeFile>* themes, RetroUiPalette* palette)
+{
+    for (uint32_t t = 0; t < static_cast<uint32_t>(RetroUiTheme::count); t++)
+    {
+        if (piccolo_ui_theme_id(static_cast<RetroUiTheme>(t)) == id)
+        {
+            *palette = *retro_ui_theme_palette(static_cast<RetroUiTheme>(t));
+            return true;
+        }
+    }
+    for (size_t i = 0; themes != nullptr && i < themes->size(); i++)
+    {
+        if (piccolo_ui_theme_file_id(&(*themes)[i]) == id)
+        {
+            *palette = (*themes)[i].palette;
+            return true;
+        }
+    }
+    *palette = *retro_ui_theme_palette(RetroUiTheme::blue);
+    return false;
+}
+
+// Whether piccolo.cfg itself sets any of the interface's colors, switches or levels.
+static bool ui_keys_saved(const Settings* settings)
+{
+    bool saved = false;
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_color_key(i)) != nullptr;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_flag_key(i)) != nullptr;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_level_key(i)) != nullptr;
+    }
+    return saved;
+}
+
+// The theme the colors piccolo.cfg kept (before ui_theme) are: a built-in
+// one (BLUE and PURPLE also as they were before buttons got a face of
+// their own: today's), a theme file's, or "" for none.
+static std::string kept_colors_theme(const Settings* settings, const std::vector<PiccoloThemeFile>* themes)
+{
+    for (uint32_t t = 0; t < static_cast<uint32_t>(RetroUiTheme::count); t++)
+    {
+        RetroUiTheme theme = static_cast<RetroUiTheme>(t);
+        RetroUiPalette before = *retro_ui_theme_palette(theme);
+        before.button_face = before.background;
+        before.button_bottom = before.background;
+        before.button_light = before.background;
+        before.button_dark = before.background;
+        bool old = (theme == RetroUiTheme::blue || theme == RetroUiTheme::purple) &&
+                   piccolo_settings_ui_palette_is(settings, &before);
+        if (old || piccolo_settings_ui_palette_is(settings, retro_ui_theme_palette(theme)))
+        {
+            return piccolo_ui_theme_id(theme);
+        }
+    }
+    for (size_t i = 0; i < themes->size(); i++)
+    {
+        if (piccolo_settings_ui_palette_is(settings, &(*themes)[i].palette))
+        {
+            return piccolo_ui_theme_file_id(&(*themes)[i]);
+        }
+    }
+    return std::string();
+}
+
+void piccolo_settings_start_ui_theme(Settings* settings, std::vector<PiccoloThemeFile>* themes,
+                                     const char* themes_directory)
+{
+    if (settings_get_layer(settings, SettingLayer::global, PICCOLO_UI_THEME) == nullptr && ui_keys_saved(settings))
+    {
+        piccolo_settings_complete_ui_theme(settings);
+        std::string id = kept_colors_theme(settings, themes);
+        const char* saved_name = "SAVED THEME";
+        if (id.empty() && themes_directory != nullptr && themes_directory[0] != '\0' &&
+            piccolo_themes_save(settings, saved_name, themes_directory, themes))
+        {
+            for (size_t i = 0; i < themes->size(); i++)
+            {
+                if ((*themes)[i].custom && (*themes)[i].name == saved_name)
+                {
+                    id = piccolo_ui_theme_file_id(&(*themes)[i]);
+                }
+            }
+        }
+        if (!id.empty())
+        {
+            settings_set(settings, SettingLayer::global, PICCOLO_UI_THEME, id.c_str());
+            SDL_Log("Interface: piccolo.cfg's colors are the theme %s from now on", id.c_str());
+        }
+    }
+    const char* id = settings_get_text(settings, PICCOLO_UI_THEME);
+    RetroUiPalette palette = {};
+    if (!piccolo_ui_theme_palette(id, themes, &palette))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Interface: no theme %s, using BLUE", id);
+    }
+    piccolo_settings_apply_ui_palette(settings, &palette);
+}
+
+bool piccolo_settings_save(Settings* settings, const char* path)
+{
+    Settings kept = *settings;
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_color_key(i));
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_flag_key(i));
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_level_key(i));
+    }
+    if (!settings_save(&kept, path, "piccolo settings"))
+    {
+        return false;
+    }
+    settings->dirty = false;
+    return true;
 }
