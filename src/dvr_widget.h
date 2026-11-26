@@ -64,6 +64,10 @@ struct DvrWidget
 {
     CoreRewind rewind;            // the history (CoreSession::rewind points here)
     bool       open = false;
+    // The core's aspect ratio (its geometry's; 0: its pictures' own, pixels
+    // square). The thumbnails take it, as the game is shown (Andrés, testing
+    // round 3). The caller sets it every frame (SET_GEOMETRY may change it).
+    float      core_aspect = 0.0f;
 
     // The strip.
     DvrView               view;

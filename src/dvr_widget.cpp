@@ -666,7 +666,11 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
         if (t >= 0)
         {
             video_texture_uv_max(&widget->thumbs[t], &thumb->u_max, &thumb->v_max);
-            if (widget->thumbs[t].content_height > 0)
+            if (widget->core_aspect > 0.0f)
+            {
+                view->aspect = widget->core_aspect;
+            }
+            else if (widget->thumbs[t].content_height > 0)
             {
                 view->aspect = static_cast<float>(widget->thumbs[t].content_width) /
                                static_cast<float>(widget->thumbs[t].content_height);

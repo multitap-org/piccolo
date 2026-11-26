@@ -5968,6 +5968,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
                              app->game_name, app->shader_library.loaded, frame->config_now);
     file_picker_state(&view->shader_picker, &app->shader_picker, &app->catalog, &app->strings);
     ports_widget_state(&view->ports_board, &app->strings, view->menu_shown, SDL_GetTicks());
+    app->dvr.core_aspect = game_running(app) ? app->session.host->av_info.geometry.aspect_ratio : 0.0f;
     dvr_widget_state(&view->dvr, &app->dvr, &app->strings);
     core_options_state(app, &view->manager);
     cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
