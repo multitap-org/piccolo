@@ -9,6 +9,10 @@
 
 static const char* const SECTION = "continue";
 
+// The card's date is seconds * SDL_NS_PER_SECOND in an int64 (continue_panel):
+// anything above this (year 2255) is a broken file, not a time.
+constexpr uint64_t CLOSED_MAX_SECONDS = 9000000000;
+
 static const char* saved_name(ContinueSaved saved)
 {
     switch (saved)
@@ -87,8 +91,34 @@ bool continue_record_load(ContinueRecord* record, const char* path)
         record->aspect_height = static_cast<uint32_t>(height);
     }
     record->closed = number_or_zero(&file, "closed");
+    if (record->closed > CLOSED_MAX_SECONDS)
+    {
+        record->closed = 0;   // no date line
+    }
     record->saved = saved_from_name(text_or_empty(&file, "saved").c_str());
     return true;
+}
+
+// A name as the card shows it: line breaks as blanks, none at the ends.
+// settings_file_set refuses both, and a name is only ever shown, so the
+// record is saved with a clean one instead of not at all.
+static std::string shown_name(const std::string* name)
+{
+    std::string clean = *name;
+    for (size_t i = 0; i < clean.size(); i++)
+    {
+        if (clean[i] == '\n' || clean[i] == '\r')
+        {
+            clean[i] = ' ';
+        }
+    }
+    size_t first = clean.find_first_not_of(" \t");
+    if (first == std::string::npos)
+    {
+        return std::string();
+    }
+    size_t last = clean.find_last_not_of(" \t");
+    return clean.substr(first, last - first + 1);
 }
 
 bool continue_record_save(const ContinueRecord* record, const char* path)
@@ -100,10 +130,12 @@ bool continue_record_save(const ContinueRecord* record, const char* path)
     std::snprintf(width, sizeof(width), "%u", record->aspect_width);
     std::snprintf(height, sizeof(height), "%u", record->aspect_height);
     std::snprintf(closed, sizeof(closed), "%llu", static_cast<unsigned long long>(record->closed));
+    std::string game_name = shown_name(&record->game_name);
+    std::string core_name = shown_name(&record->core_name);
     bool ok = settings_file_set(&file, SECTION, "core", record->core_path.c_str()) &&
               settings_file_set(&file, SECTION, "content", record->content_path.c_str()) &&
-              settings_file_set(&file, SECTION, "game", record->game_name.c_str()) &&
-              settings_file_set(&file, SECTION, "core_name", record->core_name.c_str()) &&
+              settings_file_set(&file, SECTION, "game", game_name.c_str()) &&
+              settings_file_set(&file, SECTION, "core_name", core_name.c_str()) &&
               settings_file_set(&file, SECTION, "state", record->state_path.c_str()) &&
               settings_file_set(&file, SECTION, "picture", record->picture_path.c_str()) &&
               settings_file_set(&file, SECTION, "save", record->save_path.c_str()) &&

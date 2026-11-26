@@ -135,6 +135,21 @@ int main(int argc, char** argv)
               loaded.saved == ContinueSaved::state,
           "a broken aspect is unknown, an unknown state is a state");
 
+    // A name with blanks at its ends or a line break is saved cleaned: it is only shown.
+    ContinueRecord odd = saved;
+    odd.game_name = "  Odd Game \t";
+    odd.core_name = "Snes\n9x ";
+    check(continue_record_save(&odd, path.c_str()), "names with outer blanks and a line break are written");
+    check(continue_record_load(&loaded, path.c_str()) && loaded.game_name == "Odd Game" &&
+              loaded.core_name == "Snes 9x",
+          "the names come back cleaned");
+
+    // A date no clock has (it would overflow seconds * 1e9) means no date line.
+    write_text(&broken, "[continue]\ncore = /c.so\nclosed = 18446744073709551615\n");
+    check(continue_record_load(&loaded, broken.c_str()) && loaded.closed == 0, "an absurd date is no date");
+    write_text(&broken, "[continue]\ncore = /c.so\nclosed = 1795671814\n");
+    check(continue_record_load(&loaded, broken.c_str()) && loaded.closed == 1795671814, "a real date is kept");
+
     // --- The files ----------------------------------------------------------
     // (A run before this one left them.)
     host_fs_remove_file(state.c_str());
