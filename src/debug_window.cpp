@@ -68,6 +68,12 @@ static void draw_hud_widgets(DebugWindowAction* action)
     press(action, retro_ui_button("PAIRING TIMED OUT card"), DebugWindowPress::card_pair_timed_out);
     retro_ui_same_line();
     press(action, retro_ui_button("PAIRING FAILED card"), DebugWindowPress::card_pair_failed);
+    // The undos' cards (a hotkey's or a device's), with a fake slot.
+    press(action, retro_ui_button("UNDO SAVE card"), DebugWindowPress::card_undo_save);
+    retro_ui_same_line();
+    press(action, retro_ui_button("UNDO LOAD card"), DebugWindowPress::card_undo_load);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NOTHING TO UNDO card"), DebugWindowPress::card_undo_nothing);
     retro_ui_check("pair_request_card", "Pairing request card (a fake device)", &action->pair_request_card);
     retro_ui_dim_text("In the game, START held fills its key and the card goes; nothing opens.", nullptr);
 }

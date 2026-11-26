@@ -10,6 +10,7 @@
 #include "piccolo_text.h"
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
+#include "state_undo.h"
 #include "ui_toolkit.h"
 
 // Room for any thumbnail as saved (the picture at x1: a few hundred pixels across).
@@ -21,6 +22,7 @@ constexpr uint32_t PREVIEW_CAPACITY = 4096;
 constexpr uint32_t SLOT_COLUMNS = 5;
 constexpr uint32_t ACTION_COLUMNS = 4;
 constexpr uint32_t STATE_COLUMNS = 3;
+constexpr uint32_t UNDO_COLUMNS = 2;   // UNDO SAVE, UNDO LOAD
 constexpr uint32_t SLOT_COUNT = QUICK_MENU_SLOT_LAST - QUICK_MENU_SLOT_FIRST + 1;
 // A slot at least this many retro pixels wide (the actions' labels usually
 // make the grid wider).
@@ -44,16 +46,20 @@ void quick_menu_update(QuickMenu* menu, const CoreSession* session)
     for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         core_session_slot_info(session, slot, &menu->slots[slot]);
+        char path[LIBRETRO_PATH_MAX] = {};
+        menu->undo[slot] = core_session_running(session) &&
+                           libretro_host_state_path(session->host, slot, path, sizeof(path)) && state_undo_available(path);
     }
 }
 
 void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Localization* strings, const char* core_name,
-                      const char* game_name, bool user_paused)
+                      const char* game_name, bool user_paused, bool undo_load)
 {
     state->strings = strings;
     state->core_name = core_name;
     state->game_name = game_name;
     state->user_paused = user_paused;
+    state->undo_load = undo_load;
     // Each slot's label: its number, and when it was saved (the time if
     // today, the day otherwise: a slot is narrow).
     SDL_Time now = 0;
@@ -276,7 +282,7 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     uint32_t slot_rows = (SLOT_COUNT + SLOT_COLUMNS - 1) / SLOT_COLUMNS;
     float key_lines = std::ceil(retro_ui_text_width(keys) / (grid > 1.0f ? grid : 1.0f));
     float below = (slot_tile_height(block, slot_width) + row_gap) * static_cast<float>(slot_rows) +
-                  retro_ui_line_step() + retro_ui_text_line_step() * key_lines;
+                  2.0f * retro_ui_line_step() + retro_ui_text_line_step() * key_lines;   // two rows of buttons
     float room = screen_room - retro_ui_cursor_y() - row_gap - below;
     float least = retro_ui_font_size() * 3.0f;
     draw_preview(menu, state, grid, room > least ? room : least);
@@ -306,6 +312,24 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     else if (pressed == 2)
     {
         action->press = QuickMenuPress::dvr;   // a window widget: it replaces QUICK MENU
+    }
+    // The undos, under the slots' actions (Andrés, 2026-11-26): the selected
+    // slot's last save, the last state load.
+    RetroUiRowButton undos[UNDO_COLUMNS] = {};
+    undos[0].id = "undo_save";
+    undos[0].label = piccolo_text(strings, Str::quick_menu_undo_save);
+    undos[0].enabled = menu->undo[menu->slot];
+    undos[1].id = "undo_load";
+    undos[1].label = piccolo_text(strings, Str::quick_menu_undo_load);
+    undos[1].enabled = state->undo_load;
+    pressed = retro_ui_equal_buttons(undos, UNDO_COLUMNS, grid);
+    if (pressed == 0)
+    {
+        action->press = QuickMenuPress::undo_save;
+    }
+    else if (pressed == 1)
+    {
+        action->press = QuickMenuPress::undo_load;
     }
     retro_ui_dim_text_wrapped_at(keys, 0.0f);
 }

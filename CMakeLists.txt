@@ -221,6 +221,7 @@ set(PICCOLO_SOURCES
     src/cores_window.cpp
     src/share_window.cpp
     src/share_paths.cpp
+    src/state_undo.cpp
     src/pair_window.cpp
     src/safe_start_window.cpp
     src/text_input_window.cpp
@@ -538,6 +539,17 @@ if(MULTITAP_BUILD_TESTS)
              COMMAND piccolo_recent_games_test "${CMAKE_CURRENT_BINARY_DIR}/recent_games_test")
     set_tests_properties(piccolo_recent_games PROPERTIES
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # UNDO SAVE STATE's files: the slot and its undo swapped, no core.
+    add_executable(piccolo_state_undo_test tools/state_undo_test.cpp src/state_undo.cpp)
+    target_include_directories(piccolo_state_undo_test PRIVATE src)
+    target_link_libraries(piccolo_state_undo_test PRIVATE host_common)
+    multitap_set_project_flags(piccolo_state_undo_test)
+    add_test(NAME piccolo_state_undo
+             COMMAND piccolo_state_undo_test "${CMAKE_CURRENT_BINARY_DIR}/state_undo_test")
+    set_tests_properties(piccolo_state_undo PROPERTIES
+        PASS_REGULAR_EXPRESSION "state undo: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     # FILE TRANSFER's target paths (MIRROR FOLDER STRUCTURE), no GUI.
     add_executable(piccolo_share_paths_test tools/share_paths_test.cpp src/share_paths.cpp)

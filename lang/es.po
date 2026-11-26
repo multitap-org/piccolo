@@ -50,6 +50,14 @@ msgctxt "menu_load_state"
 msgid "LOAD STATE"
 msgstr "CARGAR ESTADO"
 
+msgctxt "menu_undo_save_state"
+msgid "UNDO SAVE STATE"
+msgstr "DESHACER GUARDAR ESTADO"
+
+msgctxt "menu_undo_load_state"
+msgid "UNDO LOAD STATE"
+msgstr "DESHACER CARGAR ESTADO"
+
 msgctxt "menu_quick_save"
 msgid "QUICK SAVE"
 msgstr "GUARDADO RÁPIDO"
@@ -113,6 +121,18 @@ msgstr "SIN JUEGO"
 msgctxt "status_reset"
 msgid "RESET"
 msgstr "REINICIADO"
+
+msgctxt "status_undo_save"
+msgid "SAVE STATE UNDONE, SLOT %u"
+msgstr "GUARDADO DESHECHO, SLOT %u"
+
+msgctxt "status_undo_load"
+msgid "LOAD STATE UNDONE"
+msgstr "CARGA DESHECHA"
+
+msgctxt "status_undo_nothing"
+msgid "NOTHING TO UNDO"
+msgstr "NADA QUE DESHACER"
 
 msgctxt "picker_title"
 msgid "LOAD GAME"
@@ -1277,6 +1297,14 @@ msgstr "GUARDAR"
 msgctxt "quick_menu_load"
 msgid "LOAD"
 msgstr "CARGAR"
+
+msgctxt "quick_menu_undo_save"
+msgid "UNDO SAVE"
+msgstr "DESHACER GUARDADO"
+
+msgctxt "quick_menu_undo_load"
+msgid "UNDO LOAD"
+msgstr "DESHACER CARGA"
 
 msgctxt "quick_menu_quick_save"
 msgid "QUICK SAVE"
@@ -3831,6 +3859,14 @@ msgstr "CAPTURA"
 msgctxt "input_action_hotkey_reset"
 msgid "RESET"
 msgstr "REINICIAR"
+
+msgctxt "input_action_hotkey_undo_save_state"
+msgid "UNDO SAVE STATE"
+msgstr "DESHACER GUARDAR ESTADO"
+
+msgctxt "input_action_hotkey_undo_load_state"
+msgid "UNDO LOAD STATE"
+msgstr "DESHACER CARGAR ESTADO"
 
 msgctxt "quick_menu_config"
 msgid "CORE CONFIG"

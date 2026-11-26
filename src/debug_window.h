@@ -99,6 +99,9 @@ enum class DebugWindowPress
     card_link_copied,     // REMOTE PLAY's LINK COPIED TO THE CLIPBOARD
     card_pair_timed_out,  // PAIRING TIMED OUT
     card_pair_failed,     // PAIRING FAILED
+    card_undo_save,       // SAVE STATE UNDONE, SLOT 3
+    card_undo_load,       // LOAD STATE UNDONE
+    card_undo_nothing,    // NOTHING TO UNDO
     effect_snap,          // the REWIND screen effect (SNAP), as after PLAY FROM HERE
     effect_shutter,       // the SCREENSHOT screen effect (SHUTTER), without a screenshot
 };

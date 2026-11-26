@@ -6,7 +6,8 @@
 //
 //   GAME, no game     LOAD GAME, CLOSE GAME (greyed), QUIT
 //   GAME, a game      LOAD GAME, CLOSE GAME, ---, PAUSE / RESUME, QUICK SAVE,
-//                     QUICK LOAD, TAKE SCREENSHOT, SOFT RESET, HARD RESET,
+//                     QUICK LOAD, UNDO SAVE STATE, UNDO LOAD STATE (greyed with
+//                     nothing to undo), TAKE SCREENSHOT, SOFT RESET, HARD RESET,
 //                     CORE CONFIGURATION, QUIT
 //   SETTINGS          GENERAL, INTERFACE, VIDEO, SOUND, NETWORK (the window's
 //                     tabs, in order), INPUT
@@ -32,6 +33,8 @@ enum class MenuAction
     quick_load,    // GAME > QUICK LOAD
     save_state,    // the selected slot (the save / load hotkeys, a remote device's)
     load_state,
+    undo_save_state,   // GAME > UNDO SAVE STATE: the slot saved last back as before (also its hotkey, a device's)
+    undo_load_state,   // GAME > UNDO LOAD STATE: the game back as before the last state load
     screenshot,    // GAME > TAKE SCREENSHOT (also the screenshot hotkey)
     quit,
     general,

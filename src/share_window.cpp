@@ -4,6 +4,7 @@
 #include "share_paths.h"
 
 #include <cfloat>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -11,6 +12,7 @@
 #include "piccolo_text.h"
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
+#include "state_undo.h"
 #include "ui_toolkit.h"
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,20 @@ static bool ends_with(const std::string* text, const char* end)
 {
     size_t size = std::strlen(end);
     return text->size() >= size && text->compare(text->size() - size, size, end) == 0;
+}
+
+// UNDO SAVE STATE's files (state_undo.h) aren't shown or copied: they
+// belong to this machine's slots. Dropped from every listing, either side's.
+static void drop_undo_files(std::vector<NetShareEntry>* entries)
+{
+    for (size_t i = entries->size(); i > 0; i--)
+    {
+        const NetShareEntry* entry = &(*entries)[i - 1];
+        if (entry->kind == NetShareKind::file && state_undo_is_undo_file(&entry->name))
+        {
+            entries->erase(entries->begin() + static_cast<std::ptrdiff_t>(i - 1));
+        }
+    }
 }
 
 // The core writes <stem>.srm, <stem>.state1, <stem>.state1.png...: one more
@@ -281,6 +297,7 @@ void share_window_set_remote_list(ShareWindow* window, const char* path, NetShar
     }
     pane->status = status;
     pane->entries = *entries;
+    drop_undo_files(&pane->entries);
     pane->selected = -1;
     window->same_stale = true;
     if (pane->path.empty() && status == NetShareStatus::ok)
@@ -301,6 +318,7 @@ void share_window_update(ShareWindow* window, const NetShareFolders* local_folde
         window->local.stale = false;
         net_share_list(local_folders, "", &window->local_roots);
         window->local.status = net_share_list(local_folders, window->local.path.c_str(), &window->local.entries);
+        drop_undo_files(&window->local.entries);
         window->local.selected = -1;
         window->same_stale = true;
         if (window->local.status != NetShareStatus::ok && !window->local.path.empty())

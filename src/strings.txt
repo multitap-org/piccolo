@@ -24,6 +24,8 @@ menu_reset = SOFT RESET
 menu_hard_reset = HARD RESET
 menu_save_state = SAVE STATE
 menu_load_state = LOAD STATE
+menu_undo_save_state = UNDO SAVE STATE
+menu_undo_load_state = UNDO LOAD STATE
 menu_quick_save = QUICK SAVE
 menu_quick_load = QUICK LOAD
 menu_screenshot = TAKE SCREENSHOT
@@ -49,6 +51,9 @@ recent_no_game = NO GAME
 
 # Messages (HUD cards: message_widget.h)
 status_reset = RESET
+status_undo_save = SAVE STATE UNDONE, SLOT %u
+status_undo_load = LOAD STATE UNDONE
+status_undo_nothing = NOTHING TO UNDO
 
 # LOAD GAME window
 picker_title = LOAD GAME
@@ -220,6 +225,8 @@ quick_menu_slot = SLOT
 quick_menu_empty = EMPTY
 quick_menu_save = SAVE
 quick_menu_load = LOAD
+quick_menu_undo_save = UNDO SAVE
+quick_menu_undo_load = UNDO LOAD
 quick_menu_quick_save = QUICK SAVE
 quick_menu_quick_load = QUICK LOAD
 quick_menu_screenshot = SCREENSHOT
@@ -1057,6 +1064,8 @@ dvr_hud_off = REWIND IS OFF (SETTINGS > GENERAL)
 input_action_hotkey_remap = REMAP (HOLD)
 input_action_hotkey_screenshot = SCREENSHOT
 input_action_hotkey_reset = RESET
+input_action_hotkey_undo_save_state = UNDO SAVE STATE
+input_action_hotkey_undo_load_state = UNDO LOAD STATE
 remap_card_port = PORT %u
 remap_card_hold = HOLD
 remap_card_to_remap = TO REMAP

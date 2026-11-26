@@ -183,7 +183,8 @@ static void show_guest(DebugPreviews* previews, DebugPreview which)
 }
 
 // QUICK MENU on slot 1, SAVE STATES open: the quick slot and two others
-// used (today and an older day), no pictures.
+// used (today and an older day), no pictures. UNDO SAVE: slot 1 has an
+// undo, slot 3 none (greyed when picked); UNDO LOAD is on.
 static void show_quick(DebugPreviews* previews)
 {
     QuickMenu* menu = &previews->quick;
@@ -202,6 +203,7 @@ static void show_quick(DebugPreviews* previews)
         menu->slots[used[i]].used = true;
         menu->slots[used[i]].modified = when[i];
     }
+    menu->undo[1] = true;
 }
 
 void debug_preview_show(DebugPreviews* previews, DebugPreview which)
@@ -297,7 +299,7 @@ void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, 
     }
     else if (previews->shown == DebugPreview::quick_menu)
     {
-        quick_menu_state(&view->quick, &previews->quick, strings, PREVIEW_CORE, PREVIEW_GAME, false);
+        quick_menu_state(&view->quick, &previews->quick, strings, PREVIEW_CORE, PREVIEW_GAME, false, true);
     }
 }
 

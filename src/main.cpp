@@ -66,6 +66,7 @@
 #include "screen_effects.h"
 #include "screenshot_writer.h"
 #include "message_widget.h"
+#include "state_undo.h"
 #include "state_widget.h"
 #include "debug_window.h"
 #include "debug_preview.h"
@@ -185,6 +186,22 @@ struct App
     bool       menus_built_quick_used = false;   // the quick slot held a state then (QUICK LOAD greyed out if not)
     bool       quick_slot_used = false;       // the quick slot holds a state for the running game...
     bool       quick_slot_stale = true;       // ...read again at the top of the next loop (a save, a start)
+    // UNDO LOAD STATE: the game as it was before the last state load, and a
+    // spare for the next one (swapped, never freed: they only grow to the
+    // core's state size). Dropped when the game closes or another starts.
+    std::vector<uint8_t> undo_load;
+    std::vector<uint8_t> undo_load_spare;
+    size_t     undo_load_size = 0;            // the state's bytes in undo_load (0: nothing to undo)
+    // UNDO SAVE STATE from the GAME menu, its hotkey or a device: the slot
+    // saved last in this game (the selected one until something is saved).
+    // Its undo file is checked with the quick slot (quick_slot_stale) or
+    // when that slot changes, never every frame.
+    bool       saved_slot_known = false;
+    uint32_t   saved_slot = 0;
+    bool       undo_save_ready = false;       // that slot has an undo (state_undo.h)...
+    uint32_t   undo_save_checked = UINT32_MAX;   // ...checked for this slot
+    bool       menus_built_undo_save = false;    // UNDO SAVE STATE was enabled when the menus were built
+    bool       menus_built_undo_load = false;    // UNDO LOAD STATE too
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
@@ -546,6 +563,8 @@ static void build_menus(App* app)
     bool running = game_running(app);
     app->menus_built_running = running;
     app->menus_built_quick_used = app->quick_slot_used;
+    app->menus_built_undo_save = app->undo_save_ready;
+    app->menus_built_undo_load = app->undo_load_size > 0;
     // The labels first: the items point into them (push_back may move them).
     for (int32_t menu = 0; menu < menus_count(); menu++)
     {
@@ -594,6 +613,11 @@ static void build_menus(App* app)
             if (action == MenuAction::quick_load && !app->quick_slot_used)
             {
                 enabled = false;   // as QUICK MENU's QUICK LOAD and LOAD: an empty slot has nothing to load
+            }
+            if ((action == MenuAction::undo_save_state && !app->undo_save_ready) ||
+                (action == MenuAction::undo_load_state && app->undo_load_size == 0))
+            {
+                enabled = false;   // nothing to undo
             }
             app->menu_items.push_back(RetroUiMenuItem{app->menu_texts[text].c_str(), id, enabled});
             text++;
@@ -686,6 +710,112 @@ static void report_session(App* app, bool ok, bool announce)
     if (!ok || announce)
     {
         set_status(app, app->session.message);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UNDO SAVE STATE / UNDO LOAD STATE (Andrés, 2026-11-26; design-notes.md).
+// A load keeps the game as it was in memory, one level; a save moves the
+// slot's old files aside on disk, one level per slot (state_undo.h).
+// ---------------------------------------------------------------------------
+
+// The game ends: its load undo goes (the buffers stay for the next game) and
+// the slot saved last is forgotten. The slots' undo files stay on disk.
+static void drop_undos(App* app)
+{
+    app->undo_load_size = 0;
+    app->saved_slot_known = false;
+    app->undo_save_checked = UINT32_MAX;   // checked again for the next game
+}
+
+// Every state load (a slot, the quick slot, a hotkey, a device) comes
+// through here: the running game goes to the spare buffer first and becomes
+// the undo once the load worked. The DVR's load at its cursor (PLAY FROM
+// HERE) doesn't: it has its own lane.
+static bool load_state_keeping_undo(App* app)
+{
+    size_t size = 0;
+    bool kept = false;
+    if (game_running(app))
+    {
+        size = libretro_host_state_size(app->session.host);
+        kept = size > 0 && libretro_host_serialize(app->session.host, &app->undo_load_spare);
+    }
+    bool loaded = core_session_load_state(&app->session);
+    if (loaded && kept)
+    {
+        app->undo_load.swap(app->undo_load_spare);
+        app->undo_load_size = size;
+    }
+    return loaded;
+}
+
+// UNDO LOAD STATE: the game back as before the last load. The state it
+// replaces becomes the undo, so undoing twice is redo. False with nothing to
+// undo, or when the core refused it.
+static bool undo_load_state(App* app)
+{
+    if (!game_running(app) || app->undo_load_size == 0)
+    {
+        return false;
+    }
+    LibretroHost* host = app->session.host;
+    size_t size = libretro_host_state_size(host);
+    bool kept = size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    // A load as the player's (the rewind history jumps here, as for a slot).
+    if (!libretro_host_load_state_memory(host, app->undo_load.data(), app->undo_load_size))
+    {
+        return false;
+    }
+    audio_output_clear(&app->session.audio);   // what was queued belongs to the time before
+    app->undo_load.swap(app->undo_load_spare);
+    app->undo_load_size = kept ? size : 0;
+    return true;
+}
+
+// The slot GAME > UNDO SAVE STATE, its hotkey and a device undo: the one
+// saved last in this game, the selected one until then. (QUICK MENU's UNDO
+// SAVE undoes the slot selected there.)
+static uint32_t undo_save_slot(const App* app)
+{
+    return app->saved_slot_known ? app->saved_slot : app->session.state_slot;
+}
+
+// UNDO SAVE STATE: `slot` swapped with its undo files.
+static bool undo_save_state(App* app, uint32_t slot)
+{
+    char path[LIBRETRO_PATH_MAX] = {};
+    if (!game_running(app) || !libretro_host_state_path(app->session.host, slot, path, sizeof(path)))
+    {
+        return false;
+    }
+    bool undone = state_undo_swap(path);
+    quick_menu_refresh(&app->quick_menu);
+    app->quick_slot_stale = true;   // the quick slot and the undo files, read again
+    return undone;
+}
+
+// An undo's card, as report_session decides a save's or a load's: NOTHING TO
+// UNDO always, the undo done only when `announce` (a hotkey, a device).
+static void report_undo_save(App* app, bool undone, uint32_t slot, bool announce)
+{
+    if (!undone)
+    {
+        set_status(app, piccolo_text(&app->strings, Str::status_undo_nothing));
+    }
+    else if (announce)
+    {
+        char text[128] = {};
+        std::snprintf(text, sizeof(text), piccolo_text(&app->strings, Str::status_undo_save), slot);
+        set_status(app, text);
+    }
+}
+
+static void report_undo_load(App* app, bool undone, bool announce)
+{
+    if (!undone || announce)
+    {
+        set_status(app, piccolo_text(&app->strings, undone ? Str::status_undo_load : Str::status_undo_nothing));
     }
 }
 
@@ -1257,6 +1387,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     app->game_starts++;
     auto_frame_delay_reset(&app->auto_delay);   // each game finds its own
     app->quick_slot_stale = true;   // the new game's own quick slot
+    drop_undos(app);                // the previous game's
     app->marker_core_path = choice->core_path;
     app->marker_content_path = choice->content_path;
     write_running_marker(app);
@@ -1327,7 +1458,21 @@ static bool save_state_with_thumbnail(App* app)
             thumbnail.width = 0;
         }
     }
+    // UNDO SAVE STATE: the slot's old files moved aside first (state_undo.h).
+    char path[LIBRETRO_PATH_MAX] = {};
+    bool kept = game_running(app) &&
+                libretro_host_state_path(app->session.host, app->session.state_slot, path, sizeof(path)) &&
+                state_undo_keep(path);
     bool saved = core_session_save_state(&app->session, &thumbnail);
+    if (!saved && kept)
+    {
+        state_undo_cancel(path);   // the slot as it was
+    }
+    if (saved)
+    {
+        app->saved_slot_known = true;
+        app->saved_slot = app->session.state_slot;
+    }
     quick_menu_refresh(&app->quick_menu);
     app->quick_slot_stale = true;
     return saved;
@@ -1679,7 +1824,7 @@ static bool quick_load(App* app)
 {
     uint32_t selected = app->session.state_slot;
     app->session.state_slot = QUICK_SLOT;
-    bool loaded = core_session_load_state(&app->session);
+    bool loaded = load_state_keeping_undo(app);
     app->session.state_slot = selected;
     report_session(app, loaded, false);
     return loaded;
@@ -1729,12 +1874,35 @@ static void save_state_from(App* app, bool announce)
 
 static void load_state_from(App* app, bool announce)
 {
-    bool loaded = core_session_load_state(&app->session);
+    bool loaded = load_state_keeping_undo(app);
     if (loaded)
     {
         app_leave_main_menu(app);
     }
     report_session(app, loaded, announce);
+}
+
+// UNDO SAVE STATE / UNDO LOAD STATE from the GAME menu, the hotkeys or
+// another device, as SAVE / LOAD STATE: back to the game when it worked.
+static void undo_save_from(App* app, bool announce)
+{
+    uint32_t slot = undo_save_slot(app);
+    bool undone = undo_save_state(app, slot);
+    if (undone)
+    {
+        app_leave_main_menu(app);
+    }
+    report_undo_save(app, undone, slot, announce);
+}
+
+static void undo_load_from(App* app, bool announce)
+{
+    bool undone = undo_load_state(app);
+    if (undone)
+    {
+        app_leave_main_menu(app);
+    }
+    report_undo_load(app, undone, announce);
 }
 
 // CLOSE GAME: at the top of the next loop (the game's texture may be in this
@@ -1825,6 +1993,12 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::load_state:
             load_state_from(app, false);
+            break;
+        case MenuAction::undo_save_state:
+            undo_save_from(app, false);
+            break;
+        case MenuAction::undo_load_state:
+            undo_load_from(app, false);
             break;
         case MenuAction::quit:
             app->running = false;
@@ -2794,6 +2968,14 @@ static void app_handle_hotkeys(App* app, const InputFrame* frame)
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_load_state)])
     {
         load_state_from(app, true);
+    }
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_undo_save_state)])
+    {
+        undo_save_from(app, true);
+    }
+    if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_undo_load_state)])
+    {
+        undo_load_from(app, true);
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_screenshot)])
     {
@@ -4057,6 +4239,15 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
     case DebugWindowPress::card_pair_failed:
         debug_preview_show_card(&app->debug_previews, DebugCard::pair_failed, now_ms);
         break;
+    case DebugWindowPress::card_undo_save:
+        report_undo_save(app, true, 3, true);   // the real cards, nothing undone
+        break;
+    case DebugWindowPress::card_undo_load:
+        report_undo_load(app, true, true);
+        break;
+    case DebugWindowPress::card_undo_nothing:
+        report_undo_load(app, false, true);
+        break;
     }
     if (dvr_card < 3)
     {
@@ -4544,6 +4735,14 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
     else if (*key == "load_state")
     {
         load_state_from(app, true);
+    }
+    else if (*key == "undo_save_state")
+    {
+        undo_save_from(app, true);
+    }
+    else if (*key == "undo_load_state")
+    {
+        undo_load_from(app, true);
     }
     else if (*key == "slot_next" || *key == "slot_previous")
     {
@@ -5639,7 +5838,8 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 
     settings_view(app, view, frame);
     file_picker_state(&view->picker, &app->picker, &app->catalog, &app->strings);
-    quick_menu_state(&view->quick, &app->quick_menu, &app->strings, app->core_name, app->game_name, app->ui.user_paused);
+    quick_menu_state(&view->quick, &app->quick_menu, &app->strings, app->core_name, app->game_name, app->ui.user_paused,
+                     app->undo_load_size > 0);
     core_options_state(app, &view->config_options);
     core_config_window_state(&view->config, &app->core_config, &app->strings, &view->config_options, &app->input,
                              app->session.host, &app->settings, &app->input_sdl, &app->layouts, app->core_name,
@@ -5863,12 +6063,28 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     case QuickMenuPress::load:
     {
-        bool loaded = core_session_load_state(&app->session);
+        bool loaded = load_state_keeping_undo(app);
         if (loaded)
         {
             app_enter_game(app);   // back to the game
         }
         report_session(app, loaded, false);
+        break;
+    }
+    case QuickMenuPress::undo_save:
+    {
+        uint32_t slot = app->quick_menu.slot;   // the slot selected there
+        report_undo_save(app, undo_save_state(app, slot), slot, false);   // QUICK MENU stays: the picture shows it
+        break;
+    }
+    case QuickMenuPress::undo_load:
+    {
+        bool undone = undo_load_state(app);
+        if (undone)
+        {
+            app_enter_game(app);   // back to the game, as LOAD
+        }
+        report_undo_load(app, undone, false);
         break;
     }
     case QuickMenuPress::quick_save:
@@ -6049,6 +6265,7 @@ static bool app_frame(App* app)
         app->pending_close_game = false;
         save_core_options(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
+        drop_undos(app);
         remove_running_marker(app);   // a proper end
         update_settings_context(app);
         ui_game_stopped(&app->ui);
@@ -6072,9 +6289,20 @@ static bool app_frame(App* app)
         app->quick_slot_stale = false;
         StateSlotInfo info = {};
         app->quick_slot_used = game_running(app) && core_session_slot_info(&app->session, QUICK_SLOT, &info) && info.used;
+        app->undo_save_checked = UINT32_MAX;   // a save or an undo: its undo file too
+    }
+    if (app->undo_save_checked != undo_save_slot(app))
+    {
+        // GAME > UNDO SAVE STATE's slot changed, or its files did: one file check.
+        app->undo_save_checked = undo_save_slot(app);
+        char path[LIBRETRO_PATH_MAX] = {};
+        app->undo_save_ready = game_running(app) &&
+                               libretro_host_state_path(app->session.host, app->undo_save_checked, path, sizeof(path)) &&
+                               state_undo_available(path);
     }
     if (app->menus_built_paused != app->ui.user_paused || app->menus_built_running != game_running(app) ||
-        app->menus_built_quick_used != app->quick_slot_used)
+        app->menus_built_quick_used != app->quick_slot_used || app->menus_built_undo_save != app->undo_save_ready ||
+        app->menus_built_undo_load != (app->undo_load_size > 0))
     {
         build_menus(app);   // GAME > PAUSE / RESUME, what shows with a game
     }

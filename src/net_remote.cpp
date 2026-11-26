@@ -303,6 +303,8 @@ struct ActionInfo
 static const ActionInfo ACTIONS[] = {
     {"save_state", Str::menu_save_state, NetActionKind::press, NET_CAP_STREAM},
     {"load_state", Str::menu_load_state, NetActionKind::press, NET_CAP_STREAM},
+    {"undo_save_state", Str::menu_undo_save_state, NetActionKind::press, NET_CAP_STREAM},
+    {"undo_load_state", Str::menu_undo_load_state, NetActionKind::press, NET_CAP_STREAM},
     {"slot_previous", Str::action_slot_previous, NetActionKind::press, NET_CAP_STREAM},
     {"slot_next", Str::action_slot_next, NetActionKind::press, NET_CAP_STREAM},
     {"fast_forward", Str::input_action_hotkey_fast_forward, NetActionKind::hold, NET_CAP_STREAM},

@@ -21,6 +21,8 @@ static const MenuItem GAME_ITEMS[] = {
     { Str::menu_pause,       MenuAction::pause,       MenuShown::with_game },   // reads RESUME while the player paused (main.cpp)
     { Str::menu_quick_save,  MenuAction::quick_save,  MenuShown::with_game },
     { Str::menu_quick_load,  MenuAction::quick_load,  MenuShown::with_game },
+    { Str::menu_undo_save_state, MenuAction::undo_save_state, MenuShown::with_game },   // greyed with nothing to undo (main.cpp)
+    { Str::menu_undo_load_state, MenuAction::undo_load_state, MenuShown::with_game },
     { Str::menu_screenshot,  MenuAction::screenshot,  MenuShown::with_game },
     { Str::menu_reset,       MenuAction::reset,       MenuShown::with_game },
     { Str::menu_hard_reset,  MenuAction::hard_reset,  MenuShown::with_game },
@@ -111,6 +113,8 @@ const char* menu_action_name(MenuAction action)
         case MenuAction::quick_load: return "QUICK LOAD";
         case MenuAction::save_state: return "SAVE STATE";
         case MenuAction::load_state: return "LOAD STATE";
+        case MenuAction::undo_save_state: return "UNDO SAVE STATE";
+        case MenuAction::undo_load_state: return "UNDO LOAD STATE";
         case MenuAction::screenshot: return "TAKE SCREENSHOT";
         case MenuAction::quit:       return "QUIT";
         case MenuAction::general:    return "GENERAL";

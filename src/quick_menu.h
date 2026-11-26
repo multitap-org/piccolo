@@ -16,6 +16,7 @@
 //   | [ 0 ] [ 1 ] [ 2 ] [ 3 ] [ 4 ]                               |   thumbnails, date or time
 //   | [ 5 ] [ 6 ] [ 7 ] [ 8 ] [ 9 ]                               |
 //   | [SAVE          ][LOAD          ][GAME DVR      ]            |
+//   | [UNDO SAVE               ][UNDO LOAD               ]        |   greyed with nothing to undo
 //   +-----------------------------------------------------------+
 //
 // Everything sits on one five-column grid: the picture is as wide as five
@@ -28,7 +29,9 @@
 // does. The slots: arrows or 0-9 pick one (also the slot F2 / F4 use), S
 // saves, L loads; Enter does nothing by itself, so a state is never loaded
 // or overwritten by accident. PAUSE IN MENU pauses the game while it's
-// open. F1 or Esc closes it.
+// open. F1 or Esc closes it. UNDO SAVE swaps the selected slot with what
+// its last save overwrote; UNDO LOAD puts the game back as before the last
+// state load (main.cpp, state_undo.h; Andrés, 2026-11-26).
 //
 // Split like every window: quick_menu_update reads the slots and
 // quick_menu_state fills what the window shows (no GUI), quick_menu_draw
@@ -67,6 +70,8 @@ enum class QuickMenuPress
     save,         // save to `slot`
     load,         // load `slot`
     dvr,          // GAME DVR: the rewind DVR (a window widget: it replaces QUICK MENU)
+    undo_save,    // UNDO SAVE: `slot` back as before its last save
+    undo_load,    // UNDO LOAD: the game back as before the last state load
 };
 
 constexpr uint32_t QUICK_MENU_SLOTS = QUICK_MENU_SLOT_LAST + 1;   // [FIRST..LAST] used
@@ -90,6 +95,7 @@ struct QuickMenu
     bool          open = false;
     uint32_t      slot = QUICK_MENU_SLOT_FIRST;   // the selected slot
     StateSlotInfo slots[QUICK_MENU_SLOTS] = {};
+    bool          undo[QUICK_MENU_SLOTS] = {};   // the slot has an undo (UNDO SAVE), read with `slots`
     bool          refresh = true;   // read the slots again on the next update
     bool          focus_slot = false;   // move the keyboard focus to `slot` on the next draw (picked by 0-9)
     uint32_t      focus_wait = 0;       // draws left where only `slot`'s tile counts as focused (the focus moves late)
@@ -115,6 +121,7 @@ struct QuickMenuState
     const char*         core_name = "";
     const char*         game_name = "";
     bool                user_paused = false;   // the player paused: PAUSE reads RESUME
+    bool                undo_load = false;     // a state load can be undone (UNDO LOAD)
     char                labels[QUICK_MENU_SLOTS][QUICK_MENU_LABEL_MAX] = {};   // "3 · 00:30" (today), "1 · 11-24", "2"
     char                when[QUICK_MENU_LABEL_MAX] = {};   // the selected slot's date and time, "2026-11-25 14:32" ("": empty)
 };
@@ -135,7 +142,7 @@ void quick_menu_refresh(QuickMenu* menu);
 // Before drawing, every frame: reads the slots again when asked to.
 void quick_menu_update(QuickMenu* menu, const CoreSession* session);
 void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Localization* strings, const char* core_name,
-                      const char* game_name, bool user_paused);
+                      const char* game_name, bool user_paused, bool undo_load);
 // Draws the menu while open.
 void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* pixel_font, int32_t scale,
                      QuickMenuAction* action);
