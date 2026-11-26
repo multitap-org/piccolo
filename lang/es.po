@@ -126,6 +126,14 @@ msgctxt "picker_folder"
 msgid "FOLDER"
 msgstr "CARPETA"
 
+msgctxt "picker_filter"
+msgid "FILTER"
+msgstr "FILTRO"
+
+msgctxt "picker_filter_hint"
+msgid "PART OF A NAME"
+msgstr "PARTE DE UN NOMBRE"
+
 msgctxt "picker_home"
 msgid "HOME"
 msgstr "INICIO"

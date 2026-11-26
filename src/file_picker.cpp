@@ -220,8 +220,67 @@ static bool listed_file(const FilePicker* picker, const LibretroCoreInfo* core, 
            archive_format(name) != ArchiveFormat::none;
 }
 
+// FILTER: `name` has `filter` in it, any case (ASCII letters; other
+// characters as they are). An empty filter matches everything.
+static bool name_matches(const char* name, const char* filter)
+{
+    if (filter[0] == '\0')
+    {
+        return true;
+    }
+    for (size_t start = 0; name[start] != '\0'; start++)
+    {
+        size_t i = 0;
+        while (filter[i] != '\0' && name[start + i] != '\0' &&
+               SDL_tolower(static_cast<unsigned char>(name[start + i])) == SDL_tolower(static_cast<unsigned char>(filter[i])))
+        {
+            i++;
+        }
+        if (filter[i] == '\0')
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The rows listed: the names that match FILTER. A selected file it hides
+// is let go (LOAD mustn't start what isn't shown).
+static void apply_filter(FilePicker* picker)
+{
+    std::snprintf(picker->filter_listed, sizeof(picker->filter_listed), "%s", picker->filter);
+    picker->shown_folders.clear();
+    picker->shown_files.clear();
+    for (size_t i = 0; i < picker->folders.size(); i++)
+    {
+        if (name_matches(picker->folders[i].c_str(), picker->filter))
+        {
+            picker->shown_folders.push_back(static_cast<uint32_t>(i));
+        }
+    }
+    bool selected_shown = false;
+    for (size_t i = 0; i < picker->files.size(); i++)
+    {
+        if (name_matches(picker->files[i].c_str(), picker->filter))
+        {
+            picker->shown_files.push_back(static_cast<uint32_t>(i));
+            selected_shown = selected_shown || static_cast<int32_t>(i) == picker->selected_file;
+        }
+    }
+    if (!selected_shown)
+    {
+        picker->selected_file = -1;
+    }
+}
+
 static void list_folder(FilePicker* picker, const CoreCatalog* catalog)
 {
+    // Another folder: FILTER starts empty there.
+    if (std::strcmp(picker->filter_folder, picker->directory) != 0)
+    {
+        picker->filter[0] = '\0';
+        std::snprintf(picker->filter_folder, sizeof(picker->filter_folder), "%s", picker->directory);
+    }
     picker->folders.clear();
     picker->files.clear();
     picker->selected_file = -1;
@@ -329,6 +388,11 @@ void file_picker_update(FilePicker* picker, const CoreCatalog* catalog)
     if (picker->open && picker->listing_stale)
     {
         list_folder(picker, catalog);
+        apply_filter(picker);
+    }
+    else if (picker->open && std::strcmp(picker->filter, picker->filter_listed) != 0)
+    {
+        apply_filter(picker);
     }
 }
 
@@ -455,6 +519,68 @@ static void draw_game_buttons(FilePicker* picker, const FilePickerState* state, 
     }
 }
 
+// The files that match FILTER (`width` 0: the whole width). Only the rows in
+// view are drawn (thousands of files stay smooth; keyboard / gamepad
+// navigation still reaches them all).
+static void draw_files(const FilePicker* picker, const Localization* strings, float width, float height,
+                       FilePickerAction* action)
+{
+    retro_ui_begin_list("files", width, height);
+    uint32_t first = 0;
+    uint32_t end = 0;
+    retro_ui_begin_clipped(static_cast<uint32_t>(picker->shown_files.size()));
+    while (retro_ui_clipped_step(&first, &end))
+    {
+        for (uint32_t row = first; row < end; row++)
+        {
+            uint32_t i = picker->shown_files[row];
+            int32_t index = static_cast<int32_t>(i);
+            RetroUiClick click = retro_ui_list_item_click(i, picker->files[i].c_str(), index == picker->selected_file);
+            if (click != RetroUiClick::none && picker->selected_file != index)
+            {
+                action->select_file = index;
+            }
+            if (click == RetroUiClick::twice)
+            {
+                action->press = FilePickerPress::load;
+            }
+        }
+    }
+    if (picker->shown_files.empty())
+    {
+        retro_ui_dim_text(piccolo_text(strings, Str::picker_nothing_here), nullptr);
+    }
+    retro_ui_end_list();
+}
+
+// ".." and the folders that match FILTER.
+static void draw_folders(const FilePicker* picker, float width, float height, FilePickerAction* action)
+{
+    retro_ui_begin_list("folders", width, height);
+    retro_ui_push_id("parent");
+    if (retro_ui_list_item(0, "..", false, nullptr))
+    {
+        action->press = FilePickerPress::parent;
+    }
+    retro_ui_pop_id();
+    uint32_t first = 0;
+    uint32_t end = 0;
+    retro_ui_begin_clipped(static_cast<uint32_t>(picker->shown_folders.size()));
+    while (retro_ui_clipped_step(&first, &end))
+    {
+        for (uint32_t row = first; row < end; row++)
+        {
+            uint32_t i = picker->shown_folders[row];
+            if (retro_ui_list_item(i, picker->folders[i].c_str(), false, nullptr))
+            {
+                action->press = FilePickerPress::open_folder;
+                action->index = static_cast<int32_t>(i);
+            }
+        }
+    }
+    retro_ui_end_list();
+}
+
 void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiFont* pixel_font, int32_t scale,
                       FilePickerAction* action)
 {
@@ -579,64 +705,31 @@ void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiF
         }
         retro_ui_row_end(&folder_row);
 
+        // FILTER: both lists narrowed to the names with this text in them.
+        RetroUiRow filter_row = {};
+        filter_row.id = "filter";
+        filter_row.marker_column = false;
+        filter_row.label = piccolo_text(strings, Str::picker_filter);
+        filter_row.label_width = label_width;
+        retro_ui_row_begin(&filter_row);
+        RetroUiEditField filter_field = {};
+        filter_field.hint = piccolo_text(strings, Str::picker_filter_hint);
+        retro_ui_edit_field("field", picker->filter, sizeof(picker->filter), &filter_field);
+        retro_ui_row_end(&filter_row);
+
         // Files (left) and folders (right), leaving room for two rows below.
         float row = retro_ui_line_step();
         float list_height = retro_ui_height_left() - row * 2.0f;
-        float files_width = retro_ui_width_left() * 0.62f;
-
-        if (!choosing_folder)   // folders only: the whole width
+        if (choosing_folder)   // folders only: the whole room
         {
-            retro_ui_begin_list("files", files_width, list_height);
-            // Only the rows in view are drawn (thousands of files stay smooth;
-            // keyboard / gamepad navigation still reaches them all).
-            uint32_t first = 0;
-            uint32_t end = 0;
-            retro_ui_begin_clipped(static_cast<uint32_t>(picker->files.size()));
-            while (retro_ui_clipped_step(&first, &end))
-            {
-                for (uint32_t i = first; i < end; i++)
-                {
-                    int32_t index = static_cast<int32_t>(i);
-                    RetroUiClick click = retro_ui_list_item_click(i, picker->files[i].c_str(), index == picker->selected_file);
-                    if (click != RetroUiClick::none && picker->selected_file != index)
-                    {
-                        action->select_file = index;
-                    }
-                    if (click == RetroUiClick::twice)
-                    {
-                        action->press = FilePickerPress::load;
-                    }
-                }
-            }
-            if (picker->files.empty())
-            {
-                retro_ui_dim_text(piccolo_text(strings, Str::picker_nothing_here), nullptr);
-            }
-            retro_ui_end_list();
+            draw_folders(picker, 0.0f, list_height, action);
+        }
+        else
+        {
+            draw_files(picker, strings, retro_ui_width_left() * 0.62f, list_height, action);
             retro_ui_same_line();
+            draw_folders(picker, 0.0f, list_height, action);
         }
-        retro_ui_begin_list("folders", 0.0f, list_height);
-        retro_ui_push_id("parent");
-        if (retro_ui_list_item(0, "..", false, nullptr))
-        {
-            action->press = FilePickerPress::parent;
-        }
-        retro_ui_pop_id();
-        uint32_t first = 0;
-        uint32_t end = 0;
-        retro_ui_begin_clipped(static_cast<uint32_t>(picker->folders.size()));
-        while (retro_ui_clipped_step(&first, &end))
-        {
-            for (uint32_t i = first; i < end; i++)
-            {
-                if (retro_ui_list_item(i, picker->folders[i].c_str(), false, nullptr))
-                {
-                    action->press = FilePickerPress::open_folder;
-                    action->index = static_cast<int32_t>(i);
-                }
-            }
-        }
-        retro_ui_end_list();
 
         // Where we are, or what LOAD does with the selected archive.
         retro_ui_dim_text(state->where, nullptr);
