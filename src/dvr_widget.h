@@ -24,15 +24,20 @@
 //                      the other way, Y or an end; held, 2x while held.
 //                      SNAPSHOTS: a snapshot; held, one a second
 //                      (Andrés, 2026-11-22)
-//       L / R          5 s (SCRUB) or a snapshot
+//       L / R          5 s (SCRUB) or a snapshot (INTERFACE's PAGE LEFT / RIGHT)
 //       B (accept)     PLAY FROM HERE: play on from the cursor
-//       Y              WATCH = RIGHT; while it plays either way, pauses
+//       Y (menu)       WATCH = RIGHT; while it plays either way, pauses
 //                      (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
+//     (The RetroPad's names for INTERFACE's default buttons: the bottom,
+//     left and right face buttons and the shoulders.)
 //     A move that can't go further (the oldest or newest frame) lands on
 //     the end and the selected thumbnail bounces, its border blinking.
 //     Each action is logged (what it did to the cursor).
-//     The hints name the keyboard's keys when it was used last.
+//     The hints name the controls bound to those INTERFACE actions on the
+//     gamepad used last (its profile's, layout's or SDL's names: A / X / B
+//     LB RB on an Xbox pad, ✕ □ ○ L1 R1 on a PlayStation one), or the
+//     keyboard's keys when it was used last (dvr_widget_name_keys).
 //   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
 //     HERE (state_widget), or a notification card saying why it didn't open.
 //
@@ -57,6 +62,9 @@ struct HudStack;
 struct CoreSession;
 #include "retro_ui_font.h"
 struct InputFrame;
+struct InputLayouts;
+struct InputSdl;
+struct InputSystem;
 struct Localization;
 struct Settings;
 
@@ -94,6 +102,15 @@ struct DvrWidget
 
     // The keyboard was used last (the hints show its keys, Space is WATCH).
     bool keyboard = false;
+    // The gamepad used last in the interface (a controller index, -1 none
+    // yet: port 1's first gamepad), whose buttons the hints name.
+    int32_t gamepad = -1;
+    // The hints' control names (dvr_widget_name_keys): PLAY FROM HERE,
+    // WATCH, BACK TO NOW and the jumps' pair. "" = the RetroPad's.
+    char key_accept[32] = {};
+    char key_watch[32]  = {};
+    char key_back[32]   = {};
+    char key_pages[64]  = {};
 
     // A move hit an end of the history: the selected thumbnail bounces.
     int32_t  bump_direction = 0;   // -1 the oldest, 1 the newest
@@ -132,8 +149,13 @@ bool dvr_widget_open(DvrWidget* widget, const Localization* strings, uint64_t no
 // BACK TO NOW: closes, the game as it was.
 void dvr_widget_close(DvrWidget* widget);
 
-// While open, after input_update: the gamepads' and keyboard's actions.
+// Every frame, after input_update: the gamepads' and keyboard's actions
+// while open (and, open or not, which gamepad was used last).
 void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms);
+
+// While open, before dvr_widget_prepare: names the hints' controls from the
+// INTERFACE bindings of the gamepad used last, or the keyboard's.
+void dvr_widget_name_keys(DvrWidget* widget, const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts);
 
 // While open, in a frame (after app_shell_acquire, before the session's own
 // upload): makes the next missing thumbnail.

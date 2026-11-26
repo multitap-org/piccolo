@@ -2,12 +2,12 @@
 
 #include <SDL3/SDL.h>
 
-#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
+#include "button_names.h"
 #include "pad_picture.h"
 #include "piccolo_text.h"
 #include "pixel_font.h"
@@ -53,64 +53,41 @@ static const Str ACTION_LABELS[INPUT_ACTION_COUNT] = {
 // ---------------------------------------------------------------------------
 // State
 
-static void upper(char* text)
+static ButtonFaceLabel face_label(SDL_Gamepad* gamepad, InputButton button)
 {
-    for (char* c = text; *c != '\0'; c++)
-    {
-        *c = static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
-    }
-}
-
-static const char* face_button_label(SDL_Gamepad* gamepad, InputButton button, const char* fallback)
-{
-    if (gamepad == nullptr)
-    {
-        return fallback;
-    }
     switch (SDL_GetGamepadButtonLabel(gamepad, static_cast<SDL_GamepadButton>(button)))
     {
-    case SDL_GAMEPAD_BUTTON_LABEL_A:        return "A";
-    case SDL_GAMEPAD_BUTTON_LABEL_B:        return "B";
-    case SDL_GAMEPAD_BUTTON_LABEL_X:        return "X";
-    case SDL_GAMEPAD_BUTTON_LABEL_Y:        return "Y";
-    case SDL_GAMEPAD_BUTTON_LABEL_CROSS:    return "CROSS";
-    case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE:   return "CIRCLE";
-    case SDL_GAMEPAD_BUTTON_LABEL_SQUARE:   return "SQUARE";
-    case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "TRIANGLE";
-    default:                                return fallback;
+    case SDL_GAMEPAD_BUTTON_LABEL_A:        return ButtonFaceLabel::a;
+    case SDL_GAMEPAD_BUTTON_LABEL_B:        return ButtonFaceLabel::b;
+    case SDL_GAMEPAD_BUTTON_LABEL_X:        return ButtonFaceLabel::x;
+    case SDL_GAMEPAD_BUTTON_LABEL_Y:        return ButtonFaceLabel::y;
+    case SDL_GAMEPAD_BUTTON_LABEL_CROSS:    return ButtonFaceLabel::cross;
+    case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE:   return ButtonFaceLabel::circle;
+    case SDL_GAMEPAD_BUTTON_LABEL_SQUARE:   return ButtonFaceLabel::square;
+    case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return ButtonFaceLabel::triangle;
+    default:                                return ButtonFaceLabel::unknown;
     }
 }
 
-// The layout control behind a source, for its label (count = none).
-static InputMapControl layout_control(InputSource source)
+static ButtonFamily family_of(SDL_Gamepad* gamepad)
 {
-    if (source.type == InputSourceType::button)
+    switch (SDL_GetGamepadType(gamepad))
     {
-        switch (static_cast<InputButton>(source.code))
-        {
-        case InputButton::south:          return InputMapControl::south;
-        case InputButton::east:           return InputMapControl::east;
-        case InputButton::west:           return InputMapControl::west;
-        case InputButton::north:          return InputMapControl::north;
-        case InputButton::back:           return InputMapControl::back;
-        case InputButton::guide:          return InputMapControl::guide;
-        case InputButton::start:          return InputMapControl::start;
-        case InputButton::left_stick:     return InputMapControl::left_stick;
-        case InputButton::right_stick:    return InputMapControl::right_stick;
-        case InputButton::left_shoulder:  return InputMapControl::left_shoulder;
-        case InputButton::right_shoulder: return InputMapControl::right_shoulder;
-        default:                          return InputMapControl::count;
-        }
+    case SDL_GAMEPAD_TYPE_XBOX360:
+    case SDL_GAMEPAD_TYPE_XBOXONE:
+        return ButtonFamily::xbox;
+    case SDL_GAMEPAD_TYPE_PS3:
+    case SDL_GAMEPAD_TYPE_PS4:
+    case SDL_GAMEPAD_TYPE_PS5:
+        return ButtonFamily::playstation;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+        return ButtonFamily::nintendo;
+    default:
+        return ButtonFamily::other;
     }
-    if (source.type == InputSourceType::axis_plus && source.code == static_cast<uint16_t>(InputAxis::left_trigger))
-    {
-        return InputMapControl::left_trigger;
-    }
-    if (source.type == InputSourceType::axis_plus && source.code == static_cast<uint16_t>(InputAxis::right_trigger))
-    {
-        return InputMapControl::right_trigger;
-    }
-    return InputMapControl::count;
 }
 
 const InputLayout* input_window_layout(const InputSystem* input, const InputLayouts* layouts, const InputDevice* device)
@@ -126,104 +103,37 @@ const InputLayout* input_window_layout(const InputSystem* input, const InputLayo
 void input_window_source_label(const InputSdl* sdl, const InputDevice* device, const InputLayout* layout,
                                const InputProfile* profile, InputSource source, char* out, size_t out_size)
 {
-    if (profile != nullptr && source.type == InputSourceType::button && source.code < INPUT_BUTTON_COUNT &&
-        !profile->button_labels[source.code].empty())
-    {
-        std::snprintf(out, out_size, "%s", profile->button_labels[source.code].c_str());   // a name given to it
-        return;
-    }
+    ButtonNamesPad pad = {};
     SDL_Gamepad* gamepad = device != nullptr ? input_sdl_gamepad(sdl, device->id) : nullptr;
-    InputMapControl control = layout_control(source);
-    if (layout != nullptr && control != InputMapControl::count && !layout->labels[static_cast<uint32_t>(control)].empty())
+    if (gamepad != nullptr)
     {
-        std::snprintf(out, out_size, "%s", layout->labels[static_cast<uint32_t>(control)].c_str());
-        return;
+        pad.south = face_label(gamepad, InputButton::south);
+        pad.east = face_label(gamepad, InputButton::east);
+        pad.west = face_label(gamepad, InputButton::west);
+        pad.north = face_label(gamepad, InputButton::north);
+        pad.family = family_of(gamepad);
     }
-    const char* text = "?";
-    char key[32] = {};
-    switch (source.type)
+    button_names_source(layout, profile, &pad, source, out, out_size);
+}
+
+bool input_window_action_label(const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts,
+                               uint32_t controller, InputAction action, char* out, size_t out_size)
+{
+    out[0] = '\0';
+    if (controller >= input->controllers.size())
     {
-    case InputSourceType::key:
+        return false;
+    }
+    const InputController* mapped = &input->controllers[controller];
+    InputSource source = {};
+    if (!button_names_first_source(&mapped->bindings, action, &source))
     {
-        const char* name = input_key_name(source.code);
-        if (name != nullptr)
-        {
-            std::snprintf(key, sizeof(key), "%s", name);
-        }
-        else
-        {
-            std::snprintf(key, sizeof(key), "KEY %u", static_cast<unsigned>(source.code));
-        }
-        upper(key);
-        text = key;
-        break;
+        return false;
     }
-    case InputSourceType::button:
-        switch (static_cast<InputButton>(source.code))
-        {
-        case InputButton::south:          text = face_button_label(gamepad, InputButton::south, "BOTTOM BUTTON"); break;
-        case InputButton::east:           text = face_button_label(gamepad, InputButton::east, "RIGHT BUTTON"); break;
-        case InputButton::west:           text = face_button_label(gamepad, InputButton::west, "LEFT BUTTON"); break;
-        case InputButton::north:          text = face_button_label(gamepad, InputButton::north, "TOP BUTTON"); break;
-        case InputButton::back:           text = "SELECT"; break;
-        case InputButton::guide:          text = "HOME"; break;
-        case InputButton::start:          text = "START"; break;
-        case InputButton::left_stick:     text = "L3"; break;
-        case InputButton::right_stick:    text = "R3"; break;
-        case InputButton::left_shoulder:  text = "L"; break;
-        case InputButton::right_shoulder: text = "R"; break;
-        case InputButton::dpad_up:        text = "D-PAD UP"; break;
-        case InputButton::dpad_down:      text = "D-PAD DOWN"; break;
-        case InputButton::dpad_left:      text = "D-PAD LEFT"; break;
-        case InputButton::dpad_right:     text = "D-PAD RIGHT"; break;
-        case InputButton::misc1:          text = "MISC 1"; break;
-        case InputButton::right_paddle1:  text = "RIGHT PADDLE 1"; break;
-        case InputButton::left_paddle1:   text = "LEFT PADDLE 1"; break;
-        case InputButton::right_paddle2:  text = "RIGHT PADDLE 2"; break;
-        case InputButton::left_paddle2:   text = "LEFT PADDLE 2"; break;
-        case InputButton::touchpad:       text = "TOUCHPAD"; break;
-        case InputButton::misc2:          text = "MISC 2"; break;
-        case InputButton::misc3:          text = "MISC 3"; break;
-        case InputButton::misc4:          text = "MISC 4"; break;
-        case InputButton::misc5:          text = "MISC 5"; break;   // MAP CONTROLLER names them L4 / R4 when they are
-        case InputButton::misc6:          text = "MISC 6"; break;   // the extra shoulders (the profile's labels)
-        case InputButton::count:          break;
-        }
-        break;
-    case InputSourceType::mouse:
-        switch (static_cast<InputMouseButton>(source.code))
-        {
-        case InputMouseButton::left:       text = "MOUSE LEFT"; break;
-        case InputMouseButton::right:      text = "MOUSE RIGHT"; break;
-        case InputMouseButton::middle:     text = "MOUSE MIDDLE"; break;
-        case InputMouseButton::x1:         text = "MOUSE BACK"; break;
-        case InputMouseButton::x2:         text = "MOUSE FORWARD"; break;
-        case InputMouseButton::wheel_up:   text = "WHEEL UP"; break;
-        case InputMouseButton::wheel_down: text = "WHEEL DOWN"; break;
-        case InputMouseButton::count:      break;
-        }
-        break;
-    case InputSourceType::axis_plus:
-    case InputSourceType::axis_minus:
-    {
-        bool plus = source.type == InputSourceType::axis_plus;
-        switch (static_cast<InputAxis>(source.code))
-        {
-        case InputAxis::left_x:        text = plus ? "LEFT STICK RIGHT" : "LEFT STICK LEFT"; break;
-        case InputAxis::left_y:        text = plus ? "LEFT STICK DOWN" : "LEFT STICK UP"; break;
-        case InputAxis::right_x:       text = plus ? "RIGHT STICK RIGHT" : "RIGHT STICK LEFT"; break;
-        case InputAxis::right_y:       text = plus ? "RIGHT STICK DOWN" : "RIGHT STICK UP"; break;
-        case InputAxis::left_trigger:  text = "L2"; break;
-        case InputAxis::right_trigger: text = "R2"; break;
-        case InputAxis::count:         break;
-        }
-        break;
-    }
-    case InputSourceType::none:
-        text = "";
-        break;
-    }
-    std::snprintf(out, out_size, "%s", text);
+    const InputDevice* device = input_devices_find_const(&input->devices, mapped->device_id);
+    const InputProfile* profile = device != nullptr ? input_profile(input, device->guid) : nullptr;
+    input_window_source_label(sdl, device, input_window_layout(input, layouts, device), profile, source, out, out_size);
+    return true;
 }
 
 void input_window_controller_defaults(const InputSystem* input, uint32_t controller, InputBindingSet* set)
