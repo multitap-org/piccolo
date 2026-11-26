@@ -126,6 +126,11 @@ bool net_remote_init(NetRemote* remote, const Settings* settings)
         return false;
     }
     remote->strings_language = 0;
+    for (uint32_t i = 0; i < PICCOLO_LANGUAGE_COUNT; i++)
+    {
+        remote->loaded[i] = remote->strings;   // the table, in English; parsed on first use
+        remote->language_loaded[i] = false;
+    }
     remote->reply.resize(NET_LINK_MAX_PAYLOAD);
     std::vector<LayoutRow> rows;
     build_layout(&rows);
@@ -154,7 +159,12 @@ static void use_language(NetRemote* remote, const char* code, const char* root)
     }
     if (language != remote->strings_language)
     {
-        piccolo_text_load_language(&remote->strings, language, root);
+        if (!remote->language_loaded[language])
+        {
+            piccolo_text_load_language(&remote->loaded[language], language, root);
+            remote->language_loaded[language] = true;
+        }
+        remote->strings = remote->loaded[language];
         remote->strings_language = language;
     }
 }
@@ -239,8 +249,13 @@ size_t net_remote_answer_settings(NetRemote* remote, Settings* settings, const c
     {
         status = net_settings_apply(settings, layer, reset, key.c_str(), value.c_str());
     }
+    // A setting not offered gets no values back (folders, servers): only the refusal.
     NetSettingValues values;
-    net_settings_values(settings, key.c_str(), &values);
+    values.key = key;   // the reply still names what was asked
+    if (offered(remote, key.c_str()))
+    {
+        net_settings_values(settings, key.c_str(), &values);
+    }
     return net_settings_write_set_result(remote->reply.data(), remote->reply.size(), id, status, &values);
 }
 
