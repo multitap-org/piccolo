@@ -6,14 +6,17 @@
 //   - A controller like any other in the input router: "TOUCH PAD", a
 //     device that hands a RetroPad (input_devices_set_retropad, as phones'
 //     pads do). START joins a port; remaps, turbo, DEVICES all work on it.
-//   - Landscape: over the picture (see-through, SETTINGS > INPUT > OPACITY).
-//     Upright: under the picture when it fits (the picture is drawn in the
-//     space above it), else over its lower part (a tall picture).
+//   - Landscape: over the picture. Upright: under the picture when it fits
+//     (the picture is drawn in the space above it), else over its lower part
+//     (a tall picture). Drawn the same everywhere (Andrés, 2026-11-26): the
+//     theme's overlay colors at the FILL / BORDER / LABEL opacities
+//     (SETTINGS > INPUT, or EDIT LAYOUT's sliders).
 //   - The middle button is MENU (retroui's action button): the QUICK MENU.
 //   - SHOW: AUTO (a touch screen: shown until a real gamepad plays, a tap
 //     brings it back), ON, OFF.
-//   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD): piccoletto's editor; saved in
-//     <settings>/touch_layouts.cfg.
+//   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD, or the pad's own EDIT
+//     button): piccoletto's editor; saved in <settings>/touch_layouts.cfg,
+//     its sliders in the settings.
 //
 // Fingers come from SDL's finger events (touch_fingers); with the mouse on
 // a desktop (left button held), so it can be tried there too.
@@ -74,6 +77,7 @@ struct OnscreenPad
     PadStyle     style;
     bool         styled = false;   // false: the whole RetroPad
     std::string  style_name;       // the setting's value it was made from
+    PadLook      look;             // this frame's opacities (the settings, or EDIT LAYOUT's sliders)
 };
 
 // STYLE: look like `layout` (a controller layout from layouts/: only its
@@ -108,7 +112,8 @@ struct OnscreenPadState
 {
     const char* menu_label = "";    // the MAIN MENU button
     const char* quick_label = "";   // the QUICK MENU button
-    float       opacity = 1.0f;     // 0.1..1 (the layouts not changed in EDIT LAYOUT)
+    const char* edit_label = "";    // the EDIT button: EDIT LAYOUT
+    PadLook     look;               // FILL / BORDER / LABEL OPACITY, 0..1
     bool        vibrate = false;    // a buzz on each press
 };
 
@@ -116,7 +121,10 @@ struct OnscreenPadAction
 {
     bool menu = false;        // MENU: the MAIN MENU (main.cpp opens it)
     bool quick = false;       // QUICK: the QUICK MENU (main.cpp opens it)
+    bool edit = false;        // EDIT: EDIT LAYOUT (main.cpp opens it)
     bool edit_done = false;   // EDIT LAYOUT's DONE
+    bool look_changed = false;   // EDIT LAYOUT's sliders moved: `look` goes to the settings
+    PadLook look;
     bool buzz = false;        // a press with VIBRATE on
 };
 
@@ -126,8 +134,9 @@ void onscreen_pad_state(OnscreenPadState* state, const Settings* settings, const
 void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiFont* pixel_font,
                        OnscreenPadAction* action);
 
-// EDIT LAYOUT's DONE (saved), the buzz. MENU and QUICK are main.cpp's.
-void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action);
+// EDIT LAYOUT's DONE (saved), its sliders (into `settings`, global), the
+// buzz. MENU, QUICK and EDIT are main.cpp's.
+void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action, Settings* settings);
 
 // After the frame: the fingers' frame ends.
 void onscreen_pad_end_frame(OnscreenPad* pad);

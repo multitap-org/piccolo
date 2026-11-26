@@ -76,7 +76,12 @@ constexpr const char* PICCOLO_INPUT_OSK = "input_osk";
 // layouts not changed in EDIT LAYOUT), VIBRATE ON PRESS. Global only.
 constexpr const char* PICCOLO_TOUCH_PAD = "touch_pad";
 constexpr const char* PICCOLO_TOUCH_PAD_STYLE = "touch_pad_style";   // a layout's name ("" = the RetroPad)
+// The touch gamepad's opacities, percent, the same upright and sideways
+// (EDIT LAYOUT's FILL / BORDER / LABELS): its faces (the key from before
+// there were three), outlines, labels. Colors: the theme's overlay ones.
 constexpr const char* PICCOLO_TOUCH_PAD_OPACITY = "touch_pad_opacity";
+constexpr const char* PICCOLO_TOUCH_PAD_BORDER_OPACITY = "touch_pad_border_opacity";
+constexpr const char* PICCOLO_TOUCH_PAD_LABEL_OPACITY = "touch_pad_label_opacity";
 constexpr const char* PICCOLO_TOUCH_PAD_VIBRATE = "touch_pad_vibrate";
 constexpr const char* PICCOLO_INPUT_PORTS = "input_ports";                // CONTROLS: how many ports it shows (of the core's)
 // The emulated device on each port (the core's own ids; 1 = the joypad),
@@ -192,6 +197,9 @@ constexpr const char* PICCOLO_UI_COLOR_BUTTON_TEXT = "ui_color_button_text";
 constexpr const char* PICCOLO_UI_COLOR_FIELD_TEXT = "ui_color_field_text";
 constexpr const char* PICCOLO_UI_COLOR_CURSOR = "ui_color_cursor";
 constexpr const char* PICCOLO_UI_COLOR_CURSOR_EDGE = "ui_color_cursor_edge";
+constexpr const char* PICCOLO_UI_COLOR_OVERLAY_FILL = "ui_color_overlay_fill";       // the touch gamepad's faces,
+constexpr const char* PICCOLO_UI_COLOR_OVERLAY_BORDER = "ui_color_overlay_border";   // outlines and sticks' nubs,
+constexpr const char* PICCOLO_UI_COLOR_OVERLAY_TEXT = "ui_color_overlay_text";       // labels
 constexpr const char* PICCOLO_UI_COLOR_BAR = "ui_color_bar";
 constexpr const char* PICCOLO_UI_COLOR_BAR_CENTER = "ui_color_bar_center";
 constexpr const char* PICCOLO_UI_COLOR_BAR_LIGHT = "ui_color_bar_light";

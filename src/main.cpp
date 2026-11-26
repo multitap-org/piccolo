@@ -2681,6 +2681,7 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::pad_editor:
             onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
+            save_settings(app);                           // its FILL / BORDER / LABELS
             break;
         case UiWindow::none:
         case UiWindow::count:
@@ -6568,7 +6569,15 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     FilePickerMode picker_mode = app->picker.mode;
     bool shader_picker_drawn = app->shader_picker.open;
 
-    onscreen_pad_apply(&app->onscreen_pad, &actions->pad);
+    onscreen_pad_apply(&app->onscreen_pad, &actions->pad, &app->settings);
+    if (actions->pad.edit_done)
+    {
+        save_settings(app);   // EDIT LAYOUT's FILL / BORDER / LABELS
+    }
+    if (actions->pad.edit)
+    {
+        onscreen_pad_edit(&app->onscreen_pad);   // the pad's own EDIT button
+    }
     continue_card_press(app, actions->continue_pressed);
     if (actions->pad.menu && game_has_keyboard(app))
     {

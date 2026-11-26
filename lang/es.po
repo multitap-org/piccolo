@@ -1870,6 +1870,30 @@ msgctxt "setting_ui_color_cursor_edge_help"
 msgid "The cursor's top and right edge: with the same color as CURSOR, a flat cursor."
 msgstr "El borde de arriba y derecho del cursor: con el mismo color que CURSOR, un cursor plano."
 
+msgctxt "setting_ui_color_overlay_fill"
+msgid "TOUCH GAMEPAD"
+msgstr "CONTROL TÁCTIL"
+
+msgctxt "setting_ui_color_overlay_fill_help"
+msgid "The touch gamepad's buttons (how solid: INPUT > ON-SCREEN GAMEPAD > FILL OPACITY)."
+msgstr "Los botones del control táctil (qué tan sólidos: CONTROLES > CONTROL EN PANTALLA > OPACIDAD DEL RELLENO)."
+
+msgctxt "setting_ui_color_overlay_border"
+msgid "TOUCH GAMEPAD EDGE"
+msgstr "BORDE DEL CONTROL TÁCTIL"
+
+msgctxt "setting_ui_color_overlay_border_help"
+msgid "The outlines around the touch gamepad's buttons and the sticks' middles (BORDER OPACITY)."
+msgstr "Los bordes de los botones del control táctil y el centro de los sticks (OPACIDAD DEL BORDE)."
+
+msgctxt "setting_ui_color_overlay_text"
+msgid "TOUCH GAMEPAD TEXT"
+msgstr "TEXTO DEL CONTROL TÁCTIL"
+
+msgctxt "setting_ui_color_overlay_text_help"
+msgid "The touch gamepad's labels (LABEL OPACITY)."
+msgstr "Los textos del control táctil (OPACIDAD DE LOS TEXTOS)."
+
 msgctxt "input_title"
 msgid "INPUT"
 msgstr "CONTROLES"
@@ -3665,12 +3689,28 @@ msgid "The touch gamepad over the game. AUTO: on a touch screen, hidden while a 
 msgstr "El control táctil sobre el juego. AUTO: en una pantalla táctil, oculto mientras juega un control real (toca la pantalla para que vuelva). Se une a un puerto con su START, como cualquier control."
 
 msgctxt "setting_touch_pad_opacity"
-msgid "OPACITY"
-msgstr "OPACIDAD"
+msgid "FILL OPACITY"
+msgstr "OPACIDAD DEL RELLENO"
 
 msgctxt "setting_touch_pad_opacity_help"
-msgid "How see-through the touch gamepad is over the game (a layout's own opacity from EDIT LAYOUT wins)."
-msgstr "Cuánto se ve el juego a través del control táctil (la opacidad propia de un layout, de EDITAR LAYOUT, tiene prioridad)."
+msgid "How solid the touch gamepad's buttons are, in percent (0: only their outlines and labels). The same upright and sideways; also EDIT LAYOUT's FILL."
+msgstr "Qué tan sólidos son los botones del control táctil, en porcentaje (0: solo sus bordes y textos). Igual en vertical y en horizontal; también es FILL en EDIT LAYOUT."
+
+msgctxt "setting_touch_pad_border_opacity"
+msgid "BORDER OPACITY"
+msgstr "OPACIDAD DEL BORDE"
+
+msgctxt "setting_touch_pad_border_opacity_help"
+msgid "How solid the outlines around the touch gamepad's buttons (and the sticks' middles) are, in percent. Also EDIT LAYOUT's BORDER."
+msgstr "Qué tan sólidos son los bordes de los botones del control táctil (y el centro de los sticks), en porcentaje. También es BORDER en EDIT LAYOUT."
+
+msgctxt "setting_touch_pad_label_opacity"
+msgid "LABEL OPACITY"
+msgstr "OPACIDAD DE LOS TEXTOS"
+
+msgctxt "setting_touch_pad_label_opacity_help"
+msgid "How solid the touch gamepad's labels are, in percent. Also EDIT LAYOUT's LABELS."
+msgstr "Qué tan sólidos son los textos del control táctil, en porcentaje. También es LABELS en EDIT LAYOUT."
 
 msgctxt "setting_touch_pad_vibrate"
 msgid "VIBRATE ON PRESS"
@@ -3715,6 +3755,10 @@ msgstr "(NO ESTÁ)"
 msgctxt "touch_pad_quick"
 msgid "..."
 msgstr "..."
+
+msgctxt "touch_pad_edit"
+msgid "EDIT"
+msgstr "EDITAR"
 
 msgctxt "setting_ui_background_transparency"
 msgid "BACKGROUND TRANSPARENCY"

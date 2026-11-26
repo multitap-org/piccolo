@@ -347,7 +347,8 @@ static void draw_settings(InputWindow* window, const InputWindowState* state, In
     {
         return;
     }
-    static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
+    static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_BORDER_OPACITY,
+                                             PICCOLO_TOUCH_PAD_LABEL_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
     for (uint32_t k = 0; k < sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]); k++)
     {
         settings_ui_row(&ui, TOUCH_KEYS[k], nullptr);

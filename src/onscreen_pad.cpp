@@ -1,5 +1,7 @@
 #include "onscreen_pad.h"
 
+#include <cmath>
+
 #include <SDL3/SDL.h>
 
 #include "input_devices.h"
@@ -223,7 +225,10 @@ void onscreen_pad_state(OnscreenPadState* state, const Settings* settings, const
 {
     state->menu_label = piccolo_text(strings, Str::touch_pad_menu);
     state->quick_label = piccolo_text(strings, Str::touch_pad_quick);
-    state->opacity = static_cast<float>(settings_get_int(settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f;
+    state->edit_label = piccolo_text(strings, Str::touch_pad_edit);
+    state->look.fill = static_cast<float>(settings_get_int(settings, PICCOLO_TOUCH_PAD_OPACITY)) / 100.0f;
+    state->look.border = static_cast<float>(settings_get_int(settings, PICCOLO_TOUCH_PAD_BORDER_OPACITY)) / 100.0f;
+    state->look.labels = static_cast<float>(settings_get_int(settings, PICCOLO_TOUCH_PAD_LABEL_OPACITY)) / 100.0f;
     state->vibrate = settings_get_bool(settings, PICCOLO_TOUCH_PAD_VIBRATE);
 }
 
@@ -253,17 +258,20 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     ui.palette = *retro_ui_palette();
     ui.fingers = &pad->fingers;
     ui.pad = &pad->pad;
-    // Under the picture (upright) nothing shows through the pad: it's drawn
-    // solid; over the game, at OPACITY. (A layout's own, from EDIT LAYOUT, wins.)
-    float alpha = pad->below ? 1.0f : state->opacity;
+    // The same look in every layout, upright or sideways, under the picture
+    // or over it (Andrés, 2026-11-26): the settings' opacities, which EDIT
+    // LAYOUT's sliders change (they reach the settings in onscreen_pad_apply).
+    pad->look = state->look;
+    pad->editor.look = &pad->look;
     for (int32_t i = 0; i < PAD_LAYOUT_COUNT; i++)
     {
-        pad_layout_set_default_alpha(&pad->layouts.layouts[i], alpha);
+        pad->layouts.layouts[i].look = &pad->look;
         pad->layouts.layouts[i].style = pad->styled ? &pad->style : nullptr;
     }
     PadLayout* layout = pad_layouts_get(&pad->layouts, pad->layout);
     layout->menu_label = state->menu_label;     // retroui's menu button: the MAIN MENU
     layout->action_label = state->quick_label;  // its action button: the QUICK MENU
+    layout->edit_label = state->edit_label;     // its edit button: EDIT LAYOUT
     float width = touch_ui_width(&ui);
     float height = touch_ui_height(&ui);
     PadFrame frame = pad->placement.frame;
@@ -286,12 +294,19 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
         {
             action->edit_done = true;
         }
+        if (pad->editor.look_changed)
+        {
+            pad->editor.look_changed = false;
+            action->look_changed = true;
+            action->look = pad->look;
+        }
     }
     else
     {
         pad_layout_draw(&ui, &frame, layout);
         action->menu = layout->menu_pressed;
         action->quick = layout->action_pressed;
+        action->edit = layout->edit_pressed;
         action->buzz = state->vibrate && pad->fingers.presses > 0;
     }
     touch_ui_end_screen();
@@ -326,8 +341,17 @@ void onscreen_pad_edit(OnscreenPad* pad)
     pad->hidden = false;
 }
 
-void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action)
+void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action, Settings* settings)
 {
+    if (action->look_changed)
+    {
+        settings_set_int(settings, SettingLayer::global, PICCOLO_TOUCH_PAD_OPACITY,
+                         static_cast<int32_t>(std::lround(action->look.fill * 100.0f)));
+        settings_set_int(settings, SettingLayer::global, PICCOLO_TOUCH_PAD_BORDER_OPACITY,
+                         static_cast<int32_t>(std::lround(action->look.border * 100.0f)));
+        settings_set_int(settings, SettingLayer::global, PICCOLO_TOUCH_PAD_LABEL_OPACITY,
+                         static_cast<int32_t>(std::lround(action->look.labels * 100.0f)));
+    }
     if (action->edit_done)
     {
         onscreen_pad_edit_end(pad);
