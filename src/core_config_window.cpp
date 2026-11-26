@@ -1691,11 +1691,7 @@ static void draw_controls_tab(CoreConfigWindow* config, const CoreConfigWindowSt
     const char* down = piccolo_text(strings, Str::input_move_down);
     const char* remap = piccolo_text(strings, Str::quick_menu_remap);
     uint32_t ports = state->ports;
-    bool shown[INPUT_PORT_COUNT] = {};
-    for (uint32_t p = 0; p < INPUT_PORT_COUNT; p++)
-    {
-        shown[p] = true;   // all 8 (a list of four trues left ports 5-8 out)
-    }
+    bool shown[INPUT_PORT_COUNT] = {true, true, true, true};
     float label_width = 60.0f * block;
     bool anybody = false;
     // One port open at a time: its CORE DEVICE, its controllers, ADD, MOVE UP / DOWN.
