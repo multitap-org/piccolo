@@ -5455,8 +5455,8 @@ static void net_update_locked(App* app)
 // picture, in the theme's color (Andrés, testing round 3: black looked like
 // the background had gone). One backdrop for everything (testing round 1):
 // with or without a game, and also for the windows that open over the game
-// itself (a pairing request, PAIR, REMOTE PLAY). Widgets and modals don't
-// dim the screen themselves. ARGB; alpha 0 for none.
+// itself (a pairing request, PAIR, REMOTE PLAY), but never under the DVR.
+// Widgets and modals don't dim the screen themselves. ARGB; alpha 0 for none.
 // BACKGROUND at its opacity (100 - BACKGROUND TRANSPARENCY) over black: the
 // screen's color without a game, as the backdrop looks over a game's borders.
 static uint32_t background_over_black(const RetroUiPalette* palette)
@@ -5479,6 +5479,12 @@ static uint32_t menu_backdrop(const App* app)
                             (app->pair_window.request.active && !pair_request_in_game(app));
     // (No game: the screen is that color already, background_over_black.)
     if ((!ui_is_up(app) && !window_over_game) || transparency >= 100 || !game_running(app))
+    {
+        return 0;
+    }
+    // The DVR is about the game's picture: never dimmed under it (Andrés,
+    // 2026-11-25: "the game darkens a lot on DVR"), on every platform.
+    if (app->ui.mode == UiMode::widget && app->ui.widget == UiWidget::dvr)
     {
         return 0;
     }
