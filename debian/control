@@ -1,0 +1,57 @@
+Source: piccolo
+Section: games
+Priority: optional
+Maintainer: andres-asm <andres-asm@retromods.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake (>= 3.25),
+ ninja-build,
+ pkg-config,
+ cargo (>= 1.88),
+ rustc (>= 1.88),
+ libvulkan-dev,
+ libssl-dev,
+ libcurl4-openssl-dev,
+ libx11-dev,
+ libxext-dev,
+ libxrandr-dev,
+ libxcursor-dev,
+ libxfixes-dev,
+ libxi-dev,
+ libxss-dev,
+ libxtst-dev,
+ libxkbcommon-dev,
+ libwayland-dev,
+ libdecor-0-dev,
+ libegl-dev,
+ libgl-dev,
+ libgles-dev,
+ libdrm-dev,
+ libgbm-dev,
+ libasound2-dev,
+ libpulse-dev,
+ libpipewire-0.3-dev,
+ libdbus-1-dev,
+ libudev-dev,
+ libibus-1.0-dev,
+Standards-Version: 4.7.0
+Homepage: https://get-piccolo.app
+Vcs-Browser: https://github.com/multitap-org/piccolo
+Vcs-Git: https://github.com/multitap-org/piccolo.git
+Rules-Requires-Root: no
+
+Package: piccolo
+Architecture: amd64 arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ mesa-vulkan-drivers | vulkan-icd,
+Recommends:
+ libgamemode0,
+Description: small retro libretro frontend
+ piccolo plays games through libretro cores, with the look of the classic
+ emulator frontends of the 90s: pick a core, pick a game, play. It has
+ shader presets (librashader), controller mapping, save states, rewind and
+ netplay. The Test libretro core comes with it.
+ .
+ Settings and saves live in ~/.local/share/piccolo.
