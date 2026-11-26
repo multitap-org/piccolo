@@ -1391,8 +1391,12 @@ msgid "SETTINGS COULD NOT BE READ"
 msgstr "NO SE PUDIERON LEER LOS AJUSTES"
 
 msgctxt "settings_error_text"
-msgid "piccolo.cfg is there but could not be read. Settings are at their defaults for now, and nothing you change will be saved, so the file is not replaced. Close piccolo, check the file, and start again."
-msgstr "piccolo.cfg está, pero no se pudo leer. Los ajustes están en sus valores por defecto por ahora, y nada de lo que cambies se guardará, así que el archivo no se sustituye. Cierra piccolo, revisa el archivo y vuelve a arrancar."
+msgid "These files are there but could not be read:"
+msgstr "Estos archivos están, pero no se pudieron leer:"
+
+msgctxt "settings_error_defaults"
+msgid "What they hold is at its defaults for now, and nothing is saved over them. Close piccolo, check the files, and start again."
+msgstr "Lo que contienen está en sus valores por defecto por ahora, y no se guarda nada encima. Cierra piccolo, revisa los archivos y vuelve a arrancar."
 
 msgctxt "settings_error_ok"
 msgid "OK"

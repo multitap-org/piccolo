@@ -1,7 +1,7 @@
 #pragma once
 
 // TOOLS > FILE TRANSFER (was SHARE): copies games, saves, states and
-// screenshots between this piccolo and another one that gave us OWNER access
+// screenshots between this piccolo and another one that granted us FILE TRANSFER
 // (piccolo-share), in the retro style:
 //
 //   +- FILE TRANSFER ------------------------------------------------+
@@ -126,7 +126,7 @@ struct ShareWindow
     std::vector<NetShareEntry> local_roots;    // ours, read with this side's listing
     std::string message;             // what the last copy said, when it didn't go well
 
-    // Connecting (the other side, while no piccolo is connected with OWNER).
+    // Connecting (the other side, while no piccolo is connected with FILE TRANSFER granted).
     int32_t found_selected = -1;     // in the link's found list
     int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
     bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
@@ -145,7 +145,7 @@ struct ShareWindowState
     const Localization*       strings = nullptr;
     const NetShareLinkStatus* link = nullptr;   // our connection to another piccolo (nullptr: none)
     const ShareTransferLine*  line = nullptr;
-    bool                      connected = false;   // ready, at OWNER (SHARE) level: the other side shows
+    bool                      connected = false;   // ready, FILE TRANSFER (SHARE) granted: the other side shows
 };
 
 enum class ShareWindowPress

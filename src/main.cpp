@@ -112,13 +112,31 @@
 constexpr uint64_t PICCOLO_CONTENT_CACHE_MAX_BYTES = 4ull * 1024ull * 1024ull * 1024ull;
 
 
+// Gamepads drive the menus and dialogs as the keyboard does: their
+// interface actions become the toolkit's move and activate keys; BACK
+// closes an open list or popup, otherwise the topmost window (as Escape).
+struct UiKey
+{
+    InputAction action;
+    UiNavKey    key;
+};
+
+static const UiKey UI_KEYS[] = {
+    {InputAction::ui_up, UiNavKey::up},
+    {InputAction::ui_down, UiNavKey::down},
+    {InputAction::ui_left, UiNavKey::left},
+    {InputAction::ui_right, UiNavKey::right},
+    {InputAction::ui_accept, UiNavKey::accept},
+};
+constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
+
 struct App
 {
     AppShell shell = {};
     AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     InputSystem input = {};       // controllers, ports, hotkeys (input_bindings.h)
     InputSdl    input_sdl = {};   // the keyboard and gamepads, from SDL
-    bool        ui_keys_down[5] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
+    bool        ui_keys_down[UI_KEY_COUNT] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
     bool        ui_back_down = false;
     uint64_t    ui_back_since_ms = 0;      // BACK / SELECT held since (0 = not held)
     bool        ui_back_done = false;      // this hold already closed a window
@@ -190,7 +208,7 @@ struct App
     NetService net_service;              // the listener on its own thread (net_service.h); its NetAccess:
                                          // net_service.access, used between net_service_lock / _unlock
     InputNet   input_net = {};           // paired devices' pads, in the input router
-    NetGames   net_games = {};           // games from devices with FULL access (net_games.h)
+    NetGames   net_games = {};           // games from devices with SETTINGS (net_games.h)
     bool       net_load_waiting = false; // a load_request is in pending_start: answered once it ran
     uint32_t   net_load_peer = NET_NO_PEER;
     uint32_t   net_load_id = 0;
@@ -302,6 +320,13 @@ struct App
     // are the defaults, and nothing is saved all run so the user's file is not replaced.
     bool           settings_unreadable = false;
     bool           settings_error_open = false;   // its dialog (settings_error_window.h), until OK
+    // The same for the other files read at start (a missing file is fine: only "there but not
+    // readable" counts). Each one's writers return while its flag is set.
+    bool           core_options_unreadable = false;   // core_options.cfg
+    bool           input_config_unreadable = false;   // input.cfg
+    bool           recent_unreadable = false;         // recent.cfg
+    bool           last_used_unreadable = false;      // last_used.cfg
+    char           settings_error_files[128] = {};    // "piccolo.cfg, input.cfg": for the dialog, built once at start
     SettingsWindow settings_window = {};
     const char*    choose_folder_key = nullptr;   // the folder setting CHOOSE FOLDER sets
     bool           settings_window_was_open = false;
@@ -395,11 +420,11 @@ struct App
     CoreUpdater        core_updater;
     CoresWindow        cores_window;
     PairWindow         pair_window;      // TOOLS > PAIR (our code, to be let into another piccolo)
-    ShareWindow        share_window;     // TOOLS > SHARE (files with another piccolo at OWNER level)
+    ShareWindow        share_window;     // TOOLS > SHARE (files with another piccolo granting FILE TRANSFER)
     NetShareFolders    share_folders;    // this piccolo's shared folders: game folders, saves, states
     NetShareLink       share_link;       // SHARE's connection to another piccolo, as its client
     NetShareLinkStatus share_status;     // read once per loop while SHARE is open
-    bool               share_connected = false;   // last loop: connected with OWNER access
+    bool               share_connected = false;   // last loop: connected with FILE TRANSFER (SHARE) granted
     std::vector<NetShareClientDone> share_done;
     uint32_t           share_rate_id = 0;    // the copy the rate is measured for
     uint64_t           share_rate_done = 0;
@@ -431,6 +456,9 @@ struct App
     bool window_focused     = true;
     bool screensaver_allowed = false;   // what we last told SDL
     char last_core[LIBRETRO_PATH_MAX]      = {};
+    // The running core's file name ("snes9x_libretro.so", "" = no game): set once when a game
+    // starts, cleared when it ends. TOOLS > CORES never replaces or removes it.
+    char running_core_file[LIBRETRO_PATH_MAX]            = {};
     char last_folder[LIBRETRO_PATH_MAX]    = {};
 };
 
@@ -445,7 +473,8 @@ static std::string last_used_file(const App* app)
 
 static void save_last_used(const App* app)
 {
-    if (app->paths.settings.empty())
+    // last_used.cfg was there but unreadable at start: what is saved now would replace it.
+    if (app->last_used_unreadable || app->paths.settings.empty())
     {
         return;
     }
@@ -472,8 +501,13 @@ static void save_last_used(const App* app)
 static void load_last_used(App* app)
 {
     SettingsFile file = {};
-    if (app->paths.settings.empty() || !settings_file_load(&file, last_used_file(app).c_str()))
+    if (app->paths.settings.empty())
     {
+        return;
+    }
+    if (!settings_file_load(&file, last_used_file(app).c_str()))
+    {
+        app->last_used_unreadable = true;   // a missing file loads fine: this is "there, not readable"
         return;
     }
     const char* core = settings_file_get(&file, "", "core");
@@ -540,6 +574,57 @@ static void apply_folders(App* app)
         std::string cache_path = app->paths.root + "/core_info_cache.cfg";
         core_catalog_init(&app->catalog, cores.c_str(), cache_path.c_str());
         core_catalog_scan(&app->catalog, nullptr);
+    }
+}
+
+static void save_input_config(App* app)
+{
+    // Every write of input.cfg comes through here (shutdown too, which saves even when nothing
+    // changed): a file that was there but unreadable at start left no controller profiles, and
+    // saving would replace the user's.
+    if (app->input_config_unreadable || app->input_config_path.empty())
+    {
+        return;
+    }
+    input_config_save(&app->input, app->input_config_path.c_str());
+}
+
+// Adds one file name to the list the dialog shows ("piccolo.cfg, input.cfg").
+static void settings_error_files_add(App* app, const char* name)
+{
+    size_t used = std::strlen(app->settings_error_files);
+    std::snprintf(app->settings_error_files + used, sizeof(app->settings_error_files) - used, "%s%s",
+                  used > 0 ? ", " : "", name);
+}
+
+// Once at start, after every file was read: which ones are there but could not be read, and
+// the dialog that says so (no per-frame work: the window only draws this text).
+static void build_settings_error_files(App* app)
+{
+    app->settings_error_files[0] = '\0';
+    if (app->settings_unreadable)
+    {
+        settings_error_files_add(app, "piccolo.cfg");
+    }
+    if (app->core_options_unreadable)
+    {
+        settings_error_files_add(app, "core_options.cfg");
+    }
+    if (app->input_config_unreadable)
+    {
+        settings_error_files_add(app, "input.cfg");
+    }
+    if (app->recent_unreadable)
+    {
+        settings_error_files_add(app, "recent.cfg");
+    }
+    if (app->last_used_unreadable)
+    {
+        settings_error_files_add(app, "last_used.cfg");
+    }
+    if (app->settings_error_files[0] != '\0')
+    {
+        app->settings_error_open = true;
     }
 }
 
@@ -725,7 +810,8 @@ static void refresh_recent_labels(App* app)
 static void remember_recent(App* app, const char* core_path, const char* content_path)
 {
     recent_games_add(&app->recent, core_path, content_path);
-    if (!app->recent_path.empty())
+    // recent.cfg unreadable at start: the list is empty, saving it would replace the user's.
+    if (!app->recent_path.empty() && !app->recent_unreadable)
     {
         recent_games_save(&app->recent, app->recent_path.c_str());
     }
@@ -787,18 +873,18 @@ static void drop_undos(App* app)
 // HERE) doesn't: it has its own lane.
 static bool load_state_keeping_undo(App* app)
 {
-    size_t size = 0;
     bool kept = false;
     if (game_running(app))
     {
-        size = libretro_host_state_size(app->session.host);
-        kept = size > 0 && libretro_host_serialize(app->session.host, &app->undo_load_spare);
+        // (0 = no savestates.) What the core really wrote is the vector's size, not the size asked.
+        kept = libretro_host_state_size(app->session.host) > 0 &&
+               libretro_host_serialize(app->session.host, &app->undo_load_spare);
     }
     bool loaded = core_session_load_state(&app->session);
     if (loaded && kept)
     {
+        app->undo_load_size = app->undo_load_spare.size();
         app->undo_load.swap(app->undo_load_spare);
-        app->undo_load_size = size;
     }
     return loaded;
 }
@@ -813,16 +899,15 @@ static bool undo_load_state(App* app)
         return false;
     }
     LibretroHost* host = app->session.host;
-    size_t size = libretro_host_state_size(host);
-    bool kept = size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    bool kept = libretro_host_state_size(host) > 0 && libretro_host_serialize(host, &app->undo_load_spare);
     // A load as the player's (the rewind history jumps here, as for a slot).
     if (!libretro_host_load_state_memory(host, app->undo_load.data(), app->undo_load_size))
     {
         return false;
     }
     audio_output_clear(&app->session.audio);   // what was queued belongs to the time before
+    app->undo_load_size = kept ? app->undo_load_spare.size() : 0;   // what the core wrote, not the size asked
     app->undo_load.swap(app->undo_load_spare);
-    app->undo_load_size = kept ? size : 0;
     return true;
 }
 
@@ -1026,8 +1111,7 @@ static void resume_state_on_start(App* app)
         return;
     }
     LibretroHost* host = app->session.host;
-    size_t start_size = libretro_host_state_size(host);
-    bool kept = start_size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    bool kept = libretro_host_state_size(host) > 0 && libretro_host_serialize(host, &app->undo_load_spare);
     bool loaded = size > 0 && libretro_host_load_state_memory(host, data, size);
     delete[] data;
     if (!loaded)
@@ -1038,8 +1122,8 @@ static void resume_state_on_start(App* app)
     audio_output_clear(&app->session.audio);
     if (kept)
     {
+        app->undo_load_size = app->undo_load_spare.size();   // what the core wrote, not the size asked
         app->undo_load.swap(app->undo_load_spare);
-        app->undo_load_size = start_size;
     }
     set_status(app, piccolo_text(&app->strings, Str::status_resumed));
 }
@@ -1518,7 +1602,9 @@ static void save_learned_latency(App* app)
 
 static void save_core_options(App* app)
 {
-    if (app->option_store.dirty && !app->option_store_path.empty())
+    // The options store only: core_options.cfg unreadable at start left it empty, and saving it
+    // would replace the user's file. The cache below is rebuilt by the cores and stays free.
+    if (app->option_store.dirty && !app->option_store_path.empty() && !app->core_options_unreadable)
     {
         core_options_store_save(&app->option_store, app->option_store_path.c_str());
     }
@@ -1653,6 +1739,10 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     if (!started)
     {
         remove_running_marker(app);   // failed cleanly: not a crash
+        if (!game_running(app))
+        {
+            app->running_core_file[0] = '\0';   // the failed start replaced the previous game
+        }
     }
     if (started)
     {
@@ -1661,6 +1751,16 @@ static bool start_game(App* app, const FilePickerChoice* choice)
         ui_game_started(&app->ui);   // straight into the game, everything closed
         ui_follow_changes(app);
         std::snprintf(app->last_core, sizeof(app->last_core), "%s", choice->core_path);
+        // The part after the last '/' or '\\' (a core path may be either on Windows).
+        const char* core_file = choice->core_path;
+        for (const char* c = choice->core_path; *c != '\0'; c++)
+        {
+            if (*c == '/' || *c == '\\')
+            {
+                core_file = c + 1;
+            }
+        }
+        std::snprintf(app->running_core_file, sizeof(app->running_core_file), "%s", core_file);
         if (choice->content_path[0] != '\0')
         {
             // The folder of the file, for the next LOAD GAME.
@@ -1717,18 +1817,6 @@ static void core_options_state(App* app, CoreOptionsUiState* state)
     const char* folder = folder_at != std::string::npos ? folder_section.c_str() + folder_at + 5 : "";
     core_options_ui_state(state, &app->strings, &app->session, &app->option_store, &app->option_cache,
                           game_running(app) ? app->core_name : "", folder, app->game_name);
-}
-
-// The running core's file name ("snes9x_libretro.so"), "" when no game runs:
-// the core downloader never replaces or removes it.
-static std::string running_core_file(const App* app)
-{
-    if (!game_running(app))
-    {
-        return std::string();
-    }
-    const char* slash = std::strrchr(app->last_core, '/');
-    return slash != nullptr ? std::string(slash + 1) : std::string(app->last_core);
 }
 
 // TOOLS > CORES: the downloader is set up again on every open (unless it's
@@ -2221,7 +2309,7 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::clear_recents:
             app->recent.games.clear();
-            if (!app->recent_path.empty())
+            if (!app->recent_path.empty() && !app->recent_unreadable)   // see remember_recent
             {
                 recent_games_save(&app->recent, app->recent_path.c_str());
             }
@@ -2609,24 +2697,6 @@ static void measure_shader_check(App* app)
                     1e9 / app->shader_check.measured_ns, hz);
     }
 }
-
-// Gamepads drive the menus and dialogs as the keyboard does: their
-// interface actions become the toolkit's move and activate keys; BACK
-// closes an open list or popup, otherwise the topmost window (as Escape).
-struct UiKey
-{
-    InputAction action;
-    UiNavKey    key;
-};
-
-static const UiKey UI_KEYS[] = {
-    {InputAction::ui_up, UiNavKey::up},
-    {InputAction::ui_down, UiNavKey::down},
-    {InputAction::ui_left, UiNavKey::left},
-    {InputAction::ui_right, UiNavKey::right},
-    {InputAction::ui_accept, UiNavKey::accept},
-};
-constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
 
 // ---------------------------------------------------------------------------
 // UI modes (ui_mode.h): what has the screen and the input
@@ -3388,7 +3458,7 @@ static void offer_mapping(App* app, const InputFrame* frame)
     }
     if (map->profiles_dirty && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());
+        save_input_config(app);
         map->profiles_dirty = false;
     }
 }
@@ -3550,7 +3620,7 @@ static void app_update_input(App* app)
     update_cursors(app, &frame, ui_up);
     if (frame.profiles_changed && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());   // a turbo's speed, by taps (in the game)
+        save_input_config(app);   // a turbo's speed, by taps (in the game)
     }
     // Joins and disconnects: the ports' tabs show them (no status line); logged.
     char message[300] = {};
@@ -3598,7 +3668,7 @@ static void app_update_input(App* app)
                                                   SDL_GetTicks());
     if (remap.save && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());   // a RetroPad remembered as decided
+        save_input_config(app);   // a RetroPad remembered as decided
     }
     if (remap.open_remap)
     {
@@ -3668,7 +3738,6 @@ static void handle_links(App* app)
         if (net_guest_link_parse(link.c_str(), &guest, beacon, sizeof(beacon)))
         {
             net_guest_link_wipe(&guest);
-            SDL_Log("Link: a guest link arrived");   // its payload carries the guest token: never logged
             set_status(app, piccolo_text(&app->strings, Str::status_guest_link));
             continue;
         }
@@ -3933,7 +4002,6 @@ struct AppUiFrame
     uint64_t    dvr_now = 0;
     uint64_t    input_now = 0;
     uint64_t    map_now = 0;
-    std::string running_file;            // running_core_file (TOOLS > CORES never touches it)
     bool        hosts_known = false;     // SETTINGS > NETWORK listed SHARE's hosts (its FORGET goes there)
     bool        input_was_open = false;  // INPUT was open before drawing (closing it saves)
 };
@@ -4167,6 +4235,13 @@ static void shader_picker_apply(App* app, const FilePickerAction* action)
 // NETWORK tab (read under the network lock).
 static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
 {
+    // Only the drawing reads this state, and settings_window_draw returns first while both
+    // windows are closed: nothing to build, and no network lock taken for the NETWORK tab.
+    // (The tab showing is only known after drawing, so the lock stays for "window open".)
+    if (!app->settings_window.open && !app->settings_window.image_open)
+    {
+        return;
+    }
     const CoreSession* session = &app->session;
     ImageWindowSource image = {};
     if (game_running(app) && session->texture.has_content && session->texture.ui_texture != 0)
@@ -4339,6 +4414,14 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
 // changes the NetAccess, pairing, levels, FORGET).
 static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowAction* action)
 {
+    // Closed and not just closed: the window gave no action, so there is nothing to apply (nor a
+    // lock to take). The step that saves on closing below needs this frame's open or last
+    // frame's open, so it still runs on the frame it closes.
+    bool open = app->settings_window.open || app->settings_window.image_open;
+    if (!open && !app->settings_window_was_open)
+    {
+        return;
+    }
     bool network_locked = app->net_running;
     if (network_locked)
     {
@@ -4413,7 +4496,6 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
     }
 
     // Closed (by its button or Esc): apply the folders and save.
-    bool open = app->settings_window.open || app->settings_window.image_open;
     if (app->settings_window_was_open && !open)
     {
         apply_folders(app);
@@ -4435,7 +4517,7 @@ static void save_after_options_windows(App* app)
         save_settings(app);   // a port's DEVICE (CONTROLS)
         if (app->core_config.input_dirty && !app->input_config_path.empty())
         {
-            input_config_save(&app->input, app->input_config_path.c_str());   // a remap (CONTROLS)
+            save_input_config(app);   // a remap (CONTROLS)
             app->core_config.input_dirty = false;
         }
     }
@@ -5019,7 +5101,7 @@ static void net_move_device(App* app, uint32_t controller, uint32_t device_id, i
     SDL_Log("Network: %s moved %s to port %d", device, input_controller_label(&app->input, controller).c_str(), port + 1);
 }
 
-// Every loop: settings that changed (from anywhere) go to the FULL devices,
+// Every loop: settings that changed (from anywhere) go to the devices with SETTINGS,
 // and the action lists again when what they show changed.
 static void net_follow_remote(App* app)
 {
@@ -5244,8 +5326,8 @@ static void net_remote_message(App* app, const NetAccessEvent* event, const char
         net_change_port_device(app, event->peer, pad, device_id, device);
         return;
     }
-    // devices / device_port: FULL (net_access let them through only then);
-    // devices_watch, the same list read only, at any level (the ports' tabs).
+    // devices / device_port: SETTINGS (net_access let them through only then);
+    // devices_watch, the same list read only, at any capability (the ports' tabs).
     if (net_settings_read_devices_request(event->data, event->size, &id) ||
         net_settings_read_devices_watch(event->data, event->size, &id))
     {
@@ -5791,15 +5873,16 @@ static void net_update(App* app)
     }
     // INTERNET and BEACON SERVER: the service resolves the name on its own
     // thread. Only when they change (an empty name is off too).
-    std::string beacon = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
+    // Compared as text: a std::string is built only when the name changed (not every frame).
+    const char* beacon = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
                              ? settings_get_text(&app->settings, PICCOLO_NET_BEACON)
                              : "";
-    if (beacon != app->net_beacon_applied)
+    if (std::strcmp(beacon, app->net_beacon_applied.c_str()) != 0)
     {
         app->net_beacon_applied = beacon;
-        net_service_set_beacon(&app->net_service, beacon.c_str());
+        net_service_set_beacon(&app->net_service, beacon);
     }
-    // The shared folders OWNER devices reach (piccolo-share): looked at
+    // The shared folders the devices with FILE TRANSFER reach (piccolo-share): looked at
     // again only when a setting changed, handed over only when they did.
     bool share_check = !app->net_share_set || app->settings.revision != app->net_share_revision;
     NetShareFolderPaths share_paths;
@@ -6433,8 +6516,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         app->core_updater.cores_changed = false;
         core_catalog_scan(&app->catalog, game_running(app) ? app->session.host : nullptr);
     }
-    frame->running_file = running_core_file(app);
-    cores_window_update(&app->cores_window, &app->core_updater, &app->settings, frame->running_file.c_str());
+    cores_window_update(&app->cores_window, &app->core_updater, &app->settings, app->running_core_file);
     // SHARE: this side from our folders, the other from the connection.
     if (app->share_window.open)
     {
@@ -6533,7 +6615,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     app->dvr.core_aspect = game_aspect;
     dvr_widget_state(&view->dvr, &app->dvr, &app->strings, app->phone_ui, game_aspect);
     core_options_state(app, &view->manager);
-    cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
+    cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, app->running_core_file);
 
     view->share_shown = app->share_window.open;
     if (view->share_shown)
@@ -6587,6 +6669,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     if (view->settings_error_shown)
     {
         settings_error_window_state(&view->settings_error, &app->strings);
+        view->settings_error.files = app->settings_error_files;   // built once at start
     }
     view->shader_check_shown = shader_check_asking(app);
     if (view->shader_check_shown)
@@ -6847,7 +6930,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     app->core_options_manager_was_open = app->core_options_manager;
     if (cores_window_apply(&app->cores_window, &actions->cores, &app->core_updater, &app->settings,
-                           frame->running_file.c_str()))
+                           app->running_core_file))
     {
         save_settings(app);   // a SHOW switch
     }
@@ -6921,7 +7004,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         save_settings(app);   // SETTINGS tab
         if (app->input_window.dirty && !app->input_config_path.empty())
         {
-            input_config_save(&app->input, app->input_config_path.c_str());   // closed: keep what changed
+            save_input_config(app);   // closed: keep what changed
             app->input_window.dirty = false;
         }
     }
@@ -6994,6 +7077,7 @@ static bool app_frame(App* app)
         save_core_options(app);
         save_state_on_exit(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
+        app->running_core_file[0] = '\0';
         drop_undos(app);
         remove_running_marker(app);   // a proper end
         update_settings_context(app);
@@ -7142,6 +7226,7 @@ static bool app_frame(App* app)
     if (ran == CoreSessionFrame::shut_down)
     {
         shader_check_end_for_game(app);   // before the settings context changes
+        app->running_core_file[0] = '\0';
         set_status(app, app->session.message);
         ui_game_stopped(&app->ui);
         ui_follow_changes(app);
@@ -7430,7 +7515,7 @@ int main(int argc, char** argv)
         apply_folders(app);
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
-        recent_games_load(&app->recent, app->recent_path.c_str());
+        app->recent_unreadable = !recent_games_load(&app->recent, app->recent_path.c_str());
         continue_panel_load(&app->continue_panel, (app->paths.settings + "/continue.cfg").c_str());
         app->audio_learned_path = app->paths.settings + "/audio_latency.cfg";
         settings_file_load(&app->audio_learned, app->audio_learned_path.c_str());
@@ -7438,7 +7523,7 @@ int main(int argc, char** argv)
         check_running_marker(app);
         app->option_store_path = app->paths.settings + "/core_options.cfg";
         app->option_cache_path = app->paths.settings + "/core_options_cache.cfg";
-        core_options_store_load(&app->option_store, app->option_store_path.c_str());
+        app->core_options_unreadable = !core_options_store_load(&app->option_store, app->option_store_path.c_str());
         core_options_cache_load(&app->option_cache, app->option_cache_path.c_str());
         app->session.option_store = &app->option_store;
         app->session.option_cache = &app->option_cache;
@@ -7536,7 +7621,8 @@ int main(int argc, char** argv)
     app->input_config_path = app->paths.settings.empty() ? "" : app->paths.settings + "/input.cfg";
     if (!app->input_config_path.empty())
     {
-        input_config_load(&app->input, app->input_config_path.c_str());
+        app->input_config_unreadable = !input_config_load(&app->input, app->input_config_path.c_str());
+        build_settings_error_files(app);
     }
     input_sdl_init(&app->input_sdl, &app->input, database_path.empty() ? nullptr : database_path.c_str());
     onscreen_pad_init(&app->onscreen_pad, app->paths.settings.c_str());
@@ -7611,7 +7697,7 @@ int main(int argc, char** argv)
     shader_library_unload(&app->shader_library);
     if (!app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());
+        save_input_config(app);
     }
     input_sdl_shutdown(&app->input_sdl);
     onscreen_pad_shutdown(&app->onscreen_pad);

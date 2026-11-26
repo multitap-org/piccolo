@@ -550,9 +550,9 @@ static Str refusal_text(NetClientRefusal refusal)
     }
 }
 
-// The other side while no piccolo is connected with OWNER access: the
-// piccolos on this network, the code (only the first time) and CONNECT; or,
-// connected at a lower level, what to ask for there.
+// The other side while no piccolo is connected with FILE TRANSFER (SHARE)
+// granted: the piccolos on this network, the code (only the first time) and
+// CONNECT; or, connected without it, what to ask for there.
 // A piccolo on the LAN we paired with: the link says so by key (an older one
 // that sends no key id is never "paired" here: PAIR stays offered, and a
 // device that does know us just welcomes the pairing).
@@ -580,7 +580,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
     }
     else if (link->state == NetShareLinkState::ready)
     {
-        // Connected, but not at OWNER: the other piccolo decides that.
+        // Connected, but FILE TRANSFER is not granted: the other piccolo decides that.
         retro_ui_text_wrapped(link->host_name.c_str());
         retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_needs_owner), 0.0f);
         if (retro_ui_button(piccolo_text(strings, Str::share_disconnect)))

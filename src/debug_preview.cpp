@@ -417,6 +417,7 @@ void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, 
     else if (previews->shown == DebugPreview::settings_error)
     {
         settings_error_window_state(&view->settings_error, strings);
+        view->settings_error.files = "piccolo.cfg, input.cfg";   // a fake list
     }
     else if (previews->shown == DebugPreview::quick_menu)
     {

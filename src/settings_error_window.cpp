@@ -44,6 +44,9 @@ void settings_error_window_draw(const SettingsErrorWindowState* state, RetroUiFo
     if (retro_ui_window_begin(&window, scale, nullptr))
     {
         retro_ui_text_wrapped(piccolo_text(strings, Str::settings_error_text));
+        retro_ui_text_wrapped(state->files);
+        retro_ui_spacing();
+        retro_ui_text_wrapped(piccolo_text(strings, Str::settings_error_defaults));
         retro_ui_spacing();
         if (retro_ui_button(piccolo_text(strings, Str::settings_error_ok)))
         {
