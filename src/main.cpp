@@ -1223,13 +1223,16 @@ static std::string guest_beacon_host(const App* app)
     return name;
 }
 
-// The frame shown now, for the card (PNG) and the window's preview. A core
-// without a frame in memory (none yet): no picture, the card goes up
-// without one (the beacon shows white noise).
+// The frame shown now, for the card and the window's preview. Under the
+// network lock it only copies the frame (guest_card_frame_copy): the PNG is
+// made by the upload thread (guest_card_send). The preview's conversion
+// stays here: no PNG, a plain pixel conversion. A core without a frame in
+// memory (none yet): no picture, the card goes up without one (the beacon
+// shows white noise).
 static void guest_capture(App* app)
 {
     GuestWindow* window = &app->guest_window;
-    window->png.clear();
+    window->frame.pixels.clear();
     window->has_preview = false;   // until a new picture is uploaded: NO SCREENSHOT AVAILABLE
     if (!game_running(app) || app->session.host == nullptr)
     {
@@ -1246,7 +1249,7 @@ static void guest_capture(App* app)
         format = GuestCardPixels::xrgb1555;
     }
     uint32_t pitch = video->width * video->bytes_per_pixel;
-    if (!guest_card_png(video->pixels, video->width, video->height, pitch, format, &window->png))
+    if (!guest_card_frame_copy(&window->frame, video->pixels, video->width, video->height, pitch, format))
     {
         SDL_Log("Guest link: no picture for the card");
         return;
@@ -1374,7 +1377,13 @@ static void guest_update_locked(App* app)
         if (!window->prepare_sent && ready && state != GuestCardState::sending)
         {
             std::string beacon = guest_beacon_host(app);
-            guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+            // The frame taken when the window opened was handed to the last
+            // send (a REFRESH LINK sends again): take it again then.
+            if (window->frame.pixels.empty())
+            {
+                guest_capture(app);
+            }
+            guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->frame);
             window->prepare_sent = true;
             window->next_refresh_ms = now + GUEST_CARD_REFRESH_MS;
         }
@@ -1394,7 +1403,7 @@ static void guest_update_locked(App* app)
         window->next_refresh_ms = SDL_GetTicks() + GUEST_CARD_REFRESH_MS;
         guest_capture(app);
         std::string beacon = guest_beacon_host(app);
-        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->frame);
     }
     guest_window_tell_ports(window, &app->net_service.access, &app->input_net, &app->input);
 }
@@ -4566,7 +4575,8 @@ static void debug_window_state(App* app, DebugWindowState* state)
         state->icons_forced[i] = app->state_icons.debug_show[i];
     }
     state->devices_available = app->ports_widget.port_count > 0;
-    state->text_box_allowed = state->game_running && !text_input_pending(app);
+    // Any request of the core's (TEXT or KEYS) is left alone: the debug box would overwrite it.
+    state->text_box_allowed = state->game_running && app->session.host->text_input.mode == RETRO_EXT_TEXT_INPUT_OFF;
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
     state->pair_request_card = app->debug_previews.request_card;
     state->pair_open = app->pair_window.open;
@@ -4645,6 +4655,8 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::text_box:
     {
+        // Offered only while the core has no request of its own (debug_window_state),
+        // so this never replaces one.
         LibretroTextInput* request = &app->session.host->text_input;
         request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
         request->type = RETRO_EXT_TEXT_INPUT_TYPE_TEXT;
@@ -6548,7 +6560,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     }
     // The debug window's preview of a window ends when the real one opens.
     debug_preview_update(&app->debug_previews, app->pair_window.open, app->about_window.open, app->guest_window.open,
-                         app->quick_menu.open, app->settings_error_open);
+                         app->quick_menu.open, app->settings_error_open, app->ports_widget.open, app->dvr.open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();

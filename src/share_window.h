@@ -129,7 +129,7 @@ struct ShareWindow
     // Connecting (the other side, while no piccolo is connected with FILE TRANSFER granted).
     int32_t found_selected = -1;     // in the link's found list
     int32_t paired_selected = -1;    // in the link's paired list: across the internet (through the beacon)
-    bool    invite_selected = false; // pair across the internet: our code, typed in the other's INVITE
+    bool    invite_selected = false; // pair across the internet: we type the code the other shows (GENERATE PAIRING CODE)
 
     ShareCompanions companions;
     bool      with_companions = true;      // WITH ITS SAVE AND N STATES

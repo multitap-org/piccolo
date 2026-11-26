@@ -326,12 +326,13 @@ bool debug_preview_covers_screen(const DebugPreviews* previews)
 }
 
 void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open,
-                          bool settings_error_open)
+                          bool settings_error_open, bool devices_open, bool dvr_open)
 {
     DebugPreview shown = previews->shown;
     if ((pair_open && is_pair(shown)) || (about_open && shown == DebugPreview::about) ||
         (guest_open && is_guest(shown)) || (quick_open && shown == DebugPreview::quick_menu) ||
-        (settings_error_open && shown == DebugPreview::settings_error))
+        (settings_error_open && shown == DebugPreview::settings_error) ||
+        (devices_open && shown == DebugPreview::devices) || (dvr_open && shown == DebugPreview::phone_dvr))
     {
         debug_preview_end(previews);
     }

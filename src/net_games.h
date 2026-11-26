@@ -1,6 +1,6 @@
 #pragma once
 
-// Games from a paired device with FULL access (net_content.h): piccolo's
+// Games from a paired device with the SETTINGS capability (net_content.h; net_access lets those messages through only then): piccolo's
 // answers. The device browses the game folders (SETTINGS > GENERAL), gets
 // the cores LOAD GAME would offer, and asks for a game to start; the start
 // itself goes through LOAD GAME's path in main.cpp (pending_start), so a

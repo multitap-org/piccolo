@@ -642,8 +642,9 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
                 }
             }
         }
-        // Not paired yet and not on this network: our code, typed on the other
-        // piccolo in TOOLS > INVITE, which waits for us on the beacon.
+        // Not paired yet and not on this network: PAIR opens ENTER A CODE here,
+        // for the code the other piccolo shows in TOOLS > PAIR > GENERATE
+        // PAIRING CODE, which waits for us on the beacon.
         retro_ui_spacing();
         retro_ui_push_id("invite");
         if (retro_ui_list_item(0, piccolo_text(strings, Str::share_pair_internet), window->invite_selected, nullptr))
