@@ -43,7 +43,6 @@
 #include "shown_image.h"
 #include "text_input_window.h"
 
-constexpr size_t UI_STATUS_MAX = 400;
 constexpr size_t UI_NOTE_MAX = 200;
 
 // SETTINGS' notes as text (SettingsWindowNotes points into these).
@@ -53,7 +52,6 @@ struct UiSettingsText
     char audio_latency[UI_NOTE_MAX] = {};
     char frame_delay[UI_NOTE_MAX] = {};
     char run_ahead[UI_NOTE_MAX] = {};
-    char rewind_mode[UI_NOTE_MAX] = {};   // REWIND's header: the mode in use now
 };
 
 // Everything the frame shows, in drawing order. Filled by main.cpp
@@ -73,11 +71,9 @@ struct UiView
     const HudStack*  hud = nullptr;     // the App's, built this frame
     HudArea          hud_area = {};     // retro pixels
     uint64_t         hud_now_ms = 0;
-    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP behind the windows (0: none)
+    uint32_t         backdrop = 0;   // ARGB behind the windows: BACKGROUND, at 100 - BACKGROUND TRANSPARENCY (alpha 0: none)
 
-    // The status line, alone over a paused game or with the menu bar.
-    char               status[UI_STATUS_MAX] = {};
-    bool               status_alone = false;
+    // The menu bar (messages are HUD cards: message_widget.h).
     bool               menu_shown = false;   // the MAIN MENU's bar (not during EDIT LAYOUT)
     const RetroUiMenu* menus = nullptr;
     int32_t            menu_count = 0;
@@ -181,7 +177,7 @@ struct UiActions
 };
 
 // All the frame's drawing, back to front: the game, the touch gamepad, the
-// ports' tabs, the HUD, the backdrop, the status line and menu bar, the
+// ports' tabs, the HUD, the backdrop, the menu bar, the
 // windows, the debug window, the FPS meter, the scrollbars, the cursor.
 // Between the toolkit's begin and end of frame.
 void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, int32_t scale, UiActions* actions);

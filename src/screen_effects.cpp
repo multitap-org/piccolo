@@ -61,6 +61,10 @@ bool screen_effects_shutter_at(uint64_t ms, ScreenEffectParams* params)
 
 void screen_effects_shutter(ScreenEffects* effects, uint64_t now_ms)
 {
+    if (!effects->shutter_on)
+    {
+        return;
+    }
     effects->shutter = true;
     effects->shutter_start_ms = now_ms;
 }
@@ -72,7 +76,7 @@ void screen_effects_update(ScreenEffects* effects, uint64_t played_from_ms, uint
     if (played_from_ms != effects->played_from_seen)
     {
         effects->played_from_seen = played_from_ms;
-        if (played_from_ms != 0)
+        if (played_from_ms != 0 && effects->snap_on)
         {
             effects->snap = true;
             effects->snap_start_ms = now_ms;

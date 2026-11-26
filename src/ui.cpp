@@ -25,38 +25,29 @@ static void draw_hud(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
     hud_view_draw(view->hud, &view->hud_area, pixel_font, scale, view->hud_now_ms);
 }
 
-// INTERFACE > BACKDROP: the whole screen covered by black at that opacity,
-// behind every window (the menu bar stays on top of it). The only one: drawn
-// once a frame, here; widgets and modals don't dim the screen themselves.
+// INTERFACE > BACKGROUND TRANSPARENCY: the whole screen covered by the
+// theme's BACKGROUND color at that opacity, behind every window (the menu bar
+// stays on top of it). The only one: drawn once a frame, here; widgets and
+// modals don't dim the screen themselves.
 static void draw_menu_backdrop(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
 {
-    if (view->backdrop_alpha == 0)
+    if ((view->backdrop >> 24) == 0)
     {
         return;
     }
     retro_ui_begin_layer("##menu_backdrop", pixel_font, scale, false);
-    retro_ui_layer_rect(0.0f, 0.0f, view->screen_width, view->screen_height, view->backdrop_alpha << 24);
+    retro_ui_layer_rect(0.0f, 0.0f, view->screen_width, view->screen_height, view->backdrop);
     retro_ui_end_layer();
 }
 
-// The status line: with the menu bar, or alone over a paused game (it says
-// why: "PAUSED: ..."). Returns the menu bar's pick (-1: none).
-static int32_t draw_status_and_menu_bar(const UiView* view, const PortsWidget* ports, RetroUiFont* pixel_font,
-                                        int32_t scale)
+// The menu bar, while it shows (no status line: messages, and why a game
+// is paused, are HUD cards). Returns its pick (-1: none).
+static int32_t draw_menu_bar(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
 {
-    float status_left = ports_widget_tabs_width(ports);
-    status_left = status_left > 4.0f ? status_left : 4.0f;
-    if (view->status_alone)
-    {
-        retro_ui_status_line_from(pixel_font, scale, view->status, status_left);
-    }
     if (!view->menu_shown)
     {
         return -1;
     }
-    // The status line's window goes first, so it stays behind the others; it
-    // starts past the tabs.
-    retro_ui_status_line_from(pixel_font, scale, view->status, status_left);
     return retro_ui_menu_bar(pixel_font, scale, view->menus, view->menu_count, view->open_first_menu);
 }
 
@@ -72,7 +63,7 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     ports_widget_draw_tabs(windows->ports, &view->ports_tabs, pixel_font, scale);
     draw_hud(view, pixel_font, scale);
     draw_menu_backdrop(view, pixel_font, scale);   // (after the tabs: behind them and every window)
-    actions->menu_picked = draw_status_and_menu_bar(view, windows->ports, pixel_font, scale);
+    actions->menu_picked = draw_menu_bar(view, pixel_font, scale);
 
     settings_window_draw(windows->settings, windows->network, &view->settings, pixel_font, scale,
                          &actions->settings);

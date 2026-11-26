@@ -51,9 +51,13 @@ constexpr const char* PICCOLO_SHOW_FPS = "show_fps";   // fps_meter.h
 // core / game; REWIND KNOWN is AUTO's verdict, kept in the game's layer only
 // (not shown).
 constexpr const char* PICCOLO_REWIND = "rewind";
-constexpr const char* PICCOLO_REWIND_SCRUB_LENGTH = "rewind_scrub_length";
-constexpr const char* PICCOLO_REWIND_SNAPSHOT_EVERY = "rewind_snapshot_every";
-constexpr const char* PICCOLO_REWIND_SNAPSHOTS_KEPT = "rewind_snapshots_kept";
+// LENGTH (minutes, 1-30, 5 by default) is how far back either mode goes;
+// SNAPSHOT FREQUENCY (seconds, 1-60, 10) how often SNAPSHOTS keeps a state,
+// so it keeps LENGTH / FREQUENCY of them (Andrés, testing round 3: no
+// "all memory holds", which could grow until a crash; no SNAPSHOTS KEPT).
+// New keys: the old ones' "0" meant all memory.
+constexpr const char* PICCOLO_REWIND_LENGTH = "rewind_length";
+constexpr const char* PICCOLO_REWIND_SNAPSHOT_FREQUENCY = "rewind_snapshot_frequency";
 constexpr const char* PICCOLO_REWIND_MEMORY = "rewind_memory";
 constexpr const char* PICCOLO_REWIND_KNOWN = "rewind_known";
 constexpr const char* PICCOLO_INPUT_SHARE_PORT1 = "input_keyboard_shares_port1";
@@ -148,14 +152,20 @@ constexpr const char* PICCOLO_WINDOW_ASPECT = "window_aspect";
 constexpr const char* PICCOLO_WINDOW_HEIGHT = "window_height";
 constexpr const char* PICCOLO_WINDOW_SCALE = "window_scale";
 constexpr const char* PICCOLO_WINDOW_REMEMBER = "window_remember";
-// INTERFACE > BACKDROP: while the menu or a window is up, what is behind
-// them (the game too) is covered by black at this opacity (percent; 0 = not
-// covered). Not part of a theme (not ui_*): readability over any picture.
-constexpr const char* PICCOLO_MENU_BACKDROP = "menu_backdrop";
+// INTERFACE > BACKGROUND TRANSPARENCY: while the menu or a window is up,
+// what is behind them (the game too) is covered by the theme's BACKGROUND
+// color, and this much of it (percent) still shows through (100 = not
+// covered). Part of the theme (the palette's level, retro_ui_theme.h), so
+// SAVE THEME keeps it (Andrés, testing round 3; was BACKDROP, black).
+constexpr const char* PICCOLO_UI_BACKGROUND_TRANSPARENCY = "ui_background_transparency";
 // INTERFACE > EFFECTS: short effects on the game picture (screen_effects.h:
 // SNAP on the DVR's PLAY FROM HERE, SHUTTER on a screenshot). On by default;
 // global only. Not part of a theme (not ui_*).
 constexpr const char* PICCOLO_SCREEN_EFFECTS = "screen_effects";
+// INTERFACE > EFFECTS, one by one under SCREEN EFFECTS (Andrés, testing
+// round 3): REWIND (SNAP) and SCREENSHOT (SHUTTER). On by default.
+constexpr const char* PICCOLO_SCREEN_EFFECT_REWIND = "screen_effect_rewind";
+constexpr const char* PICCOLO_SCREEN_EFFECT_SCREENSHOT = "screen_effect_screenshot";
 constexpr const char* PICCOLO_UI_MENU_BOXES = "ui_menu_boxes";
 constexpr const char* PICCOLO_UI_SHADOWS = "ui_shadows";
 constexpr const char* PICCOLO_UI_COLOR_BACKGROUND = "ui_color_background";

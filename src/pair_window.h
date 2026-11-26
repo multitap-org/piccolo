@@ -261,6 +261,8 @@ void pair_window_granted(PairWindow* window, const NetAccessEvent* event);
 void pair_window_code_expired(PairWindow* window, uint64_t now_ms);
 // A request ended without pairing (it cancelled, left, or failed).
 void pair_window_request_gone(PairWindow* window, uint32_t peer);
+// A device typed too many wrong codes for the code shown: PAIRING FAILED (the notice).
+void pair_window_failed(PairWindow* window, uint64_t now_ms);
 // Networking stopped (turned off, or the listener restarted): the request
 // and the shown code belonged to the NetAccess that's gone.
 void pair_window_network_stopped(PairWindow* window);

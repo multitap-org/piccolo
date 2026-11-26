@@ -10,7 +10,7 @@
 //   SHUTTER  a screenshot: black closes from the top and the bottom in
 //            70 ms and opens in 180 ms.
 //
-// SETTINGS > INTERFACE > EFFECTS turns them all off. Pure CPU, no clock of
+// SETTINGS > INTERFACE > EFFECTS turns them all off, or each one. Pure CPU, no clock of
 // its own: the caller passes the time (tools/screen_effects_test.cpp).
 
 #include <cstdint>
@@ -29,6 +29,10 @@ struct ScreenEffects
     uint64_t snap_start_ms    = 0;
     bool     shutter          = false;
     uint64_t shutter_start_ms = 0;
+    // Each effect's own switch (SETTINGS > INTERFACE > EFFECTS): off, it
+    // doesn't start. The caller sets them before each update.
+    bool     snap_on          = true;
+    bool     shutter_on       = true;
 };
 
 // Starts SHUTTER (a screenshot was taken).

@@ -85,28 +85,6 @@ static const SettingEnumValue REWIND_VALUES[] = {
 };
 constexpr uint32_t REWIND_COUNT = sizeof(REWIND_VALUES) / sizeof(REWIND_VALUES[0]);
 
-// Minutes ("0": all the memory holds).
-static const SettingEnumValue SCRUB_LENGTH_VALUES[] = {
-    {"0", text_id(Str::value_rewind_all)},  {"1", text_id(Str::value_minutes_1)},
-    {"2", text_id(Str::value_minutes_2)},   {"5", text_id(Str::value_minutes_5)},
-    {"10", text_id(Str::value_minutes_10)}, {"30", text_id(Str::value_minutes_30)},
-};
-constexpr uint32_t SCRUB_LENGTH_COUNT = sizeof(SCRUB_LENGTH_VALUES) / sizeof(SCRUB_LENGTH_VALUES[0]);
-
-static const SettingEnumValue SNAPSHOT_EVERY_VALUES[] = {
-    {"5", text_id(Str::value_seconds_5)},   {"10", text_id(Str::value_seconds_10)},
-    {"15", text_id(Str::value_seconds_15)}, {"30", text_id(Str::value_seconds_30)},
-    {"60", text_id(Str::value_seconds_60)},
-};
-constexpr uint32_t SNAPSHOT_EVERY_COUNT = sizeof(SNAPSHOT_EVERY_VALUES) / sizeof(SNAPSHOT_EVERY_VALUES[0]);
-
-static const SettingEnumValue SNAPSHOTS_KEPT_VALUES[] = {
-    {"0", text_id(Str::value_rewind_all)}, {"10", text_id(Str::value_count_10)},
-    {"30", text_id(Str::value_count_30)},  {"60", text_id(Str::value_count_60)},
-    {"120", text_id(Str::value_count_120)},
-};
-constexpr uint32_t SNAPSHOTS_KEPT_COUNT = sizeof(SNAPSHOTS_KEPT_VALUES) / sizeof(SNAPSHOTS_KEPT_VALUES[0]);
-
 // MB ("auto": 256, 128 on Android).
 static const SettingEnumValue REWIND_MEMORY_VALUES[] = {
     {"auto", text_id(Str::value_memory_auto)}, {"128", text_id(Str::value_memory_128)},
@@ -271,15 +249,11 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_REWIND, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
      .values = REWIND_VALUES, .value_count = REWIND_COUNT, .label = text_id(Str::setting_rewind),
      .help = text_id(Str::setting_rewind_help)},
-    {.key = PICCOLO_REWIND_SCRUB_LENGTH, .type = SettingType::enumeration, .default_value = "0",
-     .values = SCRUB_LENGTH_VALUES, .value_count = SCRUB_LENGTH_COUNT, .label = text_id(Str::setting_rewind_scrub_length),
-     .help = text_id(Str::setting_rewind_scrub_length_help)},
-    {.key = PICCOLO_REWIND_SNAPSHOT_EVERY, .type = SettingType::enumeration, .default_value = "10",
-     .values = SNAPSHOT_EVERY_VALUES, .value_count = SNAPSHOT_EVERY_COUNT,
-     .label = text_id(Str::setting_rewind_snapshot_every), .help = text_id(Str::setting_rewind_snapshot_every_help)},
-    {.key = PICCOLO_REWIND_SNAPSHOTS_KEPT, .type = SettingType::enumeration, .default_value = "0",
-     .values = SNAPSHOTS_KEPT_VALUES, .value_count = SNAPSHOTS_KEPT_COUNT,
-     .label = text_id(Str::setting_rewind_snapshots_kept), .help = text_id(Str::setting_rewind_snapshots_kept_help)},
+    {.key = PICCOLO_REWIND_LENGTH, .type = SettingType::integer, .default_value = "5", .min = 1, .max = 30, .step = 1,
+     .label = text_id(Str::setting_rewind_length), .help = text_id(Str::setting_rewind_length_help)},
+    {.key = PICCOLO_REWIND_SNAPSHOT_FREQUENCY, .type = SettingType::integer, .default_value = "10", .min = 1, .max = 60,
+     .step = 1, .label = text_id(Str::setting_rewind_snapshot_frequency),
+     .help = text_id(Str::setting_rewind_snapshot_frequency_help)},
     {.key = PICCOLO_REWIND_MEMORY, .type = SettingType::enumeration, .default_value = "auto",
      .values = REWIND_MEMORY_VALUES, .value_count = REWIND_MEMORY_COUNT, .label = text_id(Str::setting_rewind_memory),
      .help = text_id(Str::setting_rewind_memory_help)},
@@ -460,13 +434,19 @@ static const SettingDescriptor SETTINGS[] = {
     // the BLUE theme (retro_ui.cpp). The THEME presets set them all.
     {.key = PICCOLO_UI_MENU_BOXES, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_menu_boxes), .help = text_id(Str::setting_ui_menu_boxes_help)},
-    {.key = PICCOLO_MENU_BACKDROP, .type = SettingType::integer, .default_value = "60", .min = 0, .max = 100, .step = 10,
-     .label = text_id(Str::setting_menu_backdrop), .help = text_id(Str::setting_menu_backdrop_help)},
+    {.key = PICCOLO_UI_BACKGROUND_TRANSPARENCY, .type = SettingType::integer, .default_value = "40", .min = 0, .max = 100,
+     .step = 10, .label = text_id(Str::setting_ui_background_transparency),
+     .help = text_id(Str::setting_ui_background_transparency_help)},
     {.key = PICCOLO_UI_SHADOWS, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_shadows), .help = text_id(Str::setting_ui_shadows_help)},
     {.key = PICCOLO_SCREEN_EFFECTS, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_screen_effects), .help = text_id(Str::setting_screen_effects_help)},
-    {.key = PICCOLO_UI_COLOR_BACKGROUND, .type = SettingType::color, .default_value = "#000000",
+    {.key = PICCOLO_SCREEN_EFFECT_REWIND, .type = SettingType::boolean, .default_value = "true",
+     .label = text_id(Str::setting_screen_effect_rewind), .help = text_id(Str::setting_screen_effect_rewind_help)},
+    {.key = PICCOLO_SCREEN_EFFECT_SCREENSHOT, .type = SettingType::boolean, .default_value = "true",
+     .label = text_id(Str::setting_screen_effect_screenshot),
+     .help = text_id(Str::setting_screen_effect_screenshot_help)},
+    {.key = PICCOLO_UI_COLOR_BACKGROUND, .type = SettingType::color, .default_value = "#34507C",
      .label = text_id(Str::setting_ui_color_background), .help = text_id(Str::setting_ui_color_background_help)},
     {.key = PICCOLO_UI_COLOR_BAR, .type = SettingType::color, .default_value = "#34507C",
      .label = text_id(Str::setting_ui_color_bar), .help = text_id(Str::setting_ui_color_bar_help)},
@@ -864,6 +844,11 @@ void piccolo_settings_palette(const Settings* settings, RetroUiPalette* palette)
     {
         *retro_ui_palette_color(palette, i) = settings_get_color(settings, retro_ui_palette_color_key(i));
     }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        int32_t level = settings_get_int(settings, retro_ui_palette_level_key(i));
+        *retro_ui_palette_level(palette, i) = static_cast<uint32_t>(level < 0 ? 0 : (level > 100 ? 100 : level));
+    }
 }
 
 Str piccolo_settings_ui_theme_name(RetroUiTheme theme)
@@ -915,6 +900,11 @@ bool piccolo_settings_apply_ui_palette(Settings* settings, const RetroUiPalette*
     {
         ok = settings_set_color(settings, SettingLayer::global, retro_ui_palette_color_key(i),
                                 retro_ui_palette_color_value(palette, i)) && ok;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        ok = settings_set_int(settings, SettingLayer::global, retro_ui_palette_level_key(i),
+                              static_cast<int32_t>(retro_ui_palette_level_value(palette, i))) && ok;
     }
     return ok;
 }
@@ -1072,6 +1062,14 @@ bool piccolo_settings_check_ui_keys(const Settings* settings)
             ok = false;
         }
     }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        if (settings_find(settings, retro_ui_palette_level_key(i)) == nullptr)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Settings: no %s (retroui's palette)", retro_ui_palette_level_key(i));
+            ok = false;
+        }
+    }
     return ok;
 }
 
@@ -1132,6 +1130,15 @@ bool piccolo_settings_complete_ui_theme(Settings* settings)
         if (settings_get_layer(settings, SettingLayer::global, key) == nullptr)
         {
             changed = settings_set_bool(settings, SettingLayer::global, key, retro_ui_palette_flag_value(palette, i)) || changed;
+        }
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        const char* key = retro_ui_palette_level_key(i);
+        if (settings_get_layer(settings, SettingLayer::global, key) == nullptr)
+        {
+            changed = settings_set_int(settings, SettingLayer::global, key,
+                                       static_cast<int32_t>(retro_ui_palette_level_value(palette, i))) || changed;
         }
     }
     return changed;

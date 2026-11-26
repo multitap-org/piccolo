@@ -40,32 +40,6 @@ static bool true_at_scope(const Settings* settings, SettingLayer scope, const ch
     return value != nullptr && std::strcmp(value, "true") == 0;
 }
 
-// A REWIND value as its label ("auto" -> AUTO); "" for an unknown one.
-static const char* rewind_value_text(const Localization* strings, const char* value)
-{
-    if (value == nullptr)
-    {
-        return "";
-    }
-    if (std::strcmp(value, "off") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_off);
-    }
-    if (std::strcmp(value, "auto") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_auto);
-    }
-    if (std::strcmp(value, "scrub") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_scrub);
-    }
-    if (std::strcmp(value, "snapshots") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_snapshots);
-    }
-    return "";
-}
-
 void settings_window_state(SettingsWindowState* state, const SettingsWindow* window, const Settings* settings,
                            const Localization* strings, const AppPaths* paths, const char* core_name,
                            const char* game_name, const SettingsWindowNotes* notes,
@@ -100,14 +74,6 @@ void settings_window_state(SettingsWindowState* state, const SettingsWindow* win
     state->themes = themes;
     image_window_state(&state->image, settings, strings, scope, image);
     state->network = network;
-    // REWIND's header: what runs now (AUTO's choice for the running game),
-    // else the setting at the scope being edited.
-    state->rewind_mode = notes->rewind_in_use;
-    if (state->rewind_mode == nullptr || state->rewind_mode[0] == '\0')
-    {
-        const char* value = settings_get_at(settings, scope, PICCOLO_REWIND, nullptr);
-        state->rewind_mode = rewind_value_text(strings, value);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,18 +163,17 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     }
 }
 
-// REWIND, folded at first: its header shows the mode in use now (what AUTO
-// chose for the running game, else the setting), so it says enough closed.
+// REWIND, folded at first. Its header is just REWIND (testing round 3); what
+// runs now is the note under the rows.
 static void draw_rewind(const SettingsUiContext* ui, const SettingsWindowState* state, SettingsWindowAction* action)
 {
-    if (!settings_ui_section("rewind", piccolo_text(ui->strings, Str::section_rewind), state->rewind_mode, false))
+    if (!settings_ui_section("rewind", piccolo_text(ui->strings, Str::section_rewind), nullptr, false))
     {
         return;
     }
     settings_ui_row(ui, PICCOLO_REWIND, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SCRUB_LENGTH, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_EVERY, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOTS_KEPT, nullptr);
+    settings_ui_row(ui, PICCOLO_REWIND_LENGTH, nullptr);
+    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_FREQUENCY, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_MEMORY, nullptr);
     if (state->notes.rewind_note != nullptr && state->notes.rewind_note[0] != '\0')
     {
@@ -743,7 +708,7 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
     settings_ui_row(ui, PICCOLO_UI_MENU_BOXES, nullptr);
     settings_ui_row(ui, PICCOLO_UI_SHADOWS, nullptr);
     settings_ui_row(ui, PICCOLO_UI_THEME_CURSOR, nullptr);
-    settings_ui_row(ui, PICCOLO_MENU_BACKDROP, nullptr);
+    settings_ui_row(ui, PICCOLO_UI_BACKGROUND_TRANSPARENCY, nullptr);
     // COLORS, then EFFECTS (Andrés, testing round 1). COLORS is a long list
     // THEME already sets: folded at first. EFFECTS is one row: open.
     if (settings_ui_section("colors", piccolo_text(ui->strings, Str::section_colors), nullptr, false))
@@ -756,6 +721,11 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
     if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, false))
     {
         settings_ui_row(ui, PICCOLO_SCREEN_EFFECTS, nullptr);
+        // Each effect, under the switch for all of them (greyed out while it's off).
+        retro_ui_begin_disabled(!settings_get_bool(ui->settings, PICCOLO_SCREEN_EFFECTS));
+        settings_ui_row(ui, PICCOLO_SCREEN_EFFECT_REWIND, nullptr);
+        settings_ui_row(ui, PICCOLO_SCREEN_EFFECT_SCREENSHOT, nullptr);
+        retro_ui_end_disabled();
     }
 }
 

@@ -65,6 +65,7 @@
 #include "remap_widget.h"
 #include "screen_effects.h"
 #include "screenshot_writer.h"
+#include "message_widget.h"
 #include "state_widget.h"
 #include "debug_window.h"
 #include "debug_preview.h"
@@ -127,7 +128,7 @@ struct App
     int32_t ui_scale   = 1;         // window pixels per retro pixel
     float   ui_display_width  = 0.0f;   // the screen's size last frame (a turn changes it)
     float   ui_display_height = 0.0f;
-    char    status[256] = "";   // set at startup, in the chosen language
+    MessageWidget messages = {};   // what piccolo reports, as HUD cards (set_status)
 
     CoreSession session = {};
     CoreCatalog catalog = {};
@@ -176,6 +177,7 @@ struct App
     NetRemote  net_remote = {};          // settings and actions from devices (net_remote.h)
     bool       net_remote_ready = false;
     // PAUSE WHEN CONTROLLERS DISCONNECT: what played last, and the pause it set.
+    uint64_t   resumed_ms = 0;   // the player's pause last lifted: PLAY shows a moment (state_widget.h)
     bool       played_with_gamepad = false;   // the last game input came from a local gamepad (CONTROLLERS cause)
     bool       android_background = false;    // the app is in the background (BACKGROUND cause)
     bool       menus_built_paused = false;    // GAME > PAUSE read RESUME when the menus were built
@@ -668,9 +670,23 @@ static bool text_input_pending(const App* app)
     return game_running(app) && app->session.host->text_input.mode == RETRO_EXT_TEXT_INPUT_TEXT;
 }
 
+// A message for the player: a HUD card for a few seconds (message_widget.h).
+// (The name is the status line's, which these went to before.)
 static void set_status(App* app, const char* text)
 {
-    std::snprintf(app->status, sizeof(app->status), "%s", text);
+    message_widget_post(&app->messages, text, SDL_GetTicks());
+}
+
+// What the core session reports after an action (a state saved, a game
+// started): its failures always; its successes only when `announce` (Andrés,
+// testing round 3: a hotkey or another device's action, where no menu shows
+// what happened).
+static void report_session(App* app, bool ok, bool announce)
+{
+    if (!ok || announce)
+    {
+        set_status(app, app->session.message);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,17 +1042,14 @@ static void collect_screenshots(App* app)
             set_status(app, piccolo_text(&app->strings, Str::status_screenshot_failed));
             continue;
         }
-        size_t slash = result.path.find_last_of('/');
-        std::string name = slash == std::string::npos ? result.path : result.path.substr(slash + 1);
-        char text[sizeof(app->status)] = {};
-        std::snprintf(text, sizeof(text), piccolo_text(&app->strings, Str::status_screenshot_saved), name.c_str());
-        set_status(app, text);
+        set_status(app, piccolo_text(&app->strings, Str::status_screenshot_saved));
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Screenshot: %s", result.path.c_str());
     }
 }
 
 // The USER pause cause (the PAUSE hotkey, QUICK MENU's PAUSE, GAME > PAUSE):
-// only the player lifts it. Paused, the status line says so by itself.
+// only the player lifts it. Paused, the PAUSE icon says so; lifted, PLAY
+// shows a moment (no message: testing round 3).
 static void toggle_user_pause(App* app)
 {
     if (!game_running(app))
@@ -1044,7 +1057,10 @@ static void toggle_user_pause(App* app)
         return;
     }
     app->ui.user_paused = !app->ui.user_paused;
-    set_status(app, app->ui.user_paused ? "" : piccolo_text(&app->strings, Str::status_resumed));
+    if (!app->ui.user_paused)
+    {
+        app->resumed_ms = SDL_GetTicks();
+    }
 }
 
 // (UI modes, further down.)
@@ -1288,7 +1304,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
         content_cache_trim(app->session.cache_directory, PICCOLO_CONTENT_CACHE_MAX_BYTES,
                            app->session.host->content_path);
     }
-    set_status(app, app->session.message);
+    report_session(app, started, false);   // "Running ..." isn't news: the game shows
     return started;
 }
 
@@ -1655,7 +1671,7 @@ static bool quick_save(App* app)
     app->session.state_slot = QUICK_SLOT;
     bool saved = save_state_with_thumbnail(app);
     app->session.state_slot = selected;
-    set_status(app, app->session.message);
+    report_session(app, saved, false);
     return saved;
 }
 
@@ -1665,7 +1681,7 @@ static bool quick_load(App* app)
     app->session.state_slot = QUICK_SLOT;
     bool loaded = core_session_load_state(&app->session);
     app->session.state_slot = selected;
-    set_status(app, app->session.message);
+    report_session(app, loaded, false);
     return loaded;
 }
 
@@ -1677,7 +1693,6 @@ static bool soft_reset(App* app)
         return false;
     }
     libretro_host_reset(app->session.host);
-    set_status(app, piccolo_text(&app->strings, Str::status_reset));
     return true;
 }
 
@@ -1697,6 +1712,29 @@ static bool hard_reset(App* app)
                   app->marker_content_path.c_str());
     app->has_pending_start = true;
     return true;
+}
+
+// SAVE STATE / LOAD STATE in the selected slot (GAME menu, hotkeys, another
+// device): back to the game when it worked. `announce`: say so when it
+// worked too (a hotkey's or a device's; the menus show it themselves).
+static void save_state_from(App* app, bool announce)
+{
+    bool saved = save_state_with_thumbnail(app);
+    if (saved)
+    {
+        app_leave_main_menu(app);
+    }
+    report_session(app, saved, announce);
+}
+
+static void load_state_from(App* app, bool announce)
+{
+    bool loaded = core_session_load_state(&app->session);
+    if (loaded)
+    {
+        app_leave_main_menu(app);
+    }
+    report_session(app, loaded, announce);
 }
 
 // CLOSE GAME: at the top of the next loop (the game's texture may be in this
@@ -1776,11 +1814,7 @@ static void handle_menu_action(App* app, MenuAction action)
             about_window_open(&app->about_window);
             break;
         case MenuAction::save_state:
-            if (save_state_with_thumbnail(app))
-            {
-                app_leave_main_menu(app);
-            }
-            set_status(app, app->session.message);
+            save_state_from(app, false);
             break;
         case MenuAction::screenshot:
             if (game_running(app))
@@ -1790,11 +1824,7 @@ static void handle_menu_action(App* app, MenuAction action)
             take_screenshot(app);
             break;
         case MenuAction::load_state:
-            if (core_session_load_state(&app->session))
-            {
-                app_leave_main_menu(app);
-            }
-            set_status(app, app->session.message);
+            load_state_from(app, false);
             break;
         case MenuAction::quit:
             app->running = false;
@@ -1841,7 +1871,7 @@ static void handle_menu_action(App* app, MenuAction action)
             app->show_debug_window = !app->show_debug_window;
             break;
         default:
-            set_status(app, piccolo_text(&app->strings, Str::status_not_there_yet));
+            SDL_Log("Menu: action %d isn't there yet", static_cast<int>(action));
             break;
     }
 }
@@ -2759,11 +2789,11 @@ static void app_handle_hotkeys(App* app, const InputFrame* frame)
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_save_state)])
     {
-        handle_menu_action(app, MenuAction::save_state);
+        save_state_from(app, true);
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_load_state)])
     {
-        handle_menu_action(app, MenuAction::load_state);
+        load_state_from(app, true);
     }
     if (frame->pressed[static_cast<uint32_t>(InputAction::hotkey_screenshot)])
     {
@@ -2884,7 +2914,7 @@ static void offer_mapping(App* app, const InputFrame* frame)
     app->input_window.map_request = 0;
     if (!map->result.empty())
     {
-        set_status(app, map->result.c_str());
+        SDL_Log("Map: %s", map->result.c_str());   // (the MAP window showed it: no message)
         map->result.clear();
     }
     if (map->profiles_dirty && !app->input_config_path.empty())
@@ -3066,14 +3096,20 @@ static void app_update_input(App* app)
         std::snprintf(message, sizeof(message), piccolo_text(&app->strings, Str::input_left),
                       input_controller_label(&app->input, static_cast<uint32_t>(frame.left_controller)).c_str(), frame.left_port + 1);
         SDL_Log("%s", message);
-        // No CONTROLS here (Andrés): joining again is just START. The game
-        // pauses if that was the last gamepad playing (the setting).
+        // The ports' tabs show who left; the game goes on (joining again is
+        // just START). Only when that was the last gamepad and nobody was
+        // playing with the keyboard or the on-screen pad (played_with_gamepad)
+        // does it pause (the setting) and CONTROLS (the ports' board) open,
+        // where a controller joins again (Andrés, testing round 3; no message).
         // (ui_derive's CONTROLLERS cause; it lifts by itself when one is back.)
         if (game_running(app) && settings_get_bool(&app->settings, PICCOLO_PAUSE_ON_DISCONNECT) &&
             app->played_with_gamepad && !gamepad_on_a_port(app))
         {
-            set_status(app, piccolo_text(&app->strings, Str::status_paused_disconnected));
             SDL_Log("Paused: the last gamepad playing went away");
+            if (app->ui.mode == UiMode::game && app->ports_widget.port_count > 0)
+            {
+                app_open_widget(app, UiWidget::ports);
+            }
         }
     }
     follow_what_plays(app);
@@ -3439,6 +3475,8 @@ static void prepare_game_picture(App* app, UiView* view)
 
     // This frame's screen effect (the DVR's PLAY FROM HERE starts SNAP).
     ScreenEffectParams effect = {};
+    app->screen_effects.snap_on = settings_get_bool(&app->settings, PICCOLO_SCREEN_EFFECT_REWIND);
+    app->screen_effects.shutter_on = settings_get_bool(&app->settings, PICCOLO_SCREEN_EFFECT_SCREENSHOT);
     screen_effects_update(&app->screen_effects, app->dvr.played_from_ms, SDL_GetTicks(),
                           settings_get_bool(&app->settings, PICCOLO_SCREEN_EFFECTS), &effect);
     video_output_set_effect(&app->video, &effect);
@@ -3666,42 +3704,25 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
     dvr_widget_note(&app->dvr, &app->strings, app->rewind_note, sizeof(app->rewind_note));
     notes.rewind_note = app->rewind_note;
     notes.rewind_known = settings_get_layer(&app->settings, SettingLayer::game, PICCOLO_REWIND_KNOWN) != nullptr;
-    // REWIND's header: the mode the running game records in now ("" without
-    // a game: the header shows the setting). AUTO's choice says so.
-    if (game_running(app))
+    // The mode the running game records in now, after AUTO's choice:
+    // "THIS GAME: AUTO CHOSE SCRUB / CURRENT: SCRUB" (Andrés, testing round 3;
+    // REWIND's header used to say it). Measuring or no savestates: that note alone.
+    if (game_running(app) && (app->dvr.rewind.state == CoreRewindState::off ||
+                              app->dvr.rewind.state == CoreRewindState::scrub ||
+                              app->dvr.rewind.state == CoreRewindState::snapshots))
     {
         Str mode = Str::value_rewind_off;
-        switch (app->dvr.rewind.state)
+        if (app->dvr.rewind.state == CoreRewindState::scrub)
         {
-            case CoreRewindState::off:
-            case CoreRewindState::unsupported:
-                mode = Str::value_rewind_off;
-                break;
-            case CoreRewindState::measuring:
-                mode = Str::value_rewind_auto;
-                break;
-            case CoreRewindState::scrub:
-                mode = Str::value_rewind_scrub;
-                break;
-            case CoreRewindState::snapshots:
-                mode = Str::value_rewind_snapshots;
-                break;
+            mode = Str::value_rewind_scrub;
         }
-        bool chosen = app->dvr.rewind.settings.mode == RewindMode::automatic &&
-                      (app->dvr.rewind.state == CoreRewindState::scrub ||
-                       app->dvr.rewind.state == CoreRewindState::snapshots);
-        char* rewind_mode = view->settings_text.rewind_mode;
-        size_t rewind_mode_max = sizeof(view->settings_text.rewind_mode);
-        if (chosen)
+        else if (app->dvr.rewind.state == CoreRewindState::snapshots)
         {
-            std::snprintf(rewind_mode, rewind_mode_max, "%s (%s)", piccolo_text(&app->strings, mode),
-                          piccolo_text(&app->strings, Str::value_rewind_auto));
+            mode = Str::value_rewind_snapshots;
         }
-        else
-        {
-            std::snprintf(rewind_mode, rewind_mode_max, "%s", piccolo_text(&app->strings, mode));
-        }
-        notes.rewind_in_use = view->settings_text.rewind_mode;
+        size_t used = std::strlen(app->rewind_note);
+        std::snprintf(app->rewind_note + used, sizeof(app->rewind_note) - used, "%s%s %s", used > 0 ? " / " : "",
+                      piccolo_text(&app->strings, Str::rewind_note_current), piccolo_text(&app->strings, mode));
     }
     Str game_mode = Str::game_mode_off;
     switch (app->game_mode.state)
@@ -4508,11 +4529,11 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
     }
     if (*key == "save_state")
     {
-        handle_menu_action(app, MenuAction::save_state);
+        save_state_from(app, true);
     }
     else if (*key == "load_state")
     {
-        handle_menu_action(app, MenuAction::load_state);
+        load_state_from(app, true);
     }
     else if (*key == "slot_next" || *key == "slot_previous")
     {
@@ -4536,21 +4557,25 @@ static void net_do_action(App* app, uint32_t peer, const std::string* key, bool 
         // The USER pause, the same as here: only a player lifts it (this
         // device, another one, or here), even after this device leaves.
         app->ui.user_paused = game_running(app) && !app->ui.user_paused;
-        char status[256];
         if (app->ui.user_paused)
         {
+            char status[256];
             std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_paused_remotely),
                           device);
+            set_status(app, status);
         }
         else
         {
-            std::snprintf(status, sizeof(status), "%s", piccolo_text(&app->strings, Str::status_resumed));
+            app->resumed_ms = SDL_GetTicks();   // PLAY, as here
         }
-        set_status(app, status);
     }
     else if (*key == "reset")
     {
-        handle_menu_action(app, MenuAction::reset);
+        if (soft_reset(app))
+        {
+            app_leave_main_menu(app);
+            set_status(app, piccolo_text(&app->strings, Str::status_reset));   // nothing here showed it
+        }
     }
     else if (*key == "close_game")
     {
@@ -5204,9 +5229,15 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::paired:
         {
-            char status[256];
-            std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_net_paired), device);
-            set_status(app, status);
+            // PAIRED WITH: the window says it when it's open; a card only
+            // when it's closed (the player went back to the game meanwhile).
+            if (!app->pair_window.open)
+            {
+                char status[256];
+                std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_net_paired),
+                              device);
+                set_status(app, status);
+            }
             net_send_game_state(app, event.peer);
             net_send_actions(app, event.peer, 0);
             net_send_controllers(app, event.peer, 0);
@@ -5250,11 +5281,20 @@ static void net_update_locked(App* app)
                 app->net_load_waiting = false;   // the game still starts; nobody to tell
             }
             SDL_Log("Network: \"%s\" disconnected", device);
+            if (event.guest)
+            {
+                char status[128];
+                std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_left),
+                              guest != nullptr ? guest->guest_name : event.info.name);
+                set_status(app, status);
+            }
             input_net_peer_gone(&app->input_net, &app->input, event.peer);
             break;
         case NetAccessEventType::pairing_failed:
-            set_status(app, piccolo_text(&app->strings, Str::status_net_pairing_failed));
+            // PAIRING FAILED is the pairing window's own notice (in it, or its card in the game).
+            SDL_Log("Network: pairing failed (too many wrong codes)");
             pair_window_request_gone(&app->pair_window, event.peer);
+            pair_window_failed(&app->pair_window, SDL_GetTicks());
             break;
         case NetAccessEventType::pairing_requested:
             // A device asks (Andrés, 2026-11-25: the one asked has the code):
@@ -5276,8 +5316,7 @@ static void net_update_locked(App* app)
             // A guest from the link: what runs at once (it starts the stream itself).
             SDL_Log("Network: guest \"%s\" joined from %s", event.info.name, address);
             char status[128];
-            std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_guest_joined),
-                          event.info.name);
+            std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_joined), event.info.name);
             set_status(app, status);
             net_send_game_state(app, event.peer);
             break;
@@ -5293,11 +5332,15 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::unpaired:
         {
-            // The device forgot this piccolo, so it's gone from PAIRED DEVICES too.
-            char status[256];
-            std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_net_unpaired),
-                          event.info.name);
-            set_status(app, status);
+            // The device forgot this piccolo, so it's gone from PAIRED DEVICES
+            // too (a card only while the pairing window is closed, as PAIRED WITH).
+            if (!app->pair_window.open)
+            {
+                char status[256];
+                std::snprintf(status, sizeof(status), "%s %s", piccolo_text(&app->strings, Str::status_net_unpaired),
+                              event.info.name);
+                set_status(app, status);
+            }
             SDL_Log("Network: \"%s\" unpaired itself", event.info.name);
             break;
         }
@@ -5358,69 +5401,33 @@ static void net_update_locked(App* app)
     net_follow_stream_tuning(app);
 }
 
-// The status line's text: why the game is paused, if it is ("PAUSED: MENU,
-// FOCUS"), then the last message.
-static void status_line_text(const App* app, char* out, size_t size)
+// INTERFACE > BACKGROUND TRANSPARENCY: while the menu or any window is up
+// (DEVICES too), the whole screen is covered by the theme's BACKGROUND
+// color, with that much of what's behind showing through, behind every
+// window (the menu bar stays on top of it): the UI reads well over any
+// picture, in the theme's color (Andrés, testing round 3: black looked like
+// the background had gone). One backdrop for everything (testing round 1):
+// with or without a game, and also for the windows that open over the game
+// itself (a pairing request, PAIR, REMOTE PLAY). Widgets and modals don't
+// dim the screen themselves. ARGB; alpha 0 for none.
+static uint32_t menu_backdrop(const App* app)
 {
-    static const Str CAUSES[] = {Str::pause_cause_menu, Str::pause_cause_focus, Str::pause_cause_controllers,
-                                 Str::pause_cause_user, Str::pause_cause_background, Str::pause_cause_pairing};
-    static_assert(sizeof(CAUSES) / sizeof(CAUSES[0]) == static_cast<size_t>(UiPause::count), "a name per cause");
-    out[0] = '\0';
-    if (!game_running(app) || app->ui_derived.pause == 0)
-    {
-        std::snprintf(out, size, "%s", app->status);
-        return;
-    }
-    char causes[160] = {};
-    size_t used = 0;
-    for (uint32_t c = 0; c < static_cast<uint32_t>(UiPause::count); c++)
-    {
-        if ((app->ui_derived.pause & ui_pause_bit(static_cast<UiPause>(c))) == 0)
-        {
-            continue;
-        }
-        int written = std::snprintf(causes + used, sizeof(causes) - used, "%s%s", used > 0 ? ", " : "",
-                                    piccolo_text(&app->strings, CAUSES[c]));
-        used = written > 0 && static_cast<size_t>(written) < sizeof(causes) - used ? used + static_cast<size_t>(written)
-                                                                                    : sizeof(causes) - 1;
-    }
-    char why[200] = {};
-    std::snprintf(why, sizeof(why), piccolo_text(&app->strings, Str::paused_why), causes);
-    if (app->status[0] != '\0')
-    {
-        std::snprintf(out, size, "%s - %s", why, app->status);
-    }
-    else
-    {
-        std::snprintf(out, size, "%s", why);
-    }
-}
-
-// INTERFACE > BACKDROP: while the menu or any window is up (DEVICES too),
-// the whole screen is covered by black at that opacity, behind every window
-// (the menu bar stays on top of it): the UI reads well over any picture.
-// One backdrop for everything (Andrés, testing round 1): with or without a
-// game, and also for the windows that open over the game itself (a pairing
-// request, PAIR, REMOTE PLAY). Widgets and modals don't dim the
-// screen themselves. Its alpha, 0 for none.
-static uint32_t menu_backdrop_alpha(const App* app)
-{
-    int32_t percent = settings_get_int(&app->settings, PICCOLO_MENU_BACKDROP);
+    RetroUiPalette palette = {};
+    piccolo_settings_palette(&app->settings, &palette);
+    uint32_t transparency = palette.background_transparency > 100 ? 100 : palette.background_transparency;
     // (Not DEBUG: it's watched while playing.)
     bool window_over_game = app->pair_window.open || app->guest_window.open ||
                             (app->pair_window.request.active && !pair_request_in_game(app));
-    if ((!ui_is_up(app) && !window_over_game) || percent <= 0)
+    if ((!ui_is_up(app) && !window_over_game) || transparency >= 100)
     {
         return 0;
     }
-    percent = percent > 100 ? 100 : percent;
-    return static_cast<uint32_t>(percent) * 255u / 100u;
+    uint32_t alpha = (100u - transparency) * 255u / 100u;
+    return (alpha << 24) | (palette.background & 0xFFFFFFu);
 }
 
 // The HUD widgets' state icons and notification cards (retroui's hud_view),
-// behind every window. The cards stand above the status line's row and the
-// DVR's strip while it's open.
-constexpr float HUD_STATUS_ROW = 16.0f;   // retro pixels at the bottom: the status line and a gap
+// behind every window. The cards stand above the DVR's strip while it's open.
 
 static void hud_fill(App* app, UiView* view)
 {
@@ -5431,18 +5438,20 @@ static void hud_fill(App* app, UiView* view)
     facts.rewinding = app->dvr.open;
     facts.fast_forwarding = game_running(app) && core_session_fast_forwarding(&app->session);
     facts.played_from_ms = app->dvr.played_from_ms;
+    facts.resumed_ms = app->resumed_ms;
     state_widget_add_hud(&app->state_icons, &facts, &app->hud, now_ms);
     dvr_widget_add_hud(&app->dvr, &app->hud, now_ms);
     remap_widget_add_hud(&app->remap, &app->strings, &app->hud, now_ms);
     guest_window_add_hud(&app->guest_window, &app->strings, &app->hud, now_ms);
     pair_window_add_hud(&app->pair_window, &app->strings, pair_request_in_game(app), &app->hud, now_ms);
     debug_preview_add_hud(&app->debug_previews, &app->strings, &app->hud, now_ms);
+    message_widget_add_hud(&app->messages, &app->hud, now_ms);
 
     float block = static_cast<float>(app->ui_scale > 0 ? app->ui_scale : 1);
     HudArea area = {};
     area.right = view->screen_width / block;
     area.top = 0.0f;
-    area.bottom = view->screen_height / block - HUD_STATUS_ROW;
+    area.bottom = view->screen_height / block - HUD_VIEW_MARGIN;
     float strip = dvr_widget_strip_height(&app->dvr, app->ui_scale) / block;
     if (strip > 0.0f && view->screen_height / block - strip - HUD_VIEW_GAP < area.bottom)
     {
@@ -5600,9 +5609,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     view->menu_shown = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
     ports_widget_state(&view->ports_tabs, &app->strings, view->menu_shown, SDL_GetTicks());
     hud_fill(app, view);
-    view->backdrop_alpha = menu_backdrop_alpha(app);
-    status_line_text(app, view->status, sizeof(view->status));
-    view->status_alone = !view->menu_shown && game_running(app) && app->session.paused;
+    view->backdrop = menu_backdrop(app);
     view->menus = app->menus.data();
     view->menu_count = static_cast<int32_t>(app->menus.size());
     view->open_first_menu = app->open_first_menu;
@@ -5826,16 +5833,21 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     switch (actions->quick.press)
     {
     case QuickMenuPress::save:
-        save_state_with_thumbnail(app);   // QUICK MENU stays: the slot's new picture shows
-        set_status(app, app->session.message);
+    {
+        bool saved = save_state_with_thumbnail(app);   // QUICK MENU stays: the slot's new picture shows
+        report_session(app, saved, false);
         break;
+    }
     case QuickMenuPress::load:
-        if (core_session_load_state(&app->session))
+    {
+        bool loaded = core_session_load_state(&app->session);
+        if (loaded)
         {
             app_enter_game(app);   // back to the game
         }
-        set_status(app, app->session.message);
+        report_session(app, loaded, false);
         break;
+    }
     case QuickMenuPress::quick_save:
         quick_save(app);   // QUICK MENU stays, as SAVE
         break;
@@ -6018,7 +6030,6 @@ static bool app_frame(App* app)
         update_settings_context(app);
         ui_game_stopped(&app->ui);
         ui_follow_changes(app);
-        set_status(app, piccolo_text(&app->strings, Str::status_game_closed));
     }
     if (app->has_pending_start)
     {
@@ -6105,6 +6116,7 @@ static bool app_frame(App* app)
         write_running_marker(app);
     }
     app_update_input(app);
+    uint64_t frames_before = app->session.stats.frames;   // SHOW FPS counts what really ran (fast forward too)
     CoreSessionFrame ran = core_session_run_frame(&app->session, &app->shell, &app->cursor_input, game_has_keyboard(app));
     if (ran == CoreSessionFrame::ran)
     {
@@ -6186,8 +6198,11 @@ static bool app_frame(App* app)
         guest_window_upload(&app->guest_window, &app->shell);
         // The loop's work, before the display may make it wait (acquire / present).
         uint64_t now_ns = SDL_GetTicksNS();
-        // (Catch-up frames count: a late loop runs them too.)
-        uint32_t core_frames = ran == CoreSessionFrame::ran ? 1 + app->session.timing.catch_up_frames : 0;
+        // Every core frame this loop ran: catch-up frames (a late loop runs
+        // them too) and fast forward's many (Andrés, testing round 3: SHOW FPS
+        // said 60 while fast forwarding).
+        uint64_t frames_run = app->session.stats.frames >= frames_before ? app->session.stats.frames - frames_before : 0;
+        uint32_t core_frames = ran == CoreSessionFrame::ran ? static_cast<uint32_t>(frames_run) : 0;
         fps_meter_loop(&app->fps_meter, now_ns, core_frames, now_ns - loop_start_ns);
         if (app_shell_acquire(&app->shell))
         {
@@ -6476,7 +6491,6 @@ int main(int argc, char** argv)
     const char* show_fps = SDL_getenv("PICCOLO_SHOW_FPS");
     app->fps_from_env = show_fps != nullptr && show_fps[0] == '1';
     update_language(app);
-    set_status(app, piccolo_text(&app->strings, Str::status_start));
 
     // SDL's audio subsystem from the start (no device is opened until a core
     // runs): the Sound tab lists the devices and follows hotplug.

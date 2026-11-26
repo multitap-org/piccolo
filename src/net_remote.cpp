@@ -44,19 +44,21 @@ static void build_layout(std::vector<LayoutRow>* rows)
         add_row(rows, Str::tab_general, none, none, PICCOLO_GAME_MODE);
     }
     add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SCRUB_LENGTH);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOT_EVERY);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOTS_KEPT);
+    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_LENGTH);
+    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOT_FREQUENCY);
     add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_MEMORY);
 
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_MENU_BOXES);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_SHADOWS);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_THEME_CURSOR);
+    add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_BACKGROUND_TRANSPARENCY);
     for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
     {
         add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), piccolo_settings_ui_color_key(i));
     }
     add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_REWIND);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_SCREENSHOT);
 
     uint32_t picture = text_id(Str::tab_picture);
     add_row(rows, Str::tab_video, picture, none, PICCOLO_VIDEO_ASPECT);

@@ -86,9 +86,13 @@ void dvr_widget_game_started(DvrWidget* widget, CoreSession* session, const Sett
     CoreRewindSettings* config = &widget->rewind.settings;
     config->mode             = mode_from(settings_get(settings, PICCOLO_REWIND, nullptr));
     config->known            = mode_from(settings_get_layer(settings, SettingLayer::game, PICCOLO_REWIND_KNOWN));
-    config->scrub_seconds    = number_of(settings, PICCOLO_REWIND_SCRUB_LENGTH) * 60;
-    config->snapshot_seconds = number_of(settings, PICCOLO_REWIND_SNAPSHOT_EVERY);
-    config->snapshots_kept   = number_of(settings, PICCOLO_REWIND_SNAPSHOTS_KEPT);
+    // LENGTH for both modes; SNAPSHOTS keeps as many as LENGTH needs at its frequency.
+    uint32_t length_seconds  = number_of(settings, PICCOLO_REWIND_LENGTH) * 60;
+    uint32_t frequency       = number_of(settings, PICCOLO_REWIND_SNAPSHOT_FREQUENCY);
+    frequency                = frequency > 0 ? frequency : 1;
+    config->scrub_seconds    = length_seconds;
+    config->snapshot_seconds = frequency;
+    config->snapshots_kept   = length_seconds / frequency > 0 ? length_seconds / frequency : 1;
     if (config->known == RewindMode::off)
     {
         config->known = RewindMode::automatic;
@@ -782,7 +786,7 @@ void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char*
     case CoreRewindState::snapshots:
         if (widget->rewind.settings.mode == RewindMode::automatic)
         {
-            std::snprintf(out, out_size, "%s %s.", piccolo_text(strings, Str::rewind_note_chose),
+            std::snprintf(out, out_size, "%s %s", piccolo_text(strings, Str::rewind_note_chose),
                           piccolo_text(strings, widget->rewind.state == CoreRewindState::scrub ? Str::value_rewind_scrub
                                                                                                : Str::value_rewind_snapshots));
         }

@@ -999,6 +999,11 @@ void pair_window_network_stopped(PairWindow* window)
     window->shown.grants = grants;
 }
 
+void pair_window_failed(PairWindow* window, uint64_t now_ms)
+{
+    set_notice(window, PairNotice::failed, now_ms);
+}
+
 void pair_window_request_gone(PairWindow* window, uint32_t peer)
 {
     if (window->request.active && window->request.peer == peer)

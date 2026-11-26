@@ -47,10 +47,8 @@ menu_recent_empty = NO RECENT GAMES
 menu_clear_recents = CLEAR ALL
 recent_no_game = NO GAME
 
-# Status line
-status_start = GAME > LOAD GAME TO START
+# Messages (HUD cards: message_widget.h)
 status_reset = RESET
-status_not_there_yet = NOT THERE YET
 
 # LOAD GAME window
 picker_title = LOAD GAME
@@ -231,7 +229,6 @@ quick_menu_config_help = CORE CONFIGURATION: THIS CORE'S OPTIONS, CONTROLS AND S
 core_config_title = CORE CONFIGURATION
 menu_core_config = CORE CONFIGURATION...
 quick_menu_keys = ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME.
-status_game_closed = GAME CLOSED
 status_no_core_for_file = NO CORE FOR THIS FILE
 
 # IMAGE SETTINGS window
@@ -262,7 +259,6 @@ setting_pause_on_focus_loss = PAUSE WHEN THE WINDOW LOSES FOCUS
 setting_pause_on_focus_loss_help = Pause while another window is active.
 setting_pause_on_disconnect = PAUSE WHEN CONTROLLERS DISCONNECT
 setting_pause_on_disconnect_help = Pause when the last controller playing goes away (unplugged, out of battery, a phone that dropped). Not when the keyboard, the mouse, a device's pad or the on-screen pad was what played. It goes on when a controller is back, or when the keyboard plays.
-status_paused_disconnected = CONTROLLER DISCONNECTED
 setting_screensaver = ALLOW SCREENSAVER WHILE PAUSED
 setting_screensaver_help = While a game runs the screensaver is always blocked. On: it may start while paused or in the menu.
 setting_game_mode = GAME MODE
@@ -403,6 +399,10 @@ setting_ui_shadows_help = Shadows under windows, open menus and menu text.
 section_effects = EFFECTS
 setting_screen_effects = SCREEN EFFECTS
 setting_screen_effects_help = Short effects on the game picture: a camera snap when the DVR plays from here, a shutter when a screenshot is taken.
+setting_screen_effect_rewind = REWIND
+setting_screen_effect_rewind_help = When the DVR plays from here: the picture starts grey and a little zoomed in, with a faint flash, and settles back.
+setting_screen_effect_screenshot = SCREENSHOT
+setting_screen_effect_screenshot_help = When a screenshot is taken: black closes from the top and the bottom and opens again, like a camera shutter.
 setting_ui_color_background = BACKGROUND
 setting_ui_color_background_help = Behind the game and the menu.
 setting_ui_color_title = TITLE BARS (TOP)
@@ -869,7 +869,6 @@ net_device_forget_help = Unpairs this device: if it's connected now it forgets t
 net_device_disconnect = DISCONNECT
 net_device_disconnect_help = Closes this device's connection now. It stays paired and may connect again.
 status_net_paired = PAIRED WITH
-status_net_pairing_failed = PAIRING FAILED: TOO MANY WRONG CODES
 
 # REMOTE PLAY (guest links: guest_window.cpp)
 guests_title = REMOTE PLAY
@@ -899,7 +898,8 @@ guests_preparing = PREPARING THE LINK...
 guests_end = STOP REMOTE PLAY
 guests_close = CLOSE
 status_guests_ended = REMOTE PLAY ENDED
-status_guest_joined = JOINED:
+status_guest_joined = %s JOINED THE SESSION
+status_guest_left = %s LEFT THE SESSION
 status_guest_link = GUEST LINKS OPEN IN PICCOLETTO: OPENING IT IN THE BROWSER
 status_net_unpaired = UNPAIRED:
 action_slot_next = NEXT SLOT
@@ -907,18 +907,10 @@ action_slot_previous = PREVIOUS SLOT
 action_pause = PAUSE
 action_reset = RESET
 status_paused_remotely = PAUSED FROM
-status_resumed = RESUMED
 status_link_unknown = NOTHING OPENS THIS LINK YET:
-status_screenshot_saved = SCREENSHOT SAVED: %s
+status_screenshot_saved = SCREENSHOT SAVED
 status_screenshot_failed = THE SCREENSHOT COULD NOT BE SAVED (SEE THE LOG)
 status_screenshot_busy = STILL SAVING THE LAST SCREENSHOT
-paused_why = PAUSED: %s
-pause_cause_menu = MENU
-pause_cause_focus = FOCUS
-pause_cause_controllers = CONTROLLERS
-pause_cause_user = USER
-pause_cause_pairing = PAIRING REQUEST
-pause_cause_background = BACKGROUND
 quick_menu_pause = PAUSE
 quick_menu_resume = RESUME
 
@@ -1010,8 +1002,8 @@ input_touch_pad_edit = EDIT LAYOUT
 input_touch_pad_edit_help = Move and resize the touch gamepad's buttons (drag a group, pinch or SIZE, RESET, DONE). Upright and sideways have their own layouts.
 touch_pad_menu = HOME
 touch_pad_quick = ...
-setting_menu_backdrop = BACKDROP
-setting_menu_backdrop_help = While the menu or a window is open, what's behind them (the game too) is darkened this much so the text reads well over any picture (0: not darkened).
+setting_ui_background_transparency = BACKGROUND TRANSPARENCY
+setting_ui_background_transparency_help = While the menu or a window is open, the theme's BACKGROUND color covers what's behind them (the game too), so the text reads well over any picture. This much of the game still shows through (100: not covered). Saved with the theme.
 
 # Rewind / DVR
 input_action_hotkey_dvr = DVR
@@ -1022,27 +1014,10 @@ value_rewind_off = OFF
 value_rewind_auto = AUTO
 value_rewind_scrub = SCRUB
 value_rewind_snapshots = SNAPSHOTS
-setting_rewind_scrub_length = SCRUB LENGTH
-setting_rewind_scrub_length_help = How far back SCRUB keeps every frame. ALL MEMORY HOLDS: as far as MEMORY goes.
-value_rewind_all = ALL MEMORY HOLDS
-value_minutes_1 = 1 MIN
-value_minutes_2 = 2 MIN
-value_minutes_5 = 5 MIN
-value_minutes_10 = 10 MIN
-value_minutes_30 = 30 MIN
-setting_rewind_snapshot_every = SNAPSHOT EVERY
-setting_rewind_snapshot_every_help = In SNAPSHOTS, a state this often; the frames between them are played again from the input.
-value_seconds_5 = 5 S
-value_seconds_10 = 10 S
-value_seconds_15 = 15 S
-value_seconds_30 = 30 S
-value_seconds_60 = 60 S
-setting_rewind_snapshots_kept = SNAPSHOTS KEPT
-setting_rewind_snapshots_kept_help = How many snapshots SNAPSHOTS keeps. ALL MEMORY HOLDS: as many as MEMORY takes.
-value_count_10 = 10
-value_count_30 = 30
-value_count_60 = 60
-value_count_120 = 120
+setting_rewind_length = LENGTH (MIN)
+setting_rewind_length_help = How far back the DVR can go, in minutes, in either mode. Never more than MEMORY holds.
+setting_rewind_snapshot_frequency = SNAPSHOT FREQUENCY (S)
+setting_rewind_snapshot_frequency_help = In SNAPSHOTS, a state this often, in seconds; the frames between them are played again from the input.
 setting_rewind_memory = MEMORY
 setting_rewind_memory_help = Memory for the rewind history, taken when a game starts. AUTO: 256 MB (128 MB on Android). Never more than a quarter of this device's memory.
 value_memory_auto = AUTO
@@ -1052,6 +1027,7 @@ value_memory_512 = 512 MB
 value_memory_1024 = 1 GB
 value_memory_2048 = 2 GB
 rewind_note_chose = THIS GAME: AUTO CHOSE
+rewind_note_current = CURRENT:
 rewind_note_measuring = THIS GAME: AUTO IS MEASURING THE CORE.
 rewind_note_unsupported = THIS CORE HAS NO SAVESTATES: NO REWIND.
 rewind_measure_again = MEASURE AGAIN

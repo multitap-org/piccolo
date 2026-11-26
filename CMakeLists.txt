@@ -231,6 +231,7 @@ set(PICCOLO_SOURCES
     src/fps_meter.cpp
     src/remap_widget.cpp
     src/state_widget.cpp
+    src/message_widget.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)
