@@ -324,7 +324,9 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_VIDEO_MAX_OFFSCREEN, .type = SettingType::real, .default_value = "5", .overridable = true,
      .min_real = 0.0, .max_real = 50.0, .step_real = 0.5, .label = text_id(Str::setting_max_offscreen),
      .help = text_id(Str::setting_max_offscreen_help)},
-    {.key = PICCOLO_VIDEO_FILTER, .type = SettingType::enumeration, .default_value = "nearest", .overridable = true,
+    // INTEGER (AUTO) with SHARP BILINEAR: the crispest full-screen picture by
+    // default, on every platform (Andrés, 2026-11-25).
+    {.key = PICCOLO_VIDEO_FILTER, .type = SettingType::enumeration, .default_value = "sharp_bilinear", .overridable = true,
      .values = FILTER_VALUES, .value_count = FILTER_COUNT, .label = text_id(Str::setting_filter),
      .help = text_id(Str::setting_filter_help)},
     {.key = PICCOLO_VIDEO_SHADER_PRESET, .type = SettingType::path, .default_value = "", .overridable = true,

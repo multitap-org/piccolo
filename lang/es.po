@@ -523,16 +523,16 @@ msgid "SCALING"
 msgstr "ESCALA"
 
 msgctxt "setting_scaling_help"
-msgid "Integer sizes keep every pixel the same size. Auto: one size up if it goes past the window by at most the % below."
-msgstr "Los tamaños enteros dejan todos los píxeles del mismo tamaño. Auto: un tamaño más si se sale de la ventana como mucho el % de abajo."
+msgid "Integer sizes keep every pixel the same size. Integer (auto): one size up if it goes past the window by at most the % below."
+msgstr "Los tamaños enteros dejan todos los píxeles del mismo tamaño. Entero (auto): un tamaño más si se sale de la ventana como mucho el % de abajo."
 
 msgctxt "setting_max_offscreen"
-msgid "AUTO: MAX OFFSCREEN"
-msgstr "AUTO: MÁXIMO FUERA DE PANTALLA"
+msgid "INTEGER (AUTO): MAX OFFSCREEN"
+msgstr "ENTERO (AUTO): MÁXIMO FUERA DE PANTALLA"
 
 msgctxt "setting_max_offscreen_help"
-msgid "How much of the picture Auto may push past the window edges."
-msgstr "Cuánto de la imagen puede sacar Auto fuera de los bordes de la ventana."
+msgid "How much of the picture Integer (auto) may push past the window edges."
+msgstr "Cuánto de la imagen puede sacar Entero (auto) fuera de los bordes de la ventana."
 
 msgctxt "setting_filter"
 msgid "FILTER"
@@ -859,8 +859,8 @@ msgid "INTEGER (OVER)"
 msgstr "ENTERA (POR ENCIMA)"
 
 msgctxt "value_scaling_auto"
-msgid "AUTO"
-msgstr "AUTO"
+msgid "INTEGER (AUTO)"
+msgstr "ENTERO (AUTO)"
 
 msgctxt "value_osk_auto"
 msgid "AUTO"
