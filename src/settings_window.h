@@ -94,9 +94,14 @@ struct SettingsWindowState
     SettingsWindowNotes notes;
     // FOLDERS: the default folders, shown in empty fields (in the order above).
     const char*         folder_hints[SETTINGS_FOLDER_COUNT] = {};
-    // GAME FOLDERS: the ones set (the slots have no gaps).
+    // GAME FOLDERS: the ones set, like piccolo_settings_game_folders (a file
+    // edited by hand may have gaps). game_folder_slots[i] is the slot row i
+    // came from (what REMOVE and CHOOSE FOLDER take); game_folder_free is the
+    // first empty slot, where "+" adds.
     const char*         game_folders[PICCOLO_GAME_FOLDER_MAX] = {};
+    uint32_t            game_folder_slots[PICCOLO_GAME_FOLDER_MAX] = {};
     uint32_t            game_folder_count = 0;
+    uint32_t            game_folder_free = 0;
     bool                game_mode_supported = false;   // Linux only: GAME MODE shows
     // At the scope being edited:
     bool                window_fixed = false;      // WINDOW MODE is FIXED (ASPECT and HEIGHT, else SCALE)

@@ -24,9 +24,9 @@
 void settings_window_update(SettingsWindow* window, const Settings* settings, const char* core_name,
                             const char* game_name)
 {
-    if (!window->open)
+    if (!window->open && !window->image_open)
     {
-        return;   // as before, the scope is checked while the window shows
+        return;   // IMAGE SETTINGS is its own window and uses the scope too
     }
     bool has_core = core_name[0] != '\0';
     bool has_game = has_core && game_name[0] != '\0';
@@ -58,11 +58,20 @@ void settings_window_state(SettingsWindowState* state, const SettingsWindow* win
     state->folder_hints[3] = paths->states.c_str();
     state->folder_hints[4] = paths->screenshots.c_str();
     state->game_folder_count = 0;
-    while (state->game_folder_count < PICCOLO_GAME_FOLDER_MAX &&
-           settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count])[0] != '\0')
+    state->game_folder_free = PICCOLO_GAME_FOLDER_MAX;
+    for (uint32_t slot = 0; slot < PICCOLO_GAME_FOLDER_MAX; slot++)
     {
-        state->game_folders[state->game_folder_count] =
-            settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count]);
+        const char* folder = settings_get_text(settings, PICCOLO_PATH_GAMES[slot]);
+        if (folder[0] == '\0')
+        {
+            if (state->game_folder_free == PICCOLO_GAME_FOLDER_MAX)
+            {
+                state->game_folder_free = slot;
+            }
+            continue;   // a gap: skipped, as piccolo_settings_game_folders does
+        }
+        state->game_folders[state->game_folder_count] = folder;
+        state->game_folder_slots[state->game_folder_count] = slot;
         state->game_folder_count++;
     }
     state->game_mode_supported = game_mode_supported();
@@ -122,7 +131,7 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     for (uint32_t i = 0; i < set; i++)
     {
         RetroUiRow row = {};
-        row.id = PICCOLO_PATH_GAMES[i];
+        row.id = PICCOLO_PATH_GAMES[state->game_folder_slots[i]];
         row.label = label;
         row.help = piccolo_text(ui->strings, Str::setting_path_games_help);
         row.label_width = ui->label_width;
@@ -132,11 +141,11 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
         if (retro_ui_picker_field("value", nullptr, state->game_folders[i],
                                   piccolo_text(ui->strings, Str::game_folder_choose_help)))
         {
-            action->choose_folder = PICCOLO_PATH_GAMES[i];
+            action->choose_folder = PICCOLO_PATH_GAMES[state->game_folder_slots[i]];
         }
         if (retro_ui_row_end(&row))
         {
-            remove = static_cast<int32_t>(i);
+            remove = static_cast<int32_t>(state->game_folder_slots[i]);
         }
     }
     if (remove >= 0)
@@ -151,7 +160,7 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     retro_ui_begin_disabled(set >= PICCOLO_GAME_FOLDER_MAX);
     if (retro_ui_button("+"))
     {
-        action->choose_folder = PICCOLO_PATH_GAMES[set];
+        action->choose_folder = PICCOLO_PATH_GAMES[state->game_folder_free];
     }
     retro_ui_end_disabled();
     retro_ui_item_tooltip(piccolo_text(ui->strings, Str::game_folder_add_help));
