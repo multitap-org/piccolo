@@ -255,6 +255,11 @@ void piccolo_settings_game_folders(const Settings* settings, std::vector<std::st
 // was set.
 bool piccolo_settings_remove_game_folder(Settings* settings, uint32_t index);
 
+// Moves the game folders up so no slot is empty before a set one, keeping
+// their order (a file edited by hand may have gaps). Writes only when
+// something moves: a file that is already compact is not marked dirty.
+void piccolo_settings_compact_game_folders(Settings* settings);
+
 // The language to show: an index for piccolo_language_code() (piccolo_text.h).
 // "auto" picks the first of the system's preferred languages piccolo has,
 // else English.
