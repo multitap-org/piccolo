@@ -48,6 +48,7 @@ enum class DebugPreview
     phone_home_empty,          // HOME, no recent games yet
     phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
     phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
+    devices,                   // DEVICES (ports_view's board): fake controllers on four ports; rows upright on a phone
 };
 
 // MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced

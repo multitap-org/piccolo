@@ -26,6 +26,7 @@
 #include "hud_view.h"
 #include "localization.h"
 #include "mobile_home.h"
+#include "ports_widget.h"
 #include "net_share_link.h"
 #include "pair_window.h"
 #include "quick_menu.h"
@@ -56,6 +57,7 @@ struct DebugPreviews
     QuickMenu          quick;          // its slots: a few used, no pictures
     MobileHome         phone;          // the phone's HOME and ☰
     DvrView            phone_dvr;      // the DVR's phone panel: five empty pictures, a kept lane
+    PortsWidget        devices;        // DEVICES: its board open, fake controllers
 };
 
 // What the preview shows this frame (UiView).
@@ -68,6 +70,7 @@ struct DebugPreviewView
     QuickMenuState   quick = {};
     MobileHomeState  phone = {};
     DvrViewText      dvr_text = {};
+    PortsWidgetState devices = {};
 };
 
 // What was pressed in it (UiActions): only closing it counts.
@@ -79,6 +82,7 @@ struct DebugPreviewActions
     QuickMenuAction   quick = {};
     MobileHomeAction  phone = {};
     DvrViewInput      dvr = {};
+    PortsWidgetAction devices = {};
 };
 
 // Shows `which` (another one shown ends), from its first step's fake state.
@@ -92,8 +96,9 @@ bool debug_preview_covers_screen(const DebugPreviews* previews);
 void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open);
 // `version`: ABOUT's (PICCOLO_VERSION). `menus`: the menu bar's, for the
 // phone's ☰ (the real items; only the games and the paused game are fake).
+// `phone_upright`: the phone UI held upright (DEVICES' rows).
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version, const RetroUiMenu* menus, int32_t menu_count);
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright);
 // Draws the window shown, if any.
 void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, RetroUiFont* pixel_font,
                         int32_t scale, DebugPreviewActions* actions);

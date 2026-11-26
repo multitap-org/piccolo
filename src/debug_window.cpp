@@ -180,6 +180,7 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     preview_button(action, "HOME, no games", DebugPreview::phone_home_empty, true);
     preview_button(action, "MENU over a game", DebugPreview::phone_menu, true);
     preview_button(action, "DVR", DebugPreview::phone_dvr, true);
+    preview_button(action, "DEVICES", DebugPreview::devices, true);
 }
 
 // The easter eggs: the menu snow and its sleigh (retroui's snow_view).
