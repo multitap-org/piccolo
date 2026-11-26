@@ -913,37 +913,6 @@ static StateThumbnail picture_thumbnail(const App* app, uint32_t* aspect_width, 
     return thumbnail;
 }
 
-// The system the core plays, from the core downloader's index: this run's,
-// else the one a refresh kept in the cores folder ("" when neither knows the
-// core: the card shows the core alone).
-static std::string core_systems(const App* app)
-{
-    const char* name = app->session.host->core_path;
-    const char* slash = std::strrchr(name, '/');
-    const char* file = slash != nullptr ? slash + 1 : name;
-    const CoreIndex* index = &app->core_updater.index;
-    CoreIndex kept;
-    int32_t entry = core_index_find_file(index, file);
-    if (entry < 0 && core_updater_load_kept_index(&kept, app->cores_directory.c_str(), core_index_build_target()))
-    {
-        index = &kept;
-        entry = core_index_find_file(index, file);
-    }
-    if (entry < 0)
-    {
-        return std::string();
-    }
-    std::string systems = index->entries[static_cast<size_t>(entry)].systems;
-    for (size_t i = 0; i < systems.size(); i++)
-    {
-        if (systems[i] == '|')
-        {
-            systems[i] = '/';
-        }
-    }
-    return systems;
-}
-
 // Before the running game stops (between frames): its AUTO state (SAVE
 // STATE ON EXIT), and for the CONTINUE card its last frame and record
 // (continue_card.h), even when there's no state to save. No state for a core
@@ -1007,7 +976,6 @@ static void save_state_on_exit(App* app)
     }
     record.game_name = game;
     record.core_name = host->system_info.library_name != nullptr ? host->system_info.library_name : "";
-    record.system_name = core_systems(app);
     record.state_path = path;
     record.picture_path = picture;
     // The save file a newer copy of would make resuming go back (SRAM).
@@ -6177,12 +6145,23 @@ static void continue_card_update(App* app, const UiView* view)
     }
     else if (app->phone_ui)
     {
-        // HOME's card (mobile_home.h), at the phone UI's scale. Sideways its
-        // picture may be drawn a little shorter: still sharp, a touch softer.
+        // HOME's card (mobile_home.h), at the phone UI's scale. Upright its
+        // picture may be drawn a little shorter when the list needs the
+        // room: still sharp, a touch softer.
         float scale = static_cast<float>(app->ui_scale);
-        float card_width = mobile_home_card_width(std::floor(view->screen_width / scale),
-                                                  std::floor(view->screen_height / scale));
-        continue_view_card_picture_size(&card, card_width, &width, &height);
+        float screen_width = std::floor(view->screen_width / scale);
+        float screen_height = std::floor(view->screen_height / scale);
+        if (screen_width > screen_height)
+        {
+            float box_width = 0.0f;
+            float box_height = 0.0f;
+            mobile_home_cover_box(screen_width, screen_height, &box_width, &box_height);
+            continue_view_cover_picture_size(&card, box_width, box_height, &width, &height);
+        }
+        else
+        {
+            continue_view_card_picture_size(&card, mobile_home_card_width(screen_width), &width, &height);
+        }
         width *= scale;
         height *= scale;
     }

@@ -19,7 +19,6 @@
 //   content = /home/ana/roms/Super Mario World (USA).sfc
 //   game = Super Mario World (USA)
 //   core_name = Snes9x
-//   system = Super Nintendo         (from the core downloader's index; may be "")
 //   state = /home/ana/.local/share/piccolo/states/snes9x/Super Mario World (USA).state.auto
 //   picture = ....state.auto.png
 //   save = /home/ana/.local/share/piccolo/saves/snes9x/Super Mario World (USA).srm
@@ -54,7 +53,6 @@ struct ContinueRecord
     std::string   content_path;   // "" = the core without content (as RECENT keeps it)
     std::string   game_name;
     std::string   core_name;
-    std::string   system_name;
     std::string   state_path;
     std::string   picture_path;
     std::string   save_path;      // "" = the core keeps no save file

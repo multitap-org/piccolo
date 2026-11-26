@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "imgui.h"
+#include "imgui_internal.h"   // ClearActiveID: a drag drops the row's tap
 
 #include "piccolo_text.h"
 #include "pixel_font_imgui.h"   // PIXEL_FONT_UTF8_MENU, _ROTATE
@@ -22,6 +23,7 @@ constexpr float ROW_GAP      = 4.0f;
 constexpr float SECTION_GAP  = 8.0f;    // above a menu's name in the sidebar
 constexpr float SIDE_COLUMN  = 120.0f;  // landscape HOME: LOAD GAME's column
 constexpr int32_t HEADER_ICONS = 2;     // ROTATE, ☰
+constexpr float COVER_SHARE  = 0.55f;   // sideways: the CONTINUE picture's widest, of the screen's content
 
 // The sidebar's share of the screen's width (the mockup: 78% upright, 62% sideways).
 constexpr float MENU_WIDTH_PORTRAIT  = 0.78f;
@@ -44,21 +46,47 @@ static void page_label(const char* label, char* out, size_t out_size)
     }
 }
 
+constexpr float DRAG_START = 3.0f;   // retro pixels a finger moves before a press is a drag
+
 // Drag to scroll a list in (x, y, width, height); `content` its whole
-// height. Submitted after the list's buttons, so they get their taps first.
-static void drag_scroll(const TouchUi* ui, const char* id, float x, float y, float width, float height, float content,
-                        float* scroll)
+// height. Called after the list's rows: a press on a row that moves
+// DRAG_START scrolls instead, and the row (ImGui's active item) lets go, so
+// lifting the finger doesn't tap it.
+static void drag_scroll(const TouchUi* ui, MobileDrag* drag, float x, float y, float width, float height,
+                        float content, float* scroll)
 {
-    bool held = false;
-    touch_ui_area(ui, id, x, y, width, height, &held, TouchNav::taps_only);
-    if (held)
+    float scale = static_cast<float>(ui->scale);
+    bool inside = ImGui::IsMouseHoveringRect(ImVec2(x * scale, y * scale),
+                                             ImVec2((x + width) * scale, (y + height) * scale), false);
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
-        *scroll -= ImGui::GetIO().MouseDelta.y / static_cast<float>(ui->scale);
+        drag->armed = inside;
+        drag->dragging = false;
+        drag->moved = 0.0f;
     }
-    if (ImGui::IsMouseHoveringRect(ImVec2(x * static_cast<float>(ui->scale), y * static_cast<float>(ui->scale)),
-                                   ImVec2((x + width) * static_cast<float>(ui->scale),
-                                          (y + height) * static_cast<float>(ui->scale)),
-                                   false))
+    if (drag->armed && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        float delta = ImGui::GetIO().MouseDelta.y / scale;
+        if (!drag->dragging)
+        {
+            drag->moved += std::fabs(delta);
+            if (drag->moved >= DRAG_START)
+            {
+                drag->dragging = true;
+                ImGui::ClearActiveID();
+            }
+        }
+        if (drag->dragging)
+        {
+            *scroll -= delta;
+        }
+    }
+    else
+    {
+        drag->armed = false;
+        drag->dragging = false;
+    }
+    if (inside)
     {
         *scroll -= ImGui::GetIO().MouseWheel * 16.0f;
     }
@@ -154,18 +182,27 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
         }
     }
     keep_focus_in_view(&focus, y, height, &home->scroll);
-    drag_scroll(ui, "##games_scroll", x, y, width, height, content, &home->scroll);
+    drag_scroll(ui, &home->drag, x, y, width, height, content, &home->scroll);
     touch_ui_pop_clip();
 }
 
-float mobile_home_card_width(float width, float height)
+float mobile_home_card_width(float width)
 {
-    if (width > height)
-    {
-        float list_width = width - 3.0f * MARGIN - SIDE_COLUMN;
-        return std::floor((list_width - ROW_GAP) * 0.5f);
-    }
     return width - 2.0f * MARGIN;
+}
+
+// Sideways: where the content starts (under the header), and the CONTINUE
+// picture's room under its name.
+static float wide_content_y()
+{
+    return 6.0f + TOUCH_HEADER_ICON + 6.0f;   // touch_header_bottom sideways, then the gap
+}
+
+void mobile_home_cover_box(float width, float height, float* box_width, float* box_height)
+{
+    float top = wide_content_y() + SMALL_BUTTON + 6.0f;
+    *box_width = std::floor((width - 2.0f * MARGIN) * COVER_SHARE);
+    *box_height = height - MARGIN - top;
 }
 
 // A section's name at the left of a SMALL_BUTTON-tall row (RECENT GAMES,
@@ -176,11 +213,32 @@ static void section_name(const TouchUi* ui, float x, float y, const char* name)
                   ui->palette.text_disabled, TouchText::normal);
 }
 
+// Sideways (Andrés's layout C): CONTINUE, and under it the picture as tall
+// as the screen allows with the words on a band over it. Returns its width.
+static float draw_continue_cover(const TouchUi* ui, const MobileHomeState* state, float x, float y,
+                                 MobileHomeAction* action)
+{
+    section_name(ui, x, y, piccolo_text(state->strings, Str::mobile_continue));
+    float box_width = 0.0f;
+    float box_height = 0.0f;
+    mobile_home_cover_box(touch_ui_width(ui), touch_ui_height(ui), &box_width, &box_height);
+    float drawn = 0.0f;
+    ContinueViewButton pressed =
+        continue_view_draw_cover(ui, state->card, x, y + SMALL_BUTTON + 6.0f, box_width, box_height, &drawn);
+    if (pressed != ContinueViewButton::none)
+    {
+        action->continue_pressed = pressed;
+    }
+    float name = touch_ui_text_width(ui, piccolo_text(state->strings, Str::mobile_continue), TouchText::normal) + 4.0f;
+    return drawn > name ? drawn : name;
+}
+
 // CONTINUE and its card at (x, y), `width` wide, no taller than `room`
 // (its picture gets shorter first). Returns its bottom.
 static float draw_continue(const TouchUi* ui, const MobileHomeState* state, float x, float y, float width, float room,
                            MobileHomeAction* action)
 {
+    // Upright (sideways is draw_continue_cover).
     section_name(ui, x, y, piccolo_text(state->strings, Str::mobile_continue));
     float card_y = y + SMALL_BUTTON + 6.0f;
     room -= SMALL_BUTTON + 6.0f;
@@ -221,7 +279,7 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
         action->open_menu = true;
     }
 
-    float content_y = touch_header_bottom(ui) + (wide ? 6.0f : 12.0f);
+    float content_y = wide ? wide_content_y() : touch_header_bottom(ui) + 12.0f;
     if (state->game_count == 0)
     {
         float empty_height = wide ? height - content_y - MARGIN : 120.0f;
@@ -236,9 +294,12 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
     // upright it's across the bottom.
     float list_width = wide ? width - 3.0f * MARGIN - SIDE_COLUMN : width - 2.0f * MARGIN;
     float list_bottom = wide ? height - MARGIN : height - 2.0f * MARGIN - MAIN_BUTTON;
+    float button_x = wide ? width - MARGIN - SIDE_COLUMN : MARGIN;
+    float button_width = wide ? SIDE_COLUMN : width - 2.0f * MARGIN;
 
     // The CONTINUE card first (the mockup): upright above the games, leaving
-    // room for two of them; sideways in the left half, the games at its right.
+    // room for two of them. Sideways the picture at the left, as tall as the
+    // screen allows, and the games at its right with LOAD GAME under them.
     float list_x = MARGIN;
     float list_y = content_y;
     int32_t first = 0;
@@ -248,10 +309,12 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
         first = 1;   // the card's game
         if (wide)
         {
-            float card_width = mobile_home_card_width(width, height);
-            draw_continue(ui, state, list_x, content_y, card_width, list_bottom - content_y, action);
-            list_x += card_width + ROW_GAP;
-            list_width -= card_width + ROW_GAP;
+            float card_width = draw_continue_cover(ui, state, list_x, content_y, action);
+            list_x += card_width + MARGIN;
+            list_width = width - MARGIN - list_x;
+            list_bottom = height - 2.0f * MARGIN - MAIN_BUTTON;
+            button_x = list_x;
+            button_width = list_width;
             columns = 1;
         }
         else
@@ -273,8 +336,6 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
     list_y += SMALL_BUTTON + 6.0f;
     draw_games(home, ui, state, list_x, list_y, list_width, list_bottom - list_y, first, columns, action);
 
-    float button_x = wide ? width - MARGIN - SIDE_COLUMN : MARGIN;
-    float button_width = wide ? SIDE_COLUMN : width - 2.0f * MARGIN;
     float button_y = height - MARGIN - MAIN_BUTTON;
     // With the CONTINUE card RESUME is the main action, not LOAD GAME.
     TouchButton load_style = state->card != nullptr ? TouchButton::normal : TouchButton::primary;
@@ -425,7 +486,7 @@ static void draw_sidebar(MobileHome* home, const TouchUi* ui, const MobileHomeSt
     }
     float content = y + home->menu_scroll - top + MARGIN;
     keep_focus_in_view(&focus, top, list_height, &home->menu_scroll);
-    drag_scroll(ui, "##menu_scroll", side_x, top, side_width, list_height, content, &home->menu_scroll);
+    drag_scroll(ui, &home->menu_drag, side_x, top, side_width, list_height, content, &home->menu_scroll);
     touch_ui_pop_clip();
 }
 

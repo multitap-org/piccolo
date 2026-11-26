@@ -110,7 +110,6 @@ int main(int argc, char** argv)
     saved.content_path = "/roms/Super Mario World (USA).zip#Super Mario World (USA).sfc";
     saved.game_name = "Super Mario World (USA)";
     saved.core_name = "Snes9x";
-    saved.system_name = "Super Nintendo";
     saved.state_path = state;
     saved.picture_path = picture;
     saved.save_path = "";
@@ -122,9 +121,7 @@ int main(int argc, char** argv)
     ContinueRecord loaded = {};
     check(continue_record_load(&loaded, path.c_str()), "the record is read back");
     check(loaded.core_path == saved.core_path && loaded.content_path == saved.content_path, "same game");
-    check(loaded.game_name == saved.game_name && loaded.core_name == saved.core_name &&
-              loaded.system_name == saved.system_name,
-          "same names");
+    check(loaded.game_name == saved.game_name && loaded.core_name == saved.core_name, "same names");
     check(loaded.state_path == state && loaded.picture_path == picture && loaded.save_path.empty(), "same files");
     check(loaded.aspect_width == 292 && loaded.aspect_height == 224, "same aspect");
     check(loaded.closed == T && loaded.saved == ContinueSaved::incomplete, "same date and state");

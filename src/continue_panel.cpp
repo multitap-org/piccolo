@@ -45,20 +45,17 @@ static const ContinueRecord* fake_record(ContinuePreview preview)
     static ContinueRecord newer_save = {};
     resume.game_name = "Super Mario World (USA)";
     resume.core_name = "Snes9x";
-    resume.system_name = "Super Nintendo";
     resume.aspect_width = 292;   // 256 x 224 at 8:7 pixels, as IMAGE SETTINGS' CORE aspect shows it
     resume.aspect_height = 224;
     no_states = resume;
     no_states.game_name = "Quake";
     no_states.core_name = "TyrQuake";
-    no_states.system_name = "PC";
     no_states.aspect_width = 4;
     no_states.aspect_height = 3;
     no_states.saved = ContinueSaved::no_states;
     newer_save = resume;
     newer_save.game_name = "Pokemon - Crystal Version (USA)";
     newer_save.core_name = "SameBoy";
-    newer_save.system_name = "Game Boy Color";
     newer_save.aspect_width = 160;
     newer_save.aspect_height = 144;
     switch (preview)
@@ -334,11 +331,9 @@ void continue_panel_state(ContinuePanelView* view, const ContinuePanel* panel, c
     view->phone = panel->preview == ContinuePreview::phone;
     std::snprintf(view->game, sizeof(view->game), "%s", record->game_name.c_str());
     std::snprintf(view->core, sizeof(view->core), "%s", record->core_name.c_str());
-    std::snprintf(view->system, sizeof(view->system), "%s", record->system_name.c_str());
     when_text(view->when, sizeof(view->when), record, strings, now, panel->preview != ContinuePreview::none);
     card->game = view->game;
     card->core = view->core;
-    card->system = view->system;
     card->when = view->when;
     card->reason = reason_text(choice.reason, strings);
     const char* resume = piccolo_text(strings, Str::continue_resume);

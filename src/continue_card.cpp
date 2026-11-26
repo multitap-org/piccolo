@@ -75,7 +75,6 @@ bool continue_record_load(ContinueRecord* record, const char* path)
     record->content_path = text_or_empty(&file, "content");
     record->game_name = text_or_empty(&file, "game");
     record->core_name = text_or_empty(&file, "core_name");
-    record->system_name = text_or_empty(&file, "system");
     record->state_path = text_or_empty(&file, "state");
     record->picture_path = text_or_empty(&file, "picture");
     record->save_path = text_or_empty(&file, "save");
@@ -105,7 +104,6 @@ bool continue_record_save(const ContinueRecord* record, const char* path)
               settings_file_set(&file, SECTION, "content", record->content_path.c_str()) &&
               settings_file_set(&file, SECTION, "game", record->game_name.c_str()) &&
               settings_file_set(&file, SECTION, "core_name", record->core_name.c_str()) &&
-              settings_file_set(&file, SECTION, "system", record->system_name.c_str()) &&
               settings_file_set(&file, SECTION, "state", record->state_path.c_str()) &&
               settings_file_set(&file, SECTION, "picture", record->picture_path.c_str()) &&
               settings_file_set(&file, SECTION, "save", record->save_path.c_str()) &&
