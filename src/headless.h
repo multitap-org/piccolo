@@ -27,11 +27,15 @@ struct Headless
     SDL_Tray* tray = nullptr;      // while on, if the desktop has a tray
     bool      minimized = false;   // no tray: minimized instead of hidden
     bool      back_asked = false;  // SHOW PICCOLO / PLAY HERE AGAIN (set by the tray's callbacks)
+    bool      seen_minimized = false;   // no tray: the window was seen minimized (the minimize is asynchronous)
 };
 
 // Hides the window behind a tray icon (or minimizes it). `icon` is one PNG of
 // the app's icon; `show` / `play_here` / `tooltip` are the tray's texts.
 void headless_enter(Headless* headless, SDL_Window* window, uint32_t peer, const AppShellIcon* icon,
                     const char* tooltip, const char* show, const char* play_here);
+// No tray: true once the user restored the minimized window (taskbar), which
+// is the way back there. False with a tray, and until the minimize has taken effect.
+bool headless_window_restored(Headless* headless, SDL_Window* window);
 // Shows the window again and removes the tray icon.
 void headless_leave(Headless* headless, SDL_Window* window);

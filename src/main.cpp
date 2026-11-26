@@ -193,6 +193,7 @@ struct App
     bool       net_load_waiting = false; // a load_request is in pending_start: answered once it ran
     uint32_t   net_load_peer = NET_NO_PEER;
     uint32_t   net_load_id = 0;
+    bool       net_load_refused = false; // SAFE START was closed (maybe under the lock): the main loop answers the load
     NetRemote  net_remote = {};          // settings and actions from devices (net_remote.h)
     bool       net_remote_ready = false;
     // PAUSE WHEN CONTROLLERS DISCONNECT: what played last, and the pause it set.
@@ -225,6 +226,8 @@ struct App
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
+    char       net_guest_name[NET_MAX_PEERS][NET_GUEST_MAX_NAME + 1] = {};   // each guest's name: `closed` comes after
+                                                                              // the peer was reset, with no name
     NetRemoteGame net_actions_sent;      // what the action lists last said (sent again when it changes)
     uint64_t   net_controllers_sent[NET_MAX_PEERS] = {};   // a summary of the controllers each device was last sent
     bool       net_devices_wanted[NET_MAX_PEERS] = {};     // asked for `devices` once: gets it again on changes
@@ -944,10 +947,10 @@ static void save_state_on_exit(App* app)
         {
             record.saved = ContinueSaved::no_states;
         }
-        else if (host_fs_write_file(path, state.data(), size))
+        else if (host_fs_write_file(path, state.data(), state.size()))   // what the host filled, not the size asked before
         {
             record.saved = ContinueSaved::state;
-            SDL_Log("Save state on exit: %s (%zu bytes)", path, size);
+            SDL_Log("Save state on exit: %s (%zu bytes)", path, state.size());
         }
         else
         {
@@ -1406,6 +1409,7 @@ static void toggle_user_pause(App* app)
 // (UI modes, further down.)
 static UiDerived app_derive(const App* app);
 static void ui_follow_changes(App* app);
+static void shader_check_end_for_game(App* app);
 
 // The game pauses for the causes ui_derive() finds (ui_mode.h), and its
 // queued audio is dropped so resuming doesn't play stale sound.
@@ -1599,6 +1603,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     bool resume = !app->resume_skip && !app->safe_start_confirmed && !after_crash;
     app->resume_skip = false;
     app->safe_start_confirmed = false;
+    shader_check_end_for_game(app);   // while the previous game's settings are current
     if (game_running(app))
     {
         save_state_on_exit(app);   // the previous game, in its own settings' layer
@@ -1752,7 +1757,8 @@ static void share_folder_paths(const App* app, NetShareFolderPaths* paths)
     paths->screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
     paths->config = app->paths.settings;
     paths->config_refused = {"piccolo.cfg",        "recent.cfg",      "last_used.cfg",   "imgui.ini",   "continue.cfg",
-                             "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig"};
+                             "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig", "running.cfg",
+                             "frame_delay.cfg"};
     // The default screenshots folder is made by the first screenshot; made
     // here too, so SCREENSHOTS is offered (and can receive) before that, like
     // SAVES and STATES. A folder of the user's that isn't there (a drive not
@@ -2026,6 +2032,10 @@ static void app_open_widget(App* app, UiWidget widget);
 // QUICK SAVE / QUICK LOAD: the quick slot, whatever slot is selected.
 static bool quick_save(App* app)
 {
+    if (!game_running(app))
+    {
+        return false;   // report_session would show the session's last message
+    }
     uint32_t selected = app->session.state_slot;
     app->session.state_slot = QUICK_SLOT;
     bool saved = save_state_with_thumbnail(app);
@@ -2036,6 +2046,10 @@ static bool quick_save(App* app)
 
 static bool quick_load(App* app)
 {
+    if (!game_running(app))
+    {
+        return false;
+    }
     uint32_t selected = app->session.state_slot;
     app->session.state_slot = QUICK_SLOT;
     bool loaded = load_state_keeping_undo(app);
@@ -2079,6 +2093,10 @@ static bool hard_reset(App* app)
 // worked too (a hotkey's or a device's; the menus show it themselves).
 static void save_state_from(App* app, bool announce)
 {
+    if (!game_running(app))
+    {
+        return;   // nothing to save; the session's last message is not about this
+    }
     bool saved = save_state_with_thumbnail(app);
     if (saved)
     {
@@ -2089,6 +2107,10 @@ static void save_state_from(App* app, bool announce)
 
 static void load_state_from(App* app, bool announce)
 {
+    if (!game_running(app))
+    {
+        return;   // as save_state_from
+    }
     bool loaded = load_state_keeping_undo(app);
     if (loaded)
     {
@@ -2544,6 +2566,18 @@ static void shader_check_answer(App* app, ShaderCheckChoice choice)
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Shader preset too slow: reverted");
 }
 
+// The running game ends or is replaced: the question can't outlive it. This
+// must come BEFORE update_settings_context switches the core and game layers,
+// or the revert would write the old preset into the new game's settings
+// (widget_left's own revert then finds the check stopped and does nothing).
+static void shader_check_end_for_game(App* app)
+{
+    if (shader_check_asking(app))
+    {
+        shader_check_answer(app, ShaderCheckChoice::revert);
+    }
+}
+
 // Once per loop that ran core frames: times the loop for the check. The
 // target is a display refresh in Vsync timing (each loop presents one), a
 // core frame in Exact. Fast forward is fast on purpose: not a sample.
@@ -2668,10 +2702,9 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::safe_start:
             app->safe_start_open = false;   // no answer: the game doesn't start
-            if (app->net_load_waiting && !app->has_pending_start)
-            {
-                net_answer_load(app, NetContentStatus::failed);
-            }
+            // This can run with the network lock held, and answering takes it:
+            // the main loop answers (net_answer_load_refused).
+            app->net_load_refused = true;
             break;
         case UiWindow::debug:
             app->show_debug_window = false;
@@ -3614,7 +3647,6 @@ static void handle_links(App* app)
     std::string link;
     while (app_links_next(&app->links, &link))
     {
-        SDL_Log("Link: %s", link.c_str());
         SDL_RaiseWindow(app->shell.window);
         // A guest link (piccolo://join/...): guests play in piccoletto; piccolo
         // has no player of its own yet (it may get one), so it only says so
@@ -3624,10 +3656,34 @@ static void handle_links(App* app)
         if (net_guest_link_parse(link.c_str(), &guest, beacon, sizeof(beacon)))
         {
             net_guest_link_wipe(&guest);
+            SDL_Log("Link: a guest link arrived");   // its payload carries the guest token: never logged
             set_status(app, piccolo_text(&app->strings, Str::status_guest_link));
             continue;
         }
-        std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " + link;
+        // A join link that didn't parse may still hold a token: only its
+        // scheme and host are shown or logged. Any other link is logged cut at
+        // the query / fragment and at a sane length.
+        std::string shown = link;
+        bool join_link = link.compare(0, 14, "piccolo://join") == 0;
+        if (join_link)
+        {
+            shown = link.substr(0, 14);   // "piccolo://join"
+        }
+        else
+        {
+            size_t cut = shown.find_first_of("?#");
+            if (cut != std::string::npos)
+            {
+                shown.resize(cut);
+            }
+            if (shown.size() > 200)
+            {
+                shown.resize(200);
+            }
+        }
+        SDL_Log("Link: %s", shown.c_str());
+        std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " +
+                           (join_link ? shown : link);
         set_status(app, text.c_str());
     }
 }
@@ -4577,7 +4633,9 @@ static void net_send_game_state(App* app, uint32_t peer)
                                         app->net_sent_content.c_str());
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
-        if ((peer == NET_NO_PEER || peer == i) && app->net_service.access.peers[i].state == NetAccessPeerState::authorized)
+        // A guest hears what runs too (net_access_send lets game_state through to it).
+        NetAccessPeerState state = app->net_service.access.peers[i].state;
+        if ((peer == NET_NO_PEER || peer == i) && (state == NetAccessPeerState::authorized || state == NetAccessPeerState::guest))
         {
             net_access_send(&app->net_service.access, i, NetChannel::control, app->net_games.reply.data(), size);
         }
@@ -5492,6 +5550,16 @@ static void net_answer_load(App* app, NetContentStatus status)
     net_service_unlock(&app->net_service);
 }
 
+// A load_request whose start was refused (SAFE START closed without starting):
+// answered failed, unless another start is on its way. Outside the lock.
+static void net_answer_load_refused(App* app)
+{
+    if (app->net_load_waiting && !app->has_pending_start)
+    {
+        net_answer_load(app, NetContentStatus::failed);   // not started after all
+    }
+}
+
 // A control message from a paired device (net_games.h). Folders and cores
 // are read when asked, never every frame.
 static void net_games_message(App* app, const NetAccessEvent* event, const char* device)
@@ -5608,6 +5676,36 @@ static void net_start(App* app)
     app->net_share_set = false;        // and its shared folders
 }
 
+// What a peer slot keeps in App: gone with the device (`closed`, net_stop), and
+// cleared again when a new one takes the slot (a lost `closed` leaves it behind).
+// Only plain state: what needs the lock or the network stays with the caller.
+static void net_peer_forget(App* app, uint32_t peer)
+{
+    if (peer >= NET_MAX_PEERS)
+    {
+        return;
+    }
+    if (app->net_speed_sender.peer == peer)
+    {
+        app->net_speed_sender.active = false;   // its test ends with it
+        app->net_speed_reporting = false;
+    }
+    if (app->net_speed_receiver.peer == peer)
+    {
+        app->net_speed_receiver.active = false;
+    }
+    app->stream_tuning_set[peer] = false;   // what it asked for
+    app->net_fast_forward[peer] = false;    // a dropped device doesn't keep it held
+    app->net_peer_language[peer][0] = '\0';
+    app->net_devices_wanted[peer] = false;
+    app->net_guest_name[peer][0] = '\0';
+    if (app->net_load_waiting && app->net_load_peer == peer)
+    {
+        app->net_load_waiting = false;   // the game still starts; nobody to tell
+    }
+    input_net_peer_gone(&app->input_net, &app->input, peer);
+}
+
 static void net_stop(App* app)
 {
     if (app->net_running)
@@ -5617,8 +5715,12 @@ static void net_stop(App* app)
         net_service_unlock(&app->net_service);
         for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
         {
-            input_net_peer_gone(&app->input_net, &app->input, peer);   // their pads are unplugged
+            net_peer_forget(app, peer);   // their pads are unplugged, their state dropped
         }
+        // net_update stops looking at these once the network is off.
+        app->net_streaming = false;
+        app->session.capture_audio = false;
+        app->stream_tuning_on = false;
         net_service_stop(&app->net_service);
         app->net_running = false;
         // A pairing request (it pauses the game) or our code's wait can't be
@@ -5711,7 +5813,9 @@ static void net_update_locked(App* app)
 {
     guest_update_locked(app);
     // GO HEADLESS ends from the tray, or when no game runs any more.
-    if (app->headless.on && (app->headless.back_asked || !game_running(app)))
+    // (Without a tray the taskbar restoring the window asks as well.)
+    if (app->headless.on &&
+        (app->headless.back_asked || !game_running(app) || headless_window_restored(&app->headless, app->shell.window)))
     {
         headless_back(app, false);
         headless_tell(app);
@@ -5737,9 +5841,16 @@ static void net_update_locked(App* app)
         {
             device = guest->guest_name;
         }
+        else if (event.guest && event.peer < NET_MAX_PEERS && app->net_guest_name[event.peer][0] != '\0')
+        {
+            device = app->net_guest_name[event.peer];   // already reset: the name kept at guest_joined
+        }
         switch (event.type)
         {
         case NetAccessEventType::authorized:
+            // First: a lost `closed` must not leave the previous device's state to this one.
+            net_peer_forget(app, event.peer);
+            net_service_set_stream(&app->net_service, event.peer, 0);
             SDL_Log("Network: \"%s\" connected from %s", device, address);
             net_send_game_state(app, event.peer);   // what runs, from the start
             net_send_actions(app, event.peer, 0);
@@ -5747,6 +5858,8 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::paired:
         {
+            net_peer_forget(app, event.peer);   // as at `authorized`: this slot's new device
+            net_service_set_stream(&app->net_service, event.peer, 0);
             // PAIRED WITH: the window says it when it's open; a card only
             // when it's closed (the player went back to the game meanwhile).
             if (!app->pair_window.open)
@@ -5774,39 +5887,16 @@ static void net_update_locked(App* app)
                 headless_back(app, true);   // the device that had the game left
                 headless_tell(app);
             }
-            if (event.peer < NET_MAX_PEERS && app->net_speed_sender.peer == event.peer)
-            {
-                app->net_speed_sender.active = false;   // its test ends with it
-                app->net_speed_reporting = false;
-            }
-            if (event.peer < NET_MAX_PEERS && app->net_speed_receiver.peer == event.peer)
-            {
-                app->net_speed_receiver.active = false;
-            }
             net_service_set_stream(&app->net_service, event.peer, 0);   // its stream ends with it
-            if (event.peer < NET_MAX_PEERS)
-            {
-                app->stream_tuning_set[event.peer] = false;   // and what it asked for
-            }
-            if (event.peer < NET_MAX_PEERS)
-            {
-                app->net_fast_forward[event.peer] = false;   // a dropped device doesn't keep it held
-                app->net_peer_language[event.peer][0] = '\0';
-                app->net_devices_wanted[event.peer] = false;
-            }
-            if (app->net_load_waiting && app->net_load_peer == event.peer)
-            {
-                app->net_load_waiting = false;   // the game still starts; nobody to tell
-            }
             SDL_Log("Network: \"%s\" disconnected", device);
             if (event.guest)
             {
                 char status[128];
                 std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_left),
-                              guest != nullptr ? guest->guest_name : event.info.name);
+                              std::strcmp(device, "?") != 0 ? device : event.info.name);
                 set_status(app, status);
             }
-            input_net_peer_gone(&app->input_net, &app->input, event.peer);
+            net_peer_forget(app, event.peer);
             break;
         case NetAccessEventType::pairing_failed:
             // PAIRING FAILED is the pairing window's own notice (in it, or its card in the game).
@@ -5832,6 +5922,15 @@ static void net_update_locked(App* app)
         case NetAccessEventType::guest_joined:
         {
             // A guest from the link: what runs at once (it starts the stream itself).
+            // First: a lost `closed` must not leave the previous device's state to this guest.
+            net_peer_forget(app, event.peer);
+            net_service_set_stream(&app->net_service, event.peer, 0);
+            if (event.peer < NET_MAX_PEERS)
+            {
+                // "%.*s": a hello's name may be longer than a guest's; cut, not a warning.
+                std::snprintf(app->net_guest_name[event.peer], sizeof(app->net_guest_name[event.peer]), "%.*s",
+                              static_cast<int>(NET_GUEST_MAX_NAME), guest != nullptr ? guest->guest_name : event.info.name);
+            }
             SDL_Log("Network: guest \"%s\" joined from %s", event.info.name, address);
             char status[128];
             std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_joined), event.info.name);
@@ -6758,6 +6857,18 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         {
             guest_end(app, access);
         }
+        if (access != nullptr && actions->guest.level_changed && access->guest_level == NetGuestLevel::watch)
+        {
+            // Now WATCH: net_access drops the guests' input, so no release would
+            // ever come; their pads are unplugged here.
+            for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
+            {
+                if (access->peers[i].state == NetAccessPeerState::guest)
+                {
+                    input_net_peer_gone(&app->input_net, &app->input, i);
+                }
+            }
+        }
         if (access != nullptr)
         {
             net_service_unlock(&app->net_service);
@@ -6802,10 +6913,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         if (answer.closed)
         {
             app->safe_start_open = false;
-            if (app->net_load_waiting && !app->has_pending_start)
-            {
-                net_answer_load(app, NetContentStatus::failed);   // not started after all
-            }
+            net_answer_load_refused(app);
         }
     }
     if (view->shader_check_shown && actions->shader_check != ShaderCheckChoice::none)
@@ -6845,6 +6953,7 @@ static bool app_frame(App* app)
     if (app->pending_close_game)
     {
         app->pending_close_game = false;
+        shader_check_end_for_game(app);   // before the settings context changes
         save_core_options(app);
         save_state_on_exit(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
@@ -6864,6 +6973,11 @@ static bool app_frame(App* app)
         {
             net_answer_load(app, started ? NetContentStatus::ok : NetContentStatus::failed);
         }
+    }
+    if (app->net_load_refused)
+    {
+        app->net_load_refused = false;
+        net_answer_load_refused(app);
     }
     update_pause(app);
     if (app->quick_slot_stale)
@@ -6990,6 +7104,7 @@ static bool app_frame(App* app)
     }
     if (ran == CoreSessionFrame::shut_down)
     {
+        shader_check_end_for_game(app);   // before the settings context changes
         set_status(app, app->session.message);
         ui_game_stopped(&app->ui);
         ui_follow_changes(app);
