@@ -11,6 +11,8 @@
 //   ☰        a sidebar from the right with the menu bar's menus (the same
 //            RetroUiMenu data main.cpp builds for the bar, so items show,
 //            grey and hide by the same rules), RECENT left out: it is HOME.
+//            First the menus' names (GAME, SETTINGS, TOOLS, MISC); tapping
+//            one shows its items, with ◀ back to the names.
 //            Over a paused game (MAIN MENU with a game, nothing open) it is
 //            always up, RESUME first; a tap outside or › goes back to the game.
 //
@@ -31,9 +33,10 @@
 
 struct MobileHome
 {
-    bool  menu_open   = false;   // the ☰ sidebar over HOME
-    float scroll      = 0.0f;    // HOME's list, retro pixels
-    float menu_scroll = 0.0f;    // the sidebar's
+    bool    menu_open   = false;   // the ☰ sidebar over HOME
+    int32_t submenu     = 0;       // 0: the menus' names; else the menu open (its index in the menus)
+    float   scroll      = 0.0f;    // HOME's list, retro pixels
+    float   menu_scroll = 0.0f;    // the sidebar's
 };
 
 // A recent game's two lines.
@@ -66,6 +69,8 @@ struct MobileHomeAction
     bool    rotate = false;                // the header's ROTATE
     bool    open_menu = false;             // the header's ☰
     bool    close_menu = false;            // ›, a tap outside, RESUME
+    int32_t open_submenu = 0;              // a menu's name tapped: its index
+    bool    submenu_back = false;          // ◀ in the sidebar's header: back to the names
 };
 
 // Draws HOME and the sidebar, each when shown. `scale`: the touch scale
@@ -73,5 +78,7 @@ struct MobileHomeAction
 void mobile_home_draw(MobileHome* home, const MobileHomeState* state, RetroUiFont* pixel_font, int32_t scale,
                       MobileHomeAction* action);
 
-// The sidebar opens with ☰ and closes with any pick or close.
-void mobile_home_apply(MobileHome* home, const MobileHomeAction* action);
+// The sidebar opens with ☰ and closes with any pick or close; a menu's name
+// opens its items, ◀ goes back. `menu_shown`: the sidebar was drawn this
+// frame (it opens on the names again next time).
+void mobile_home_apply(MobileHome* home, const MobileHomeAction* action, bool menu_shown);

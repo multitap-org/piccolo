@@ -1,6 +1,7 @@
 #include "file_picker.h"
 
 #include <algorithm>   // std::sort (the names)
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -580,9 +581,20 @@ void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiF
         retro_ui_row_end(&folder_row);
 
         // Files (left) and folders (right), leaving room for two rows below.
+        // A phone held upright: files above, folders under them, each the
+        // whole width (side by side the folders' names were cut).
         float row = retro_ui_line_step();
         float list_height = retro_ui_height_left() - row * 2.0f;
         float files_width = retro_ui_width_left() * 0.62f;
+        bool upright = retro_ui_page_upright();
+        float folders_height = list_height;
+        if (upright && !choosing_folder)
+        {
+            // (A row's height goes to the gap between them.)
+            folders_height = std::floor((list_height - row) * 0.4f);
+            list_height = list_height - row - folders_height;
+            files_width = 0.0f;   // the whole width
+        }
 
         if (!choosing_folder)   // folders only: the whole width
         {
@@ -613,9 +625,12 @@ void file_picker_draw(FilePicker* picker, const FilePickerState* state, RetroUiF
                 retro_ui_dim_text(piccolo_text(strings, Str::picker_nothing_here), nullptr);
             }
             retro_ui_end_list();
-            retro_ui_same_line();
+            if (!upright)
+            {
+                retro_ui_same_line();
+            }
         }
-        retro_ui_begin_list("folders", 0.0f, list_height);
+        retro_ui_begin_list("folders", 0.0f, folders_height);
         retro_ui_push_id("parent");
         if (retro_ui_list_item(0, "..", false, nullptr))
         {

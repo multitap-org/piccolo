@@ -66,6 +66,26 @@ static void drag_scroll(const TouchUi* ui, const char* id, float x, float y, flo
     *scroll = *scroll < 0.0f ? 0.0f : (*scroll > most ? most : *scroll);
 }
 
+// The keyboard's or gamepad's focus kept in view in a scrolled list: the
+// focused row was drawn at `focus` this frame; the scroll moves for the next.
+static void keep_focus_in_view(const TouchFocus* focus, float top, float height, float* scroll)
+{
+    if (!focus->has)
+    {
+        return;
+    }
+    float row_top = focus->y - ROW_GAP;
+    float row_bottom = focus->y + focus->height + ROW_GAP;
+    if (row_top < top)
+    {
+        *scroll -= top - row_top;
+    }
+    else if (row_bottom > top + height)
+    {
+        *scroll += row_bottom - (top + height);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // HOME
 
@@ -114,6 +134,11 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
     float column_width = std::floor((width - static_cast<float>(columns - 1) * ROW_GAP) / static_cast<float>(columns));
     int32_t rows = (state->game_count + columns - 1) / columns;
     float content = static_cast<float>(rows) * (GAME_ROW + ROW_GAP);
+    // Every row is submitted, the ones scrolled away too (clipped), so the
+    // keyboard and gamepad can move onto them; the list follows the focus.
+    TouchFocus focus;
+    TouchUi list_ui = *ui;
+    list_ui.focus = &focus;
     touch_ui_push_clip(ui, x, y, width, height);
     for (int32_t i = 0; i < state->game_count; i++)
     {
@@ -121,15 +146,12 @@ static void draw_games(MobileHome* home, const TouchUi* ui, const MobileHomeStat
         int32_t row = i / columns;
         float row_x = x + static_cast<float>(column) * (column_width + ROW_GAP);
         float row_y = y + static_cast<float>(row) * (GAME_ROW + ROW_GAP) - home->scroll;
-        if (row_y + GAME_ROW < y || row_y > y + height)
-        {
-            continue;   // scrolled away
-        }
-        if (draw_game(ui, &state->games[i], i, row_x, row_y, column_width))
+        if (draw_game(&list_ui, &state->games[i], i, row_x, row_y, column_width))
         {
             action->picked = state->first_game_id + i;
         }
     }
+    keep_focus_in_view(&focus, y, height, &home->scroll);
     drag_scroll(ui, "##games_scroll", x, y, width, height, content, &home->scroll);
     touch_ui_pop_clip();
 }
@@ -193,34 +215,32 @@ static void draw_home(MobileHome* home, const TouchUi* ui, const MobileHomeState
 }
 
 // ---------------------------------------------------------------------------
-// The ☰ sidebar
+// The ☰ sidebar: the menus' names, then one menu's items (Andrés,
+// 2026-11-25: "tap on game you get on the game menu and a back button to go
+// back to the list")
 
-// A menu's height in the sidebar: its name and its items (separators are a gap).
-static float menu_height(const TouchUi* ui, const RetroUiMenu* menu)
+// A row with a name and ▶ at its right: opens that menu's items.
+static bool draw_menu_row(const TouchUi* ui, const char* id, const char* label, float x, float y, float width)
 {
-    float height = SECTION_GAP + touch_ui_text_height(ui, TouchText::normal) + 4.0f;
-    for (int32_t i = 0; i < menu->item_count; i++)
-    {
-        height += menu->items[i].id == RETRO_UI_MENU_SEPARATOR ? ROW_GAP : MENU_ROW + ROW_GAP;
-    }
-    return height;
+    bool tapped = touch_ui_button(ui, id, x, y, width, MENU_ROW, label, TouchButton::card, TouchText::normal);
+    float arrow_width = touch_ui_text_width(ui, PIXEL_FONT_UTF8_ARROW_RIGHT, TouchText::normal);
+    touch_ui_text(ui, x + width - CARD_PADDING - arrow_width, touch_ui_centered_text_y(ui, y, MENU_ROW, TouchText::normal),
+                  PIXEL_FONT_UTF8_ARROW_RIGHT, ui->palette.text_disabled, TouchText::normal);
+    return tapped;
 }
 
-// One menu: its name, then a row per item; a greyed item is drawn dim and
-// takes no taps. Returns the picked id (RETRO_UI_MENU_NONE: none).
-static int32_t draw_menu(const TouchUi* ui, const RetroUiMenu* menu, int32_t menu_index, float x, float y, float width)
+// One menu's items, a row each; a greyed item is drawn dim and takes no
+// taps; separators are a gap. Returns the y under them; *picked the tapped
+// item's id.
+static float draw_menu_items(const TouchUi* ui, const RetroUiMenu* menu, float x, float y, float width, int32_t* picked)
 {
     const RetroUiPalette* palette = &ui->palette;
-    int32_t picked = RETRO_UI_MENU_NONE;
-    y += SECTION_GAP;
-    touch_ui_text(ui, x + 2.0f, y, menu->label, palette->text_disabled, TouchText::normal);
-    y += touch_ui_text_height(ui, TouchText::normal) + 4.0f;
     for (int32_t i = 0; i < menu->item_count; i++)
     {
         const RetroUiMenuItem* item = &menu->items[i];
         if (item->id == RETRO_UI_MENU_SEPARATOR)
         {
-            y += ROW_GAP;
+            y += SECTION_GAP;
             continue;
         }
         char label[200];
@@ -233,16 +253,16 @@ static int32_t draw_menu(const TouchUi* ui, const RetroUiMenu* menu, int32_t men
         }
         else
         {
-            char id[48];
-            std::snprintf(id, sizeof(id), "##menu%d_%d", static_cast<int>(menu_index), static_cast<int>(i));
+            char id[32];
+            std::snprintf(id, sizeof(id), "##item%d", static_cast<int>(i));
             if (touch_ui_button(ui, id, x, y, width, MENU_ROW, label, TouchButton::card, TouchText::normal))
             {
-                picked = item->id;
+                *picked = item->id;
             }
         }
         y += MENU_ROW + ROW_GAP;
     }
-    return picked;
+    return y;
 }
 
 static void draw_sidebar(MobileHome* home, const TouchUi* ui, const MobileHomeState* state, MobileHomeAction* action)
@@ -253,6 +273,7 @@ static void draw_sidebar(MobileHome* home, const TouchUi* ui, const MobileHomeSt
     bool wide = landscape(ui);
     float side_width = std::floor(width * (wide ? MENU_WIDTH_LANDSCAPE : MENU_WIDTH_PORTRAIT));
     float side_x = width - side_width;
+    int32_t open = home->submenu > 0 && home->submenu < state->menu_count ? home->submenu : 0;
 
     // The rest of the screen dimmed: a tap there closes it.
     bool held = false;
@@ -263,10 +284,23 @@ static void draw_sidebar(MobileHome* home, const TouchUi* ui, const MobileHomeSt
     touch_ui_rect(ui, 0.0f, 0.0f, side_x, height, 0x99000000u);
     touch_ui_rect(ui, side_x, 0.0f, side_width, height, palette->background);
 
-    // Its header where the screen's is: MENU, › at the right.
+    // Its header where the screen's is: MENU, or ◀ and the open menu's name;
+    // › at the right closes it.
     float header_y = touch_header_y(ui);
-    touch_ui_text(ui, side_x + MARGIN + 4.0f, touch_ui_centered_text_y(ui, header_y, TOUCH_HEADER_ICON, TouchText::big),
-                  piccolo_text(state->strings, Str::mobile_menu), palette->text_highlight, TouchText::big);
+    float title_x = side_x + MARGIN + 4.0f;
+    const char* title = piccolo_text(state->strings, Str::mobile_menu);
+    if (open > 0)
+    {
+        if (touch_ui_button(ui, "##menu_back", side_x + MARGIN - 2.0f, header_y, TOUCH_HEADER_ICON, TOUCH_HEADER_ICON,
+                            PIXEL_FONT_UTF8_ARROW_LEFT, TouchButton::plain, TouchText::big))
+        {
+            action->submenu_back = true;
+        }
+        title_x = side_x + MARGIN + TOUCH_HEADER_ICON + 2.0f;
+        title = state->menus[open].label;
+    }
+    touch_ui_text(ui, title_x, touch_ui_centered_text_y(ui, header_y, TOUCH_HEADER_ICON, TouchText::big), title,
+                  palette->text_highlight, TouchText::big);
     if (touch_header_icon(ui, "##menu_close", 0, 1, PIXEL_FONT_UTF8_ARROW_RIGHT))
     {
         action->close_menu = true;
@@ -274,41 +308,52 @@ static void draw_sidebar(MobileHome* home, const TouchUi* ui, const MobileHomeSt
 
     float top = touch_header_bottom(ui) + 4.0f;
     float list_height = height - top;
-    float inner_x = side_x + MARGIN;
-    float inner_width = side_width - 2.0f * MARGIN;
+    float x = side_x + MARGIN;
+    float row_width = side_width - 2.0f * MARGIN;
     touch_ui_push_clip(ui, side_x, top, side_width, list_height);
-    float y = top - home->menu_scroll;
+    float y = top + SECTION_GAP - home->menu_scroll;
+    // The keyboard's or gamepad's focus: the list scrolls to keep it in view.
+    TouchFocus focus;
+    TouchUi list_ui = *ui;
+    list_ui.focus = &focus;
 
-    // Over a paused game: back to it first (the pad is hidden while the menu
-    // is up; Andrés, 2026-11-25: "no way to show it again").
-    if (state->menu_in_game)
+    if (open == 0)
     {
-        if (touch_ui_button(ui, "##menu_resume", inner_x, y, inner_width, MAIN_BUTTON,
-                            piccolo_text(state->strings, Str::menu_resume), TouchButton::primary, TouchText::big))
+        // Over a paused game: back to it first (the pad is hidden while the
+        // menu is up; Andrés, 2026-11-25: "no way to show it again"), a row
+        // like the others in the highlight color.
+        if (state->menu_in_game)
         {
-            action->close_menu = true;
+            if (touch_ui_button(&list_ui, "##menu_resume", x, y, row_width, MENU_ROW,
+                                piccolo_text(state->strings, Str::menu_resume), TouchButton::primary, TouchText::normal))
+            {
+                action->close_menu = true;
+            }
+            y += MENU_ROW + SECTION_GAP;
         }
-        y += MAIN_BUTTON;
+        // The menus by name, RECENT left out (it is HOME).
+        for (int32_t m = 1; m < state->menu_count; m++)
+        {
+            char id[32];
+            std::snprintf(id, sizeof(id), "##menu%d", static_cast<int>(m));
+            if (draw_menu_row(&list_ui, id, state->menus[m].label, x, y, row_width))
+            {
+                action->open_submenu = m;
+            }
+            y += MENU_ROW + ROW_GAP;
+        }
     }
-
-    // The menus, RECENT left out (HOME). Sideways in two columns, each menu
-    // into the shorter one.
-    int32_t columns = wide ? 2 : 1;
-    float column_width = std::floor((inner_width - static_cast<float>(columns - 1) * MARGIN) / static_cast<float>(columns));
-    float column_y[2] = {y, y};
-    for (int32_t m = 1; m < state->menu_count; m++)
+    else
     {
-        int32_t column = (columns == 2 && column_y[1] < column_y[0]) ? 1 : 0;
-        float x = inner_x + static_cast<float>(column) * (column_width + MARGIN);
-        int32_t picked = draw_menu(ui, &state->menus[m], m, x, column_y[column], column_width);
+        int32_t picked = RETRO_UI_MENU_NONE;
+        y = draw_menu_items(&list_ui, &state->menus[open], x, y, row_width, &picked);
         if (picked != RETRO_UI_MENU_NONE)
         {
             action->picked = picked;
         }
-        column_y[column] += menu_height(ui, &state->menus[m]);
     }
-    float bottom = column_y[0] > column_y[1] ? column_y[0] : column_y[1];
-    float content = bottom + home->menu_scroll - top + MARGIN;
+    float content = y + home->menu_scroll - top + MARGIN;
+    keep_focus_in_view(&focus, top, list_height, &home->menu_scroll);
     drag_scroll(ui, "##menu_scroll", side_x, top, side_width, list_height, content, &home->menu_scroll);
     touch_ui_pop_clip();
 }
@@ -341,15 +386,32 @@ void mobile_home_draw(MobileHome* home, const MobileHomeState* state, RetroUiFon
     }
 }
 
-void mobile_home_apply(MobileHome* home, const MobileHomeAction* action)
+void mobile_home_apply(MobileHome* home, const MobileHomeAction* action, bool menu_shown)
 {
     if (action->open_menu)
     {
         home->menu_open = true;
         home->menu_scroll = 0.0f;
     }
+    if (action->open_submenu > 0)
+    {
+        home->submenu = action->open_submenu;
+        home->menu_scroll = 0.0f;
+    }
+    if (action->submenu_back)
+    {
+        home->submenu = 0;
+        home->menu_scroll = 0.0f;
+    }
     if (action->close_menu || action->picked != RETRO_UI_MENU_NONE)
     {
         home->menu_open = false;
+    }
+    // It opens on the menus' names every time.
+    bool closed = action->close_menu || action->picked != RETRO_UI_MENU_NONE;
+    if (!menu_shown || closed)
+    {
+        home->submenu = 0;
+        home->menu_scroll = 0.0f;
     }
 }

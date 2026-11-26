@@ -389,7 +389,12 @@ void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* act
     closed = closed || (is_guest(previews->shown) && !previews->guest.open);
     closed = closed || (previews->shown == DebugPreview::about && actions->about.closed);
     closed = closed || (previews->shown == DebugPreview::quick_menu && actions->quick.closed);
-    // The phone's: ☰ on HOME moves on to the sidebar; any other tap ends it.
+    // The phone's: ☰ on HOME moves on to the sidebar, a menu's name opens
+    // its items, ◀ goes back; any other tap ends it.
+    if (is_phone(previews->shown))
+    {
+        mobile_home_apply(&previews->phone, &actions->phone, previews->shown == DebugPreview::phone_menu);
+    }
     if (is_phone(previews->shown) && actions->phone.open_menu)
     {
         previews->shown = DebugPreview::phone_menu;

@@ -2705,7 +2705,14 @@ static void ui_do_back(App* app)
     // closes before the window, while it's the top one.
     bool sub_view = ui_top_window(&app->ui) == UiWindow::core_config &&
                     (app->shader_picker.open || core_config_window_sub_view(&app->core_config));
-    // The phone's ☰ over HOME closes first (over a game, back goes to the game below).
+    // The phone's ☰: from a menu's items back to the names; then over HOME
+    // it closes (over a game, back goes to the game below).
+    if (app->phone_ui && app->ui.window_count == 0 && app->mobile_home.submenu > 0)
+    {
+        app->mobile_home.submenu = 0;
+        app->mobile_home.menu_scroll = 0.0f;
+        return;
+    }
     if (app->phone_ui && app->mobile_home.menu_open && app->ui.window_count == 0)
     {
         app->mobile_home.menu_open = false;
@@ -3497,12 +3504,12 @@ static void prepare_game_picture(App* app, UiView* view)
         input.window_height -= static_cast<uint32_t>(strip);
     }
     piccolo_settings_viewport(&app->settings, &input);
-    // A phone held upright: the picture always at the top left, menu up or
-    // not (Andrés, 2026-11-25: opening the menu hid the pad and the picture
-    // moved to the middle).
+    // A phone held upright: the picture always at the top, centered, menu up
+    // or not (Andrés, 2026-11-25: opening the menu hid the pad and the picture
+    // moved to the middle; the top left corner looked lost).
     if (app->phone_ui && screen_height > screen_width)
     {
-        input.anchor = ViewportAnchor::top_left;
+        input.anchor = ViewportAnchor::top;
     }
 
     update_shader_stages(app, input.filter);
@@ -5886,7 +5893,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     if (view->phone)
     {
         const MobileHomeAction* phone = &actions->mobile_home;
-        mobile_home_apply(&app->mobile_home, phone);
+        mobile_home_apply(&app->mobile_home, phone, view->mobile_home.menu_shown);
         if (phone->rotate)
         {
             piccolo_window_rotate(app->shell.window);
@@ -6450,7 +6457,7 @@ int main(int argc, char** argv)
     // phone-shaped window with HOME, ☰ and the windows as pages (Android
     // always has them); --landscape turns it on its side (ROTATE does too).
     // --menu NAME runs a menu item at start, by its log name (menus.cpp:
-    // "SOUND", "LOAD GAME"); --phone-menu opens ☰. For trying screens out.
+    // SOUND, LOAD_GAME); --phone-menu opens ☰. For trying screens out.
     bool landscape = false;
     const char* start_menu = nullptr;
     for (int i = 1; i < argc; i++)
@@ -6648,11 +6655,18 @@ int main(int argc, char** argv)
 
     if (start_menu != nullptr)
     {
+        // "LOAD_GAME" works as "LOAD GAME" (no quotes needed in a shell).
+        char wanted[64] = {};
+        std::snprintf(wanted, sizeof(wanted), "%s", start_menu);
+        for (size_t i = 0; wanted[i] != '\0'; i++)
+        {
+            wanted[i] = wanted[i] == '_' ? ' ' : wanted[i];
+        }
         bool found = false;
         for (int32_t i = 0; i <= static_cast<int32_t>(MenuAction::separator); i++)
         {
             MenuAction action = static_cast<MenuAction>(i);
-            if (SDL_strcasecmp(menu_action_name(action), start_menu) == 0)
+            if (SDL_strcasecmp(menu_action_name(action), wanted) == 0)
             {
                 handle_menu_action(app, action);
                 found = true;
