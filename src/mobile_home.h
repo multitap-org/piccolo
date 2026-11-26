@@ -34,12 +34,24 @@
 
 #include "retro_ui_font.h"
 
+// A finger dragging a list: it starts on a row (a button) too, and once it
+// has moved a few pixels it scrolls and the row's tap is dropped.
+struct MobileDrag
+{
+    bool  armed    = false;   // pressed inside the list
+    bool  dragging = false;   // moved far enough: scrolling
+    float moved    = 0.0f;    // retro pixels since the press
+};
+
 struct MobileHome
 {
     bool    menu_open   = false;   // the ☰ sidebar over HOME
     int32_t submenu     = 0;       // 0: the menus' names; else the menu open (its index in the menus)
     float   scroll      = 0.0f;    // HOME's list, retro pixels
     float   menu_scroll = 0.0f;    // the sidebar's
+    MobileDrag drag;               // HOME's list
+    int32_t selected = -1;         // the recent game tapped (games[]): its row shows RESUME, which starts it
+    MobileDrag menu_drag;          // the sidebar's
 };
 
 // A recent game's two lines.
@@ -82,10 +94,12 @@ struct MobileHomeAction
     ContinueViewButton continue_pressed = ContinueViewButton::none;   // the CONTINUE card's button
 };
 
-// The CONTINUE card's width on HOME for a screen `width` x `height` (touch
-// retro pixels): upright across the screen, sideways the left half of the
-// games' column (the games at its right).
-float mobile_home_card_width(float width, float height);
+// The CONTINUE card's width on HOME upright, for a screen `width` wide
+// (touch retro pixels).
+float mobile_home_card_width(float width);
+// Sideways: the room for its picture (continue_view_cover_picture_size) on a
+// `width` x `height` screen.
+void mobile_home_cover_box(float width, float height, float* box_width, float* box_height);
 
 // Draws HOME and the sidebar, each when shown. `scale`: the touch scale
 // (touch_ui_scale_for).

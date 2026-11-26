@@ -178,6 +178,12 @@ constexpr const char* PICCOLO_UI_COLOR_TITLE_BOTTOM = "ui_color_title_bottom";
 constexpr const char* PICCOLO_UI_COLOR_CHECK = "ui_color_check";
 constexpr const char* PICCOLO_UI_COLOR_SECTION = "ui_color_section";
 constexpr const char* PICCOLO_UI_THEME_CURSOR = "ui_theme_cursor";
+// The interface theme piccolo.cfg keeps (Andrés, 2026-11-26: the theme, not
+// its colors): "blue", "purple", "zsnes", "black" (the built-in ones), or
+// "file:<name>.cfg" (themes/, shipped or the user's own). The ui_ color,
+// switch and level settings are filled from it at start and never saved:
+// changed by hand they are CUSTOM (UNSAVED) until SAVE THEME.
+constexpr const char* PICCOLO_UI_THEME = "ui_theme";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON = "ui_color_button";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON_BOTTOM = "ui_color_button_bottom";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON_LIGHT = "ui_color_button_light";
@@ -286,6 +292,7 @@ struct PiccoloThemeFile
 {
     std::string    name;
     std::string    path;            // the file it came from
+    std::string    file;            // its name, "gray.cfg": ui_theme is "file:" + this
     bool           custom = false;  // a *-custom.cfg file
     RetroUiPalette palette = {};
 };
@@ -319,6 +326,27 @@ bool piccolo_settings_check_ui_keys(const Settings* settings);
 // doesn't fall back to PICCOLO's inside another theme. Does nothing when no
 // interface setting is saved. True if it set anything.
 bool piccolo_settings_complete_ui_theme(Settings* settings);
+
+// ui_theme's value for a built-in theme and for a theme file.
+std::string piccolo_ui_theme_id(RetroUiTheme theme);
+std::string piccolo_ui_theme_file_id(const PiccoloThemeFile* theme);
+
+// The palette of theme `id` (ui_theme's value). False, and BLUE, when no
+// such theme is there (a file deleted since).
+bool piccolo_ui_theme_palette(const char* id, const std::vector<PiccoloThemeFile>* themes, RetroUiPalette* palette);
+
+// At start, after the theme files are read: the interface settings from the
+// theme ui_theme names. A piccolo.cfg from before ui_theme kept the colors
+// themselves: they name the theme they match (BLUE and PURPLE as they were
+// before buttons got a face of their own count as today's), else they are
+// saved in `themes_directory` as a custom theme, SAVED THEME, and that is
+// the theme from then on.
+void piccolo_settings_start_ui_theme(Settings* settings, std::vector<PiccoloThemeFile>* themes,
+                                     const char* themes_directory);
+
+// Saves piccolo.cfg without the interface's colors, switches and levels (the
+// theme's: ui_theme says which).
+bool piccolo_settings_save(Settings* settings, const char* path);
 
 // The interface color settings in table order, for the Interface tab.
 uint32_t piccolo_settings_ui_color_count();

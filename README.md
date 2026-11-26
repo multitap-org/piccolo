@@ -224,14 +224,17 @@ SETTINGS > INTERFACE sets the look. THEME sets everything at once:
 | BLACK | flat and dark, never a shadow; the menus are the bar's color |
 
 More themes can be added as files: `themes/<name>.cfg`, next to the program or
-in piccolo's folder, with the same `ui_` keys as `settings/piccolo.cfg`. THEME
-lists the built-in themes and these, sorted by name, then CUSTOM.
+in piccolo's folder, with the interface's `ui_` keys. THEME lists the built-in
+themes and these, sorted by name, then CUSTOM. `settings/piccolo.cfg` keeps
+only which theme is in use (`ui_theme`), never the colors themselves.
 `themes/example.cfg` (GRAY) comes with piccolo and explains each key.
 
 SAVE THEME... saves the colors as they are as one of your own themes, asking
 for its name: `themes/<name>-custom.cfg` in piccolo's folder (the `-custom`
-ending keeps it from replacing a theme that comes with piccolo). Your own
-themes are in CUSTOM THEME, which works when THEME is CUSTOM.
+ending keeps it from replacing a theme that comes with piccolo), and makes it
+the theme in use. Colors changed one by one show as CUSTOM (UNSAVED): without
+SAVE THEME they are gone at the next start. Your own themes are in CUSTOM
+THEME, which works when THEME is CUSTOM.
 
 Every color can also be changed on its own (THEME then shows CUSTOM), as
 can MENU TITLE BOXES, DROP SHADOWS and THEME CURSOR (piccolo draws its own

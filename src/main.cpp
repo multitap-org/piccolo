@@ -539,7 +539,7 @@ static void save_settings(App* app)
 {
     if (app->settings.dirty && !app->settings_path.empty())
     {
-        settings_save(&app->settings, app->settings_path.c_str(), "piccolo settings");
+        piccolo_settings_save(&app->settings, app->settings_path.c_str());
     }
 }
 
@@ -913,37 +913,6 @@ static StateThumbnail picture_thumbnail(const App* app, uint32_t* aspect_width, 
     return thumbnail;
 }
 
-// The system the core plays, from the core downloader's index: this run's,
-// else the one a refresh kept in the cores folder ("" when neither knows the
-// core: the card shows the core alone).
-static std::string core_systems(const App* app)
-{
-    const char* name = app->session.host->core_path;
-    const char* slash = std::strrchr(name, '/');
-    const char* file = slash != nullptr ? slash + 1 : name;
-    const CoreIndex* index = &app->core_updater.index;
-    CoreIndex kept;
-    int32_t entry = core_index_find_file(index, file);
-    if (entry < 0 && core_updater_load_kept_index(&kept, app->cores_directory.c_str(), core_index_build_target()))
-    {
-        index = &kept;
-        entry = core_index_find_file(index, file);
-    }
-    if (entry < 0)
-    {
-        return std::string();
-    }
-    std::string systems = index->entries[static_cast<size_t>(entry)].systems;
-    for (size_t i = 0; i < systems.size(); i++)
-    {
-        if (systems[i] == '|')
-        {
-            systems[i] = '/';
-        }
-    }
-    return systems;
-}
-
 // Before the running game stops (between frames): its AUTO state (SAVE
 // STATE ON EXIT), and for the CONTINUE card its last frame and record
 // (continue_card.h), even when there's no state to save. No state for a core
@@ -1007,7 +976,6 @@ static void save_state_on_exit(App* app)
     }
     record.game_name = game;
     record.core_name = host->system_info.library_name != nullptr ? host->system_info.library_name : "";
-    record.system_name = core_systems(app);
     record.state_path = path;
     record.picture_path = picture;
     // The save file a newer copy of would make resuming go back (SRAM).
@@ -4363,6 +4331,16 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
         {
             app->settings_window.theme_choice = name;   // CUSTOM THEME shows the saved theme
             app->settings_window.theme_custom = true;
+            for (size_t i = 0; i < app->themes.size(); i++)
+            {
+                if (app->themes[i].custom && app->themes[i].name == name)
+                {
+                    // The saved theme is piccolo's theme from now on.
+                    settings_set(&app->settings, SettingLayer::global, PICCOLO_UI_THEME,
+                                 piccolo_ui_theme_file_id(&app->themes[i]).c_str());
+                }
+            }
+            save_settings(app);
         }
     }
 
@@ -6177,12 +6155,23 @@ static void continue_card_update(App* app, const UiView* view)
     }
     else if (app->phone_ui)
     {
-        // HOME's card (mobile_home.h), at the phone UI's scale. Sideways its
-        // picture may be drawn a little shorter: still sharp, a touch softer.
+        // HOME's card (mobile_home.h), at the phone UI's scale. Upright its
+        // picture may be drawn a little shorter when the list needs the
+        // room: still sharp, a touch softer.
         float scale = static_cast<float>(app->ui_scale);
-        float card_width = mobile_home_card_width(std::floor(view->screen_width / scale),
-                                                  std::floor(view->screen_height / scale));
-        continue_view_card_picture_size(&card, card_width, &width, &height);
+        float screen_width = std::floor(view->screen_width / scale);
+        float screen_height = std::floor(view->screen_height / scale);
+        if (screen_width > screen_height)
+        {
+            float box_width = 0.0f;
+            float box_height = 0.0f;
+            mobile_home_cover_box(screen_width, screen_height, &box_width, &box_height);
+            continue_view_cover_picture_size(&card, box_width, box_height, &width, &height);
+        }
+        else
+        {
+            continue_view_card_picture_size(&card, mobile_home_card_width(screen_width), &width, &height);
+        }
         width *= scale;
         height *= scale;
     }
@@ -7275,7 +7264,6 @@ int main(int argc, char** argv)
         ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
         settings_load(&app->settings, app->settings_path.c_str());
-        piccolo_settings_complete_ui_theme(&app->settings);
         apply_folders(app);
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
@@ -7368,6 +7356,9 @@ int main(int argc, char** argv)
     {
         piccolo_themes_load_directory(&app->themes, (app->paths.root + "/themes").c_str());
     }
+    // The interface's colors from the theme piccolo.cfg names (never its own colors).
+    piccolo_settings_start_ui_theme(&app->settings, &app->themes,
+                                    app->paths.root.empty() ? "" : (app->paths.root + "/themes").c_str());
     // settings/input.cfg first: controllers are made from its profiles as their devices appear.
     app->input_config_path = app->paths.settings.empty() ? "" : app->paths.settings + "/input.cfg";
     if (!app->input_config_path.empty())
