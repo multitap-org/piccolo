@@ -95,7 +95,6 @@ function piccolo_page_start() {
     skipped: ['cache', 'piccoletto'],
     sw: '../sw.js',
     sw_scope: '../',
-    environment: dev ? { PICCOLO_SHOW_FPS: '1' } : null,
     started: function () {
       piccolo_page_files();
       piccolo_files_start();
