@@ -58,7 +58,9 @@ jobs:
       - name: Snapshot version
         if: github.workflow == 'Release' && github.ref_type == 'branch'
         shell: bash
-        run: tools/snapshot-suffix.sh | tee .multitap-version-suffix
+        run: |
+          git config --global --add safe.directory "$PWD"   # the Flatpak job's container
+          tools/snapshot-suffix.sh | tee .multitap-version-suffix
 
       # Only the submodules the build uses; Test libretro goes into the APK.
       # Some nested submodules (imguisw's third_party) have SSH URLs, which

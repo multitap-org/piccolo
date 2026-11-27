@@ -47,7 +47,9 @@ jobs:
       - name: Snapshot version
         if: github.workflow == 'Release' && github.ref_type == 'branch'
         shell: bash
-        run: tools/snapshot-suffix.sh | tee .multitap-version-suffix
+        run: |
+          git config --global --add safe.directory "$PWD"   # the Flatpak job's container
+          tools/snapshot-suffix.sh | tee .multitap-version-suffix
 
       - uses: msys2/setup-msys2@v2
         with:
