@@ -13,7 +13,9 @@
 #   android-arm64-v8a.apk  android-armeabi-v7a-legacy.apk
 #   web.zip
 # manifest.cfg: app, version, tag, then one [<target>] block per asset with
-# asset, size, sha256 (the format publish-apps.sh reads).
+# asset, size, sha256, and exe_sha256 where the program can check itself (the
+# program file inside: Windows and Linux; frontends-common net_build.h): the
+# releases server signs a record of it, a build's proof that it's official (the format publish-apps.sh reads).
 #
 # Refuses to release without the Android release key in the secrets (never a
 # debug APK in a release) or when the tag doesn't match PICCOLO_VERSION_BASE.
@@ -84,6 +86,10 @@ jobs:
 
       # Artifacts are found by file name, not by artifact name (the Flatpak
       # action names its own).
+      # The Flatpaks' program is read from the bundle with ostree (exe_sha256).
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q flatpak ostree
+
       - name: Release files
         run: |
           tag="${{ github.ref_name }}"
@@ -99,13 +105,31 @@ jobs:
             fi
             echo "$found"
           }
+          # exe_hash TARGET FILE: the program's own hash, for exe_sha256.
+          : > exe_hashes
+          exe_hash() {
+            echo "$1 $(sha256sum "$2" | cut -d ' ' -f 1)" >> exe_hashes
+          }
+          # flatpak_exe_hash TARGET BUNDLE PATH: the same for a file inside a Flatpak bundle.
+          flatpak_exe_hash() {
+            repo=$(mktemp -d)
+            ostree init --repo="$repo" --mode=archive-z2
+            flatpak build-import-bundle --no-update-summary "$repo" "$2"
+            ref=$(ostree refs --repo="$repo" | grep '^app/' | head -n 1)
+            [ -n "$ref" ] || { echo "no app in $2"; exit 1; }
+            ostree cat --repo="$repo" "$ref" "$3" > "$repo/exe" || { echo "no $3 in $2"; exit 1; }
+            exe_hash "$1" "$repo/exe"
+            rm -rf "$repo"
+          }
           for arch in x86_64 arm64; do
             dir=$(find artifacts -type d -path "*piccolo-windows-$arch/piccolo")
             [ -n "$dir" ] || { echo "no Windows $arch folder"; exit 1; }
             (cd "$dir/.." && zip -q -r -9 "$GITHUB_WORKSPACE/release/piccolo-$version-windows-$arch.zip" piccolo)
+            exe_hash "windows-$arch" "$dir/piccolo.exe"
           done
           for arch in x86_64 aarch64; do
             cp "$(one "piccolo-$arch.flatpak")" "release/piccolo-$version-linux-$arch.flatpak"
+            flatpak_exe_hash "linux-$arch" "release/piccolo-$version-linux-$arch.flatpak" /files/lib/piccolo/piccolo
           done
           cp "$(one piccolo.apk)" "release/piccolo-$version-android-arm64-v8a.apk"
           cp "$(one piccolo-legacy.apk)" "release/piccolo-$version-android-armeabi-v7a-legacy.apk"
@@ -128,6 +152,10 @@ jobs:
               echo "asset=$asset"
               echo "size=$(stat -c %s "$file")"
               echo "sha256=$(sha256sum "$file" | cut -d ' ' -f 1)"
+              exe=$(awk -v t="$target" '$1 == t { print $2 }' exe_hashes)
+              if [ -n "$exe" ]; then
+                echo "exe_sha256=$exe"
+              fi
             } >> "$manifest"
           done
           cat "$manifest"
