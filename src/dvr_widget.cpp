@@ -1,14 +1,18 @@
 #include "dvr_widget.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 #include <SDL3/SDL.h>
 
+#include "button_names.h"
 #include "core_session.h"
 #include "hud_view.h"
+#include "imgui.h"   // the display's size, for the phone's panel (drawing only)
 #include "input_bindings.h"
+#include "input_window.h"
 #include "piccolo_settings.h"
 #include "piccolo_text.h"
 #include "retro_ui_controls.h"
@@ -86,9 +90,13 @@ void dvr_widget_game_started(DvrWidget* widget, CoreSession* session, const Sett
     CoreRewindSettings* config = &widget->rewind.settings;
     config->mode             = mode_from(settings_get(settings, PICCOLO_REWIND, nullptr));
     config->known            = mode_from(settings_get_layer(settings, SettingLayer::game, PICCOLO_REWIND_KNOWN));
-    config->scrub_seconds    = number_of(settings, PICCOLO_REWIND_SCRUB_LENGTH) * 60;
-    config->snapshot_seconds = number_of(settings, PICCOLO_REWIND_SNAPSHOT_EVERY);
-    config->snapshots_kept   = number_of(settings, PICCOLO_REWIND_SNAPSHOTS_KEPT);
+    // LENGTH for both modes; SNAPSHOTS keeps as many as LENGTH needs at its frequency.
+    uint32_t length_seconds  = number_of(settings, PICCOLO_REWIND_LENGTH) * 60;
+    uint32_t frequency       = number_of(settings, PICCOLO_REWIND_SNAPSHOT_FREQUENCY);
+    frequency                = frequency > 0 ? frequency : 1;
+    config->scrub_seconds    = length_seconds;
+    config->snapshot_seconds = frequency;
+    config->snapshots_kept   = length_seconds / frequency > 0 ? length_seconds / frequency : 1;
     if (config->known == RewindMode::off)
     {
         config->known = RewindMode::automatic;
@@ -218,6 +226,17 @@ static void bump(DvrWidget* widget, int32_t direction, uint64_t now_ms, bool rep
     widget->bump_ms = now_ms == 0 ? 1 : now_ms;
 }
 
+// A jump or a click moved the cursor: seek and step stop the playback, but
+// while watching forward (1x) it goes on from the new place (as it does
+// backwards, stepped). Not from the newest frame: the end stops it and bounces.
+static void keep_watching(DvrWidget* widget, bool at_end)
+{
+    if (widget->play_direction > 0 && !widget->play_stepping && !at_end)
+    {
+        core_rewind_dvr_set_playing(&widget->rewind, true);
+    }
+}
+
 // L / R: 5 s (SCRUB), or a snapshot (SNAPSHOTS: the previews are the
 // snapshots). Past an end it lands on the end, and bounces.
 static void jump(DvrWidget* widget, int32_t direction, uint64_t now_ms)
@@ -251,6 +270,7 @@ static void jump(DvrWidget* widget, int32_t direction, uint64_t now_ms)
     {
         bump(widget, direction, now_ms, false);
     }
+    keep_watching(widget, edge);
     SDL_Log("DVR: %s, frame %llu -> %llu%s", direction < 0 ? "L" : "R", static_cast<unsigned long long>(from),
             static_cast<unsigned long long>(to), edge ? (direction < 0 ? " (the oldest)" : " (the newest)") : "");
 }
@@ -376,6 +396,10 @@ static void follow_history(DvrWidget* widget)
 
 void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms)
 {
+    if (frame->ui_gamepad >= 0)
+    {
+        widget->gamepad = frame->ui_gamepad;   // (also the hotkey that opens it)
+    }
     follow_history(widget);
     if (!widget->open)
     {
@@ -613,6 +637,98 @@ static float track_place(const DvrWidget* widget, uint32_t first, uint32_t count
 
 // The view from where the cursor is now (the game stopping closes it
 // first: the history's DVR closed with it).
+// A hint's control: its name, or the RetroPad's (touch, or nothing named).
+static const char* named(const char* name, const char* retropad, bool touch)
+{
+    return touch || name[0] == '\0' ? retropad : name;
+}
+
+// The controller whose controls the hints name: the keyboard's first when
+// it was used last, else the gamepad used last, else port 1's first gamepad
+// (-1: none, the RetroPad's names).
+static int32_t hint_controller(const DvrWidget* widget, const InputSystem* input)
+{
+    InputDeviceKind kind = widget->keyboard ? InputDeviceKind::keyboard : InputDeviceKind::gamepad;
+    if (!widget->keyboard && widget->gamepad >= 0 && static_cast<size_t>(widget->gamepad) < input->controllers.size())
+    {
+        const InputDevice* device =
+            input_devices_find_const(&input->devices, input->controllers[static_cast<size_t>(widget->gamepad)].device_id);
+        if (device != nullptr && device->connected && device->kind == kind)
+        {
+            return widget->gamepad;
+        }
+    }
+    for (size_t m = 0; m < input->ports[0].size(); m++)
+    {
+        uint32_t controller = input->ports[0][m];
+        const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[controller].device_id);
+        if (device != nullptr && device->connected && device->kind == kind)
+        {
+            return static_cast<int32_t>(controller);
+        }
+    }
+    for (size_t c = 0; c < input->controllers.size(); c++)
+    {
+        const InputDevice* device = input_devices_find_const(&input->devices, input->controllers[c].device_id);
+        if (device != nullptr && device->connected && device->kind == kind && !device->game_only)
+        {
+            return static_cast<int32_t>(c);
+        }
+    }
+    return -1;
+}
+
+void dvr_widget_name_keys(DvrWidget* widget, const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts)
+{
+    widget->key_accept[0] = '\0';
+    widget->key_watch[0] = '\0';
+    widget->key_back[0] = '\0';
+    widget->key_pages[0] = '\0';
+    if (!widget->open)
+    {
+        return;
+    }
+    int32_t found = hint_controller(widget, input);
+    if (found < 0)
+    {
+        return;
+    }
+    uint32_t controller = static_cast<uint32_t>(found);
+    input_window_action_label(input, sdl, layouts, controller, InputAction::ui_accept, widget->key_accept,
+                              sizeof(widget->key_accept));
+    input_window_action_label(input, sdl, layouts, controller, InputAction::ui_back, widget->key_back,
+                              sizeof(widget->key_back));
+    if (widget->keyboard)
+    {
+        // WATCH on the keyboard is Space, not the open-menu key (dvr_widget_draw).
+        std::snprintf(widget->key_watch, sizeof(widget->key_watch), "SPACE");
+    }
+    else
+    {
+        input_window_action_label(input, sdl, layouts, controller, InputAction::ui_open_menu, widget->key_watch,
+                                  sizeof(widget->key_watch));
+    }
+    char left[32] = {};
+    char right[32] = {};
+    bool has_left = input_window_action_label(input, sdl, layouts, controller, InputAction::ui_page_left, left, sizeof(left));
+    bool has_right = input_window_action_label(input, sdl, layouts, controller, InputAction::ui_page_right, right, sizeof(right));
+    if (has_left && has_right)
+    {
+        button_names_pair(left, right, widget->key_pages, sizeof(widget->key_pages));
+    }
+}
+
+// One hint more; the array holds DVR_VIEW_MAX_HINTS and no more.
+static void add_hint(DvrView* view, uint32_t* count, DvrViewHint hint)
+{
+    if (*count >= DVR_VIEW_MAX_HINTS)
+    {
+        return;
+    }
+    view->hints[*count] = hint;
+    (*count)++;
+}
+
 void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool touch, uint64_t now_ms)
 {
     follow_history(widget);
@@ -662,7 +778,11 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
         if (t >= 0)
         {
             video_texture_uv_max(&widget->thumbs[t], &thumb->u_max, &thumb->v_max);
-            if (widget->thumbs[t].content_height > 0)
+            if (widget->core_aspect > 0.0f)
+            {
+                view->aspect = widget->core_aspect;
+            }
+            else if (widget->thumbs[t].content_height > 0)
             {
                 view->aspect = static_cast<float>(widget->thumbs[t].content_width) /
                                static_cast<float>(widget->thumbs[t].content_height);
@@ -679,7 +799,8 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
 
     format_back(widget->readout, sizeof(widget->readout), lane_end(&position) - position.cursor, fps, true);
     char span[16] = {};
-    format_back(span, sizeof(span), position.newest - position.oldest, fps, false);
+    uint64_t end = lane_end(&position);   // the cursor lane's own end, not the recorded lane's
+    format_back(span, sizeof(span), end > position.oldest ? end - position.oldest : 0, fps, false);
     std::snprintf(widget->kept, sizeof(widget->kept), "%s %s", piccolo_text(strings, Str::dvr_kept), span + 1);   // no "-"
     bool scrub = widget->rewind.state != CoreRewindState::snapshots;
     if (scrub)
@@ -696,40 +817,44 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
     uint32_t n = 0;
     if (touch)
     {
-        view->hints[n++] = {"", "\xE2\x97\x80", false, DvrViewAction::back};   // ◀
+        add_hint(view, &n, {"", "\xE2\x97\x80", false, DvrViewAction::back});   // ◀
     }
     else
     {
-        view->hints[n++] = {"\xE2\x97\x80\xE2\x96\xB6", piccolo_text(strings, scrub ? Str::dvr_hint_play : Str::dvr_hint_snapshot),
-                            false, DvrViewAction::none};
-        view->hints[n++] = {widget->keyboard ? "PG UP DN" : "L R",
+        add_hint(view, &n, {"\xE2\x97\x80\xE2\x96\xB6", piccolo_text(strings, scrub ? Str::dvr_hint_play : Str::dvr_hint_snapshot),
+                            false, DvrViewAction::none});
+        add_hint(view, &n, {named(widget->key_pages, "L R", false),
                             piccolo_text(strings, scrub ? Str::dvr_hint_jump : Str::dvr_hint_snapshot), false,
-                            DvrViewAction::none};
+                            DvrViewAction::none});
         if (position.lanes)
         {
-            view->hints[n++] = {"\xE2\x96\xB2\xE2\x96\xBC", piccolo_text(strings, Str::dvr_hint_lane), false,   // ▲▼
-                                DvrViewAction::other_lane};
+            add_hint(view, &n, {"\xE2\x96\xB2\xE2\x96\xBC", piccolo_text(strings, Str::dvr_hint_lane), false,   // ▲▼
+                                DvrViewAction::other_lane});
         }
     }
-    // The keys' names: the RetroPad's, or the keyboard's when it was used last.
-    bool keys = widget->keyboard && !touch;
-    view->hints[n++] = {keys ? "ENTER" : "B", piccolo_text(strings, Str::dvr_play_here), touch, DvrViewAction::play_here};
-    view->hints[n++] = {keys ? "SPACE" : "Y", piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
-                        moving, DvrViewAction::watch};
-    view->hints[n++] = {keys ? "ESC" : "A", piccolo_text(strings, Str::dvr_back_to_now), false, DvrViewAction::back_to_now};
+    // The controls' names (dvr_widget_name_keys); touch keeps the RetroPad's.
+    add_hint(view, &n, {named(widget->key_accept, "B", touch), piccolo_text(strings, Str::dvr_play_here), touch,
+                        DvrViewAction::play_here});
+    add_hint(view, &n, {named(widget->key_watch, "Y", touch), piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
+                        moving, DvrViewAction::watch});
+    add_hint(view, &n, {named(widget->key_back, "A", touch), piccolo_text(strings, Str::dvr_back_to_now), false,
+                        DvrViewAction::back_to_now});
     if (touch)
     {
-        view->hints[n++] = {"", "\xE2\x96\xB6", false, DvrViewAction::forward};   // ▶
+        add_hint(view, &n, {"", "\xE2\x96\xB6", false, DvrViewAction::forward});   // ▶
         if (position.lanes)
         {
-            view->hints[n++] = {"", piccolo_text(strings, Str::dvr_hint_lane), false, DvrViewAction::other_lane};
+            add_hint(view, &n, {"", piccolo_text(strings, Str::dvr_hint_lane), false, DvrViewAction::other_lane});
         }
     }
     view->hint_count = n;
 }
 
-void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings)
+void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings, bool phone,
+                      float game_aspect)
 {
+    state->phone = phone;
+    state->game_aspect = game_aspect;
     Str title = Str::dvr_title;
     if (scrubbing(widget) ? widget->play_direction > 0 : widget->rewind.playing)
     {
@@ -745,6 +870,29 @@ void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Loca
     state->text.readout = widget->readout;
     state->text.exit = piccolo_text(strings, Str::dvr_back_to_now);
     state->text.lane = widget->view.on_upper ? piccolo_text(strings, Str::dvr_lane_kept) : "";
+    // The phone's buttons. SNAPSHOTS: ◀◀ / ▶▶ go to the oldest / newest.
+    bool moving = scrubbing(widget) ? widget->play_direction != 0 : widget->rewind.playing;
+    state->text.play_here = piccolo_text(strings, Str::dvr_play_here);
+    state->text.watch = piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch);
+    state->text.jump_back = scrubbing(widget) ? piccolo_text(strings, Str::dvr_jump_back) : "\xE2\x97\x80\xE2\x97\x80";
+    state->text.jump_forward = scrubbing(widget) ? piccolo_text(strings, Str::dvr_jump_forward) : "\xE2\x96\xB6\xE2\x96\xB6";
+    state->text.lane_recorded = piccolo_text(strings, Str::dvr_tab_recorded);
+    state->text.lane_kept = piccolo_text(strings, Str::dvr_tab_kept);
+}
+
+bool dvr_widget_phone_game_area(const DvrWidget* widget, float screen_width, float screen_height, int32_t scale,
+                                float game_aspect, float* width, float* height)
+{
+    if (!widget->open || !widget->rewind.dvr_open || scale <= 0)
+    {
+        return false;
+    }
+    float block = static_cast<float>(scale);
+    DvrPhoneAreas areas;
+    dvr_view_phone_areas(&widget->view, screen_width / block, screen_height / block, game_aspect, &areas);
+    *width = std::floor(areas.game_width * block);
+    *height = std::floor(areas.game_height * block);
+    return true;
 }
 
 constexpr uint64_t HUD_CARD_MS = 2500;      // the card stays this long...
@@ -780,13 +928,7 @@ void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char*
         break;
     case CoreRewindState::scrub:
     case CoreRewindState::snapshots:
-        if (widget->rewind.settings.mode == RewindMode::automatic)
-        {
-            std::snprintf(out, out_size, "%s %s.", piccolo_text(strings, Str::rewind_note_chose),
-                          piccolo_text(strings, widget->rewind.state == CoreRewindState::scrub ? Str::value_rewind_scrub
-                                                                                               : Str::value_rewind_snapshots));
-        }
-        break;
+        break;   // (the caller says CURRENT MODE: AUTO's choice is that mode)
     case CoreRewindState::off:
         break;
     }
@@ -813,7 +955,23 @@ void dvr_widget_draw(DvrWidget* widget, const DvrWidgetState* state, RetroUiFont
         return;
     }
     DvrViewInput input = {};
-    dvr_view_draw(&widget->view, pixel_font, scale, &state->text, &input);
+    if (state->phone)
+    {
+        // The phone: the panel at touch size (the game is fitted into its
+        // room by the frontend: dvr_widget_phone_game_area).
+        float block = static_cast<float>(scale > 0 ? scale : 1);
+        const ImGuiIO& io = ImGui::GetIO();
+        DvrPhoneAreas areas;
+        dvr_view_phone_areas(&widget->view, io.DisplaySize.x / block, io.DisplaySize.y / block, state->game_aspect, &areas);
+        dvr_view_draw_phone(&widget->view, pixel_font, scale, &state->text, &areas, &input);
+        action->dragging = input.dragging;
+        action->drag_from = input.drag_from;
+        action->drag_moved = input.drag_moved;
+    }
+    else
+    {
+        dvr_view_draw(&widget->view, pixel_font, scale, &state->text, &input);
+    }
     // WATCH on the keyboard: Space (not an interface action of the router).
     if (input.action == DvrViewAction::none && !ui_toolkit_wants_text() && retro_ui_key_pressed(RetroUiKey::space, false))
     {
@@ -884,6 +1042,90 @@ void dvr_widget_close(DvrWidget* widget)
     }
 }
 
+// The phone's -5 S / +5 S (SCRUB: as L / R), or ◀◀ / ▶▶ (SNAPSHOTS: the
+// oldest / the newest snapshot of the cursor's lane).
+static void jump_or_end(DvrWidget* widget, int32_t direction, uint64_t now_ms)
+{
+    if (scrubbing(widget))
+    {
+        jump(widget, direction, now_ms);
+        return;
+    }
+    CoreRewindPosition position = {};
+    core_rewind_dvr_position(&widget->rewind, &position);
+    uint64_t from = position.cursor;
+    core_rewind_dvr_seek(&widget->rewind, direction < 0 ? position.oldest : lane_end(&position));
+    if (cursor_of(widget) == from)
+    {
+        bump(widget, direction, now_ms, false);
+    }
+    SDL_Log("DVR: %s, frame %llu -> %llu", direction < 0 ? "OLDEST" : "NEWEST", static_cast<unsigned long long>(from),
+            static_cast<unsigned long long>(cursor_of(widget)));
+}
+
+// Past this (in pictures) from where the finger went down, SCRUB moves; at
+// one picture away it moves DRAG_SPEED times real time, more further out
+// (Andrés, 2026-11-26: slow near the start, faster the further you drag).
+constexpr float  DRAG_DEAD  = 0.15f;
+constexpr double DRAG_SPEED = 4.0;
+
+// The phone's strip held by a finger: the finger going right goes back in
+// time (the pictures follow it).
+static void drag(DvrWidget* widget, const DvrWidgetAction* action, uint64_t now_ms)
+{
+    if (!action->dragging)
+    {
+        widget->dragging = false;
+        return;
+    }
+    if (!widget->dragging)
+    {
+        widget->dragging = true;
+        widget->drag_last_ms = now_ms;
+        widget->drag_frames = 0.0;
+        if (scrubbing(widget))
+        {
+            set_play_direction(widget, 0, now_ms);   // a held finger takes over from WATCH
+        }
+        else if (widget->rewind.playing)
+        {
+            watch(widget, now_ms);
+        }
+        SDL_Log("DVR: drag, frame %llu", static_cast<unsigned long long>(cursor_of(widget)));
+    }
+    double seconds = static_cast<double>(now_ms - widget->drag_last_ms) / 1000.0;
+    widget->drag_last_ms = now_ms;
+    if (scrubbing(widget))
+    {
+        float away = std::fabs(action->drag_from) - DRAG_DEAD;
+        if (away <= 0.0f)
+        {
+            return;
+        }
+        double speed = DRAG_SPEED * static_cast<double>(away) * static_cast<double>(away + DRAG_DEAD);   // grows with distance
+        widget->drag_frames += speed * fps_of(widget) * seconds;
+        int32_t frames = static_cast<int32_t>(widget->drag_frames);
+        if (frames > 0)
+        {
+            widget->drag_frames -= frames;
+            step(widget, action->drag_from > 0.0f ? -frames : frames, now_ms, true);
+        }
+        return;
+    }
+    // SNAPSHOTS: a snapshot per picture the strip slides.
+    widget->drag_frames += static_cast<double>(action->drag_moved);
+    while (widget->drag_frames >= 1.0)
+    {
+        widget->drag_frames -= 1.0;
+        step(widget, -1, now_ms, true);
+    }
+    while (widget->drag_frames <= -1.0)
+    {
+        widget->drag_frames += 1.0;
+        step(widget, 1, now_ms, true);
+    }
+}
+
 void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t now_ms)
 {
     if (action->keyboard)
@@ -902,10 +1144,16 @@ void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t
         if (static_cast<uint32_t>(action->clicked) < count)
         {
             core_rewind_dvr_seek(&widget->rewind, widget->previews[first + static_cast<uint32_t>(action->clicked)]);
+            keep_watching(widget, cursor_of(widget) >= lane_end(&position));
         }
     }
+    drag(widget, action, now_ms);
     switch (action->press)
     {
+    case DvrViewAction::jump_back:
+    case DvrViewAction::jump_forward:
+        jump_or_end(widget, action->press == DvrViewAction::jump_back ? -1 : 1, now_ms);
+        break;
     case DvrViewAction::back:
     case DvrViewAction::forward:
     {

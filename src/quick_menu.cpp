@@ -10,6 +10,7 @@
 #include "piccolo_text.h"
 #include "retro_ui.h"
 #include "retro_ui_controls.h"
+#include "state_undo.h"
 #include "ui_toolkit.h"
 
 // Room for any thumbnail as saved (the picture at x1: a few hundred pixels across).
@@ -21,6 +22,7 @@ constexpr uint32_t PREVIEW_CAPACITY = 4096;
 constexpr uint32_t SLOT_COLUMNS = 5;
 constexpr uint32_t ACTION_COLUMNS = 4;
 constexpr uint32_t STATE_COLUMNS = 3;
+constexpr uint32_t UNDO_COLUMNS = 2;   // UNDO SAVE, UNDO LOAD
 constexpr uint32_t SLOT_COUNT = QUICK_MENU_SLOT_LAST - QUICK_MENU_SLOT_FIRST + 1;
 // A slot at least this many retro pixels wide (the actions' labels usually
 // make the grid wider).
@@ -44,16 +46,27 @@ void quick_menu_update(QuickMenu* menu, const CoreSession* session)
     for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
         core_session_slot_info(session, slot, &menu->slots[slot]);
+        char path[LIBRETRO_PATH_MAX] = {};
+        menu->undo[slot] = core_session_running(session) &&
+                           libretro_host_state_path(session->host, slot, path, sizeof(path)) && state_undo_available(path);
     }
 }
 
 void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Localization* strings, const char* core_name,
-                      const char* game_name, bool user_paused)
+                      const char* game_name, bool user_paused, bool undo_load)
 {
     state->strings = strings;
     state->core_name = core_name;
     state->game_name = game_name;
     state->user_paused = user_paused;
+    state->undo_load = undo_load;
+    if (!menu->open)
+    {
+        // Nothing reads the labels of a closed menu (the draw returns first):
+        // the clock and the formatting wait for the frame it opens. The
+        // pointers above stay valid in case it opens before this frame's draw.
+        return;
+    }
     // Each slot's label: its number, and when it was saved (the time if
     // today, the day otherwise: a slot is narrow).
     SDL_Time now = 0;
@@ -100,14 +113,14 @@ void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Locali
 // (one game: they're all the same), else 4:3.
 static float picture_aspect(const QuickMenu* menu)
 {
-    const QuickMenuPicture* selected = &menu->thumbs[menu->slot];
+    const UiPicture* selected = &menu->thumbs[menu->slot];
     if (selected->modified != 0 && selected->width > 0 && selected->height > 0)
     {
         return static_cast<float>(selected->width) / static_cast<float>(selected->height);
     }
     for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
-        const QuickMenuPicture* thumb = &menu->thumbs[slot];
+        const UiPicture* thumb = &menu->thumbs[slot];
         if (thumb->modified != 0 && thumb->width > 0 && thumb->height > 0)
         {
             return static_cast<float>(thumb->width) / static_cast<float>(thumb->height);
@@ -160,7 +173,7 @@ static void draw_preview(QuickMenu* menu, const QuickMenuState* state, float gri
     float x = static_cast<float>(static_cast<int>((grid - box_width) * 0.5f));
     menu->preview_width = box_width;
     menu->preview_height = box_height;
-    const QuickMenuPicture* picture = nullptr;
+    const UiPicture* picture = nullptr;
     if (menu->preview.shown && menu->preview_slot == menu->slot)
     {
         picture = &menu->preview;
@@ -225,7 +238,7 @@ static void draw_slots(QuickMenu* menu, const QuickMenuState* state, float block
             retro_ui_same_line();
         }
         bool selected = slot == menu->slot;
-        const QuickMenuPicture* thumb = &menu->thumbs[slot];
+        const UiPicture* thumb = &menu->thumbs[slot];
         RetroUiTile tile = {};
         tile.width = slot_width;
         tile.picture_height = area_height;
@@ -276,7 +289,7 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     uint32_t slot_rows = (SLOT_COUNT + SLOT_COLUMNS - 1) / SLOT_COLUMNS;
     float key_lines = std::ceil(retro_ui_text_width(keys) / (grid > 1.0f ? grid : 1.0f));
     float below = (slot_tile_height(block, slot_width) + row_gap) * static_cast<float>(slot_rows) +
-                  retro_ui_line_step() + retro_ui_text_line_step() * key_lines;
+                  2.0f * retro_ui_line_step() + retro_ui_text_line_step() * key_lines;   // two rows of buttons
     float room = screen_room - retro_ui_cursor_y() - row_gap - below;
     float least = retro_ui_font_size() * 3.0f;
     draw_preview(menu, state, grid, room > least ? room : least);
@@ -306,6 +319,24 @@ static void draw_states(QuickMenu* menu, const QuickMenuState* state, float bloc
     else if (pressed == 2)
     {
         action->press = QuickMenuPress::dvr;   // a window widget: it replaces QUICK MENU
+    }
+    // The undos, under the slots' actions (Andrés, 2026-11-26): the selected
+    // slot's last save, the last state load.
+    RetroUiRowButton undos[UNDO_COLUMNS] = {};
+    undos[0].id = "undo_save";
+    undos[0].label = piccolo_text(strings, Str::quick_menu_undo_save);
+    undos[0].enabled = menu->undo[menu->slot];
+    undos[1].id = "undo_load";
+    undos[1].label = piccolo_text(strings, Str::quick_menu_undo_load);
+    undos[1].enabled = state->undo_load;
+    pressed = retro_ui_equal_buttons(undos, UNDO_COLUMNS, grid);
+    if (pressed == 0)
+    {
+        action->press = QuickMenuPress::undo_save;
+    }
+    else if (pressed == 1)
+    {
+        action->press = QuickMenuPress::undo_load;
     }
     retro_ui_dim_text_wrapped_at(keys, 0.0f);
 }
@@ -457,8 +488,6 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
 // ---------------------------------------------------------------------------
 // Apply
 
-static void picture_changed(QuickMenuPicture* picture);
-
 void quick_menu_open(QuickMenu* menu, uint32_t slot)
 {
     menu->open = true;
@@ -470,7 +499,7 @@ void quick_menu_open(QuickMenu* menu, uint32_t slot)
 static void load_thumbnail(QuickMenu* menu, uint32_t slot)
 {
     const StateSlotInfo* info = &menu->slots[slot];
-    QuickMenuPicture* thumb = &menu->thumbs[slot];
+    UiPicture* thumb = &menu->thumbs[slot];
     if (!info->used || !info->has_thumbnail)
     {
         thumb->modified = 0;
@@ -481,33 +510,8 @@ static void load_thumbnail(QuickMenu* menu, uint32_t slot)
     {
         return;
     }
-    thumb->modified = info->modified;
-    SDL_Surface* png = SDL_LoadPNG(info->thumbnail_path);
-    SDL_Surface* converted = png != nullptr ? SDL_ConvertSurface(png, SDL_PIXELFORMAT_ARGB8888) : nullptr;
-    if (converted != nullptr && converted->w > 0 && converted->h > 0 &&
-        static_cast<uint32_t>(converted->w) <= THUMBNAIL_CAPACITY && static_cast<uint32_t>(converted->h) <= THUMBNAIL_CAPACITY)
-    {
-        thumb->width = static_cast<uint32_t>(converted->w);
-        thumb->height = static_cast<uint32_t>(converted->h);
-        thumb->pixels.resize(static_cast<size_t>(thumb->width) * thumb->height);
-        for (uint32_t y = 0; y < thumb->height; y++)
-        {
-            const uint8_t* row = static_cast<const uint8_t*>(converted->pixels) + static_cast<size_t>(y) * static_cast<size_t>(converted->pitch);
-            std::memcpy(&thumb->pixels[static_cast<size_t>(y) * thumb->width], row, static_cast<size_t>(thumb->width) * 4);
-        }
-        picture_changed(thumb);
-    }
-    else
-    {
-        // Nothing to show (kept as this state's, so it's tried and logged once).
-        thumb->width = 0;
-        thumb->height = 0;
-        thumb->shown = false;
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Quick menu: could not read thumbnail %s: %s", info->thumbnail_path,
-                    SDL_GetError());
-    }
-    SDL_DestroySurface(converted);
-    SDL_DestroySurface(png);
+    thumb->modified = info->modified;   // kept as this state's even if unreadable: tried and logged once
+    ui_picture_load_png(thumb, info->thumbnail_path, THUMBNAIL_CAPACITY, "Quick menu: thumbnail");
 }
 
 // The selected slot's thumbnail scaled up by the biggest whole number that
@@ -516,22 +520,16 @@ static void load_thumbnail(QuickMenu* menu, uint32_t slot)
 // two screen pixels).
 static void build_preview(QuickMenu* menu)
 {
-    const QuickMenuPicture* thumb = &menu->thumbs[menu->slot];
+    const UiPicture* thumb = &menu->thumbs[menu->slot];
     if (thumb->modified == 0 || thumb->width == 0 || thumb->height == 0 || menu->preview_width <= 0.0f)
     {
         menu->preview.shown = false;
         menu->preview.modified = 0;
         return;
     }
-    uint32_t scale_x = static_cast<uint32_t>(menu->preview_width) / thumb->width;
-    uint32_t scale_y = static_cast<uint32_t>(menu->preview_height) / thumb->height;
-    uint32_t scale = scale_x < scale_y ? scale_x : scale_y;
-    scale = scale >= 1 ? scale : 1;
-    while (scale > 1 && (thumb->width * scale > PREVIEW_CAPACITY || thumb->height * scale > PREVIEW_CAPACITY))
-    {
-        scale--;
-    }
-    QuickMenuPicture* preview = &menu->preview;
+    uint32_t scale = ui_picture_whole_scale(thumb->width, thumb->height, menu->preview_width, menu->preview_height,
+                                            PREVIEW_CAPACITY);
+    UiPicture* preview = &menu->preview;
     if (menu->preview_slot == menu->slot && preview->modified == thumb->modified && menu->preview_scale == scale)
     {
         return;
@@ -539,19 +537,7 @@ static void build_preview(QuickMenu* menu)
     menu->preview_slot = menu->slot;
     menu->preview_scale = scale;
     preview->modified = thumb->modified;
-    preview->width = thumb->width * scale;
-    preview->height = thumb->height * scale;
-    preview->pixels.resize(static_cast<size_t>(preview->width) * preview->height);
-    for (uint32_t y = 0; y < preview->height; y++)
-    {
-        const uint32_t* source = &thumb->pixels[static_cast<size_t>(y / scale) * thumb->width];
-        uint32_t* row = &preview->pixels[static_cast<size_t>(y) * preview->width];
-        for (uint32_t x = 0; x < preview->width; x++)
-        {
-            row[x] = source[x / scale];
-        }
-    }
-    picture_changed(preview);
+    ui_picture_scale_from(preview, thumb, scale);
 }
 
 void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSession* session)
@@ -575,58 +561,8 @@ void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSessio
     }
 }
 
-// New pixels in `picture` (apply): uploaded later in the frame. A texture of
-// another size is made again, but not in the frame that may still draw the
-// old one: the picture is hidden first and the new texture made a frame
-// later (see upload_picture).
-static void picture_changed(QuickMenuPicture* picture)
-{
-    const VideoTexture* texture = &picture->texture;
-    picture->upload_pending = true;
-    picture->shown = false;
-    picture->replace_wait = video_texture_created(texture) &&
-                            (texture->capacity_width != picture->width || texture->capacity_height != picture->height);
-}
-
-// One picture's texture (the renderer's, outside the toolkit), made the
-// picture's size: bilinear sampling would blend in what lies past a
-// smaller upload's edge. Before app_shell_acquire.
-static void prepare_picture(QuickMenuPicture* picture, AppShell* shell)
-{
-    if (!picture->upload_pending || picture->replace_wait)
-    {
-        return;
-    }
-    VideoTexture* texture = &picture->texture;
-    if (video_texture_created(texture) &&
-        (texture->capacity_width != picture->width || texture->capacity_height != picture->height))
-    {
-        video_texture_destroy(texture, shell);   // waits for the GPU; nothing drew it this frame (hidden)
-    }
-    if (!video_texture_created(texture) &&
-        !video_texture_create(texture, shell, picture->width, picture->height, FramePixelFormat::xrgb8888, false))
-    {
-        picture->upload_pending = false;
-    }
-}
-
-static void upload_picture(QuickMenuPicture* picture, AppShell* shell)
-{
-    if (picture->replace_wait)
-    {
-        picture->replace_wait = false;   // this frame drew the old texture: made again next frame
-        return;
-    }
-    if (!picture->upload_pending)
-    {
-        return;
-    }
-    if (video_texture_upload(&picture->texture, shell, picture->pixels.data(), picture->width, picture->height))
-    {
-        picture->shown = true;
-    }
-    picture->upload_pending = false;
-}
+// ---------------------------------------------------------------------------
+// Upload
 
 void quick_menu_upload(QuickMenu* menu, AppShell* shell)
 {
@@ -641,25 +577,25 @@ void quick_menu_upload(QuickMenu* menu, AppShell* shell)
     }
     for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
-        prepare_picture(&menu->thumbs[slot], shell);
+        ui_picture_prepare(&menu->thumbs[slot], shell);
     }
-    prepare_picture(&menu->preview, shell);
+    ui_picture_prepare(&menu->preview, shell);
     if (!app_shell_acquire(shell))
     {
         return;   // try on the next frame
     }
     for (uint32_t slot = QUICK_MENU_SLOT_FIRST; slot <= QUICK_MENU_SLOT_LAST; slot++)
     {
-        upload_picture(&menu->thumbs[slot], shell);
+        ui_picture_upload(&menu->thumbs[slot], shell);
     }
-    upload_picture(&menu->preview, shell);
+    ui_picture_upload(&menu->preview, shell);
 }
 
 void quick_menu_destroy(QuickMenu* menu, AppShell* shell)
 {
     for (uint32_t slot = 0; slot < QUICK_MENU_SLOTS; slot++)
     {
-        video_texture_destroy(&menu->thumbs[slot].texture, shell);   // waits for the GPU
+        ui_picture_destroy(&menu->thumbs[slot], shell);   // waits for the GPU
     }
-    video_texture_destroy(&menu->preview.texture, shell);
+    ui_picture_destroy(&menu->preview, shell);
 }

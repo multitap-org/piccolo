@@ -27,6 +27,16 @@ constexpr bool PICCOLO_BROWSER = true;
 constexpr bool PICCOLO_BROWSER = false;
 #endif
 
+// A phone or tablet (Android; iOS once there's a build): always full screen, the status and
+// navigation bars hidden and the picture under the camera cutout, as
+// piccoletto does (testing round 3). SDL's activity does that only for a
+// fullscreen window, so DISPLAY (full screen, the window) is hidden there.
+#if defined(__ANDROID__)
+constexpr bool PICCOLO_MOBILE = true;
+#else
+constexpr bool PICCOLO_MOBILE = false;
+#endif
+
 // Keys (file keys: stable, never translated).
 constexpr const char* PICCOLO_LANGUAGE = "language";
 constexpr const char* PICCOLO_PAUSE_IN_MENU = "pause_in_menu";
@@ -35,15 +45,23 @@ constexpr const char* PICCOLO_PAUSE_ON_FOCUS_LOSS = "pause_on_focus_loss";
 // what played); START (joining a port, or on one) resumes.
 constexpr const char* PICCOLO_PAUSE_ON_DISCONNECT = "pause_on_disconnect";
 constexpr const char* PICCOLO_SCREENSAVER_WHEN_PAUSED = "screensaver_when_paused";
+// SAVE STATE ON EXIT (on by default, Andrés 2026-11-26): closing a game
+// saves its AUTO state ("<game>.state.auto"), starting it again loads it.
+// May be set per core / game (a core whose states misbehave).
+constexpr const char* PICCOLO_SAVESTATE_ON_EXIT = "savestate_on_exit";
 constexpr const char* PICCOLO_GAME_MODE = "game_mode";
 constexpr const char* PICCOLO_SHOW_FPS = "show_fps";   // fps_meter.h
 // Rewind (SETTINGS > GENERAL > REWIND; core_rewind.h). REWIND may be set per
 // core / game; REWIND KNOWN is AUTO's verdict, kept in the game's layer only
 // (not shown).
 constexpr const char* PICCOLO_REWIND = "rewind";
-constexpr const char* PICCOLO_REWIND_SCRUB_LENGTH = "rewind_scrub_length";
-constexpr const char* PICCOLO_REWIND_SNAPSHOT_EVERY = "rewind_snapshot_every";
-constexpr const char* PICCOLO_REWIND_SNAPSHOTS_KEPT = "rewind_snapshots_kept";
+// LENGTH (minutes, 1-30, 5 by default) is how far back either mode goes;
+// SNAPSHOT FREQUENCY (seconds, 1-60, 10) how often SNAPSHOTS keeps a state,
+// so it keeps LENGTH / FREQUENCY of them (Andrés, testing round 3: no
+// "all memory holds", which could grow until a crash; no SNAPSHOTS KEPT).
+// New keys: the old ones' "0" meant all memory.
+constexpr const char* PICCOLO_REWIND_LENGTH = "rewind_length";
+constexpr const char* PICCOLO_REWIND_SNAPSHOT_FREQUENCY = "rewind_snapshot_frequency";
 constexpr const char* PICCOLO_REWIND_MEMORY = "rewind_memory";
 constexpr const char* PICCOLO_REWIND_KNOWN = "rewind_known";
 constexpr const char* PICCOLO_INPUT_SHARE_PORT1 = "input_keyboard_shares_port1";
@@ -138,14 +156,20 @@ constexpr const char* PICCOLO_WINDOW_ASPECT = "window_aspect";
 constexpr const char* PICCOLO_WINDOW_HEIGHT = "window_height";
 constexpr const char* PICCOLO_WINDOW_SCALE = "window_scale";
 constexpr const char* PICCOLO_WINDOW_REMEMBER = "window_remember";
-// INTERFACE > BACKDROP: while the menu or a window is up, what is behind
-// them (the game too) is covered by black at this opacity (percent; 0 = not
-// covered). Not part of a theme (not ui_*): readability over any picture.
-constexpr const char* PICCOLO_MENU_BACKDROP = "menu_backdrop";
+// INTERFACE > BACKGROUND TRANSPARENCY: while the menu or a window is up,
+// what is behind them (the game too) is covered by the theme's BACKGROUND
+// color, and this much of it (percent) still shows through (100 = not
+// covered). Part of the theme (the palette's level, retro_ui_theme.h), so
+// SAVE THEME keeps it (Andrés, testing round 3; was BACKDROP, black).
+constexpr const char* PICCOLO_UI_BACKGROUND_TRANSPARENCY = "ui_background_transparency";
 // INTERFACE > EFFECTS: short effects on the game picture (screen_effects.h:
 // SNAP on the DVR's PLAY FROM HERE, SHUTTER on a screenshot). On by default;
 // global only. Not part of a theme (not ui_*).
 constexpr const char* PICCOLO_SCREEN_EFFECTS = "screen_effects";
+// INTERFACE > EFFECTS, one by one under SCREEN EFFECTS (Andrés, testing
+// round 3): REWIND (SNAP) and SCREENSHOT (SHUTTER). On by default.
+constexpr const char* PICCOLO_SCREEN_EFFECT_REWIND = "screen_effect_rewind";
+constexpr const char* PICCOLO_SCREEN_EFFECT_SCREENSHOT = "screen_effect_screenshot";
 constexpr const char* PICCOLO_UI_MENU_BOXES = "ui_menu_boxes";
 constexpr const char* PICCOLO_UI_SHADOWS = "ui_shadows";
 constexpr const char* PICCOLO_UI_COLOR_BACKGROUND = "ui_color_background";
@@ -154,6 +178,12 @@ constexpr const char* PICCOLO_UI_COLOR_TITLE_BOTTOM = "ui_color_title_bottom";
 constexpr const char* PICCOLO_UI_COLOR_CHECK = "ui_color_check";
 constexpr const char* PICCOLO_UI_COLOR_SECTION = "ui_color_section";
 constexpr const char* PICCOLO_UI_THEME_CURSOR = "ui_theme_cursor";
+// The interface theme piccolo.cfg keeps (Andrés, 2026-11-26: the theme, not
+// its colors): "blue", "purple", "zsnes", "black" (the built-in ones), or
+// "file:<name>.cfg" (themes/, shipped or the user's own). The ui_ color,
+// switch and level settings are filled from it at start and never saved:
+// changed by hand they are CUSTOM (UNSAVED) until SAVE THEME.
+constexpr const char* PICCOLO_UI_THEME = "ui_theme";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON = "ui_color_button";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON_BOTTOM = "ui_color_button_bottom";
 constexpr const char* PICCOLO_UI_COLOR_BUTTON_LIGHT = "ui_color_button_light";
@@ -225,6 +255,11 @@ void piccolo_settings_game_folders(const Settings* settings, std::vector<std::st
 // was set.
 bool piccolo_settings_remove_game_folder(Settings* settings, uint32_t index);
 
+// Moves the game folders up so no slot is empty before a set one, keeping
+// their order (a file edited by hand may have gaps). Writes only when
+// something moves: a file that is already compact is not marked dirty.
+void piccolo_settings_compact_game_folders(Settings* settings);
+
 // The language to show: an index for piccolo_language_code() (piccolo_text.h).
 // "auto" picks the first of the system's preferred languages piccolo has,
 // else English.
@@ -262,6 +297,7 @@ struct PiccoloThemeFile
 {
     std::string    name;
     std::string    path;            // the file it came from
+    std::string    file;            // its name, "gray.cfg": ui_theme is "file:" + this
     bool           custom = false;  // a *-custom.cfg file
     RetroUiPalette palette = {};
 };
@@ -295,6 +331,27 @@ bool piccolo_settings_check_ui_keys(const Settings* settings);
 // doesn't fall back to PICCOLO's inside another theme. Does nothing when no
 // interface setting is saved. True if it set anything.
 bool piccolo_settings_complete_ui_theme(Settings* settings);
+
+// ui_theme's value for a built-in theme and for a theme file.
+std::string piccolo_ui_theme_id(RetroUiTheme theme);
+std::string piccolo_ui_theme_file_id(const PiccoloThemeFile* theme);
+
+// The palette of theme `id` (ui_theme's value). False, and BLUE, when no
+// such theme is there (a file deleted since).
+bool piccolo_ui_theme_palette(const char* id, const std::vector<PiccoloThemeFile>* themes, RetroUiPalette* palette);
+
+// At start, after the theme files are read: the interface settings from the
+// theme ui_theme names. A piccolo.cfg from before ui_theme kept the colors
+// themselves: they name the theme they match (BLUE and PURPLE as they were
+// before buttons got a face of their own count as today's), else they are
+// saved in `themes_directory` as a custom theme, SAVED THEME, and that is
+// the theme from then on.
+void piccolo_settings_start_ui_theme(Settings* settings, std::vector<PiccoloThemeFile>* themes,
+                                     const char* themes_directory);
+
+// Saves piccolo.cfg without the interface's colors, switches and levels (the
+// theme's: ui_theme says which).
+bool piccolo_settings_save(Settings* settings, const char* path);
 
 // The interface color settings in table order, for the Interface tab.
 uint32_t piccolo_settings_ui_color_count();

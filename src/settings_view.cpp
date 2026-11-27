@@ -43,8 +43,12 @@ static void read_typed_value(const SettingDescriptor* descriptor, SettingRowStat
         row->integer = static_cast<int32_t>(std::strtol(row->value, nullptr, 10));
         break;
     case SettingType::real:
-        row->real = std::strtof(row->value, nullptr);
+    {
+        // The settings' own parser: strtof would read "0.5" as 0 where the locale's decimal mark is a comma.
+        double parsed = 0.0;
+        row->real = settings_parse_real(row->value, &parsed) ? static_cast<float>(parsed) : 0.0f;
         break;
+    }
     case SettingType::color:
         settings_color_from_text(row->value, &row->color);
         break;

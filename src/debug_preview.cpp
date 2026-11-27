@@ -4,10 +4,14 @@
 #include "debug_preview.h"
 
 #include "net_caps_ui.h"
+#include "piccolo_text.h"
 
 #include <cstdio>
 
 #include <SDL3/SDL_time.h>
+
+#include "imgui.h"      // the display's size, for the phone previews' scale
+#include "touch_ui.h"
 
 // The fake devices (the pixel font draws them in capitals) and code.
 static const char PREVIEW_DEVICE[] = "LIVING ROOM PC";
@@ -21,6 +25,70 @@ static const char PREVIEW_LINK[] = "https://beacon.get-piccolo.app/join/k3x9q2#p
 static bool is_pair(DebugPreview preview)
 {
     return preview >= DebugPreview::pair_device_list && preview <= DebugPreview::pair_code_done;
+}
+
+// The phone's HOME: a few recent games (fake).
+static const MobileGameRow PREVIEW_GAMES[] = {
+    {"SUPER METROID (JAPAN, USA)", "snes9x"},
+    {"POKEMON - CRYSTAL VERSION (USA, EUROPE)", "sameboy"},
+    {"SONIC THE HEDGEHOG 2 (WORLD)", "genesis_plus_gx"},
+    {"METROID FUSION (USA)", "mgba"},
+};
+
+static bool is_phone(DebugPreview preview)
+{
+    return preview >= DebugPreview::phone_home && preview <= DebugPreview::phone_menu;
+}
+
+// DEVICES: nobody OUT, the touch pad (the viewer's) and a gamepad on port 1,
+// a phone over the network on port 2, nobody on 3 and 4.
+static void show_devices(DebugPreviews* previews)
+{
+    PortsWidget* widget = &previews->devices;
+    *widget = PortsWidget{};
+    PortsView* view = &widget->view;
+    view->port_count = 4;
+    view->chip_height = 18.0f;   // the touch size
+    PortsViewChip touch;
+    touch.key = 1;
+    touch.label = "TOUCH PAD";
+    touch.yours = true;
+    PortsViewChip pad;
+    pad.key = 2;
+    pad.label = "XBOX PAD 1";
+    PortsViewChip phone;
+    phone.key = 3;
+    phone.label = "PIXEL 8";
+    phone.has_ping = true;
+    phone.ping_known = true;
+    phone.ping_ms = 24;
+    view->ports[0].chips.push_back(touch);
+    view->ports[0].chips.push_back(pad);
+    view->ports[1].chips.push_back(phone);
+    widget->open = true;
+    ports_view_open_board(view);
+}
+
+// The DVR's phone panel: SCRUB 27 s back, five pictures (not made: empty
+// cards), a kept lane from between the third and fourth.
+static void show_phone_dvr(DebugPreviews* previews)
+{
+    DvrView* view = &previews->phone_dvr;
+    *view = DvrView{};
+    const char* labels[5] = {"-0:40", "-0:35", "-0:30", "-0:25", "-0:20"};
+    view->count = 5;
+    view->selected = 2;
+    view->between = 0.45f;
+    view->touch = true;
+    for (uint32_t i = 0; i < view->count; i++)
+    {
+        std::snprintf(view->thumbs[i].label, sizeof(view->thumbs[i].label), "%s", labels[i]);
+        view->thumbs[i].after = i > view->selected;
+    }
+    view->lanes = true;
+    view->fork_at = 2.6f;
+    view->upper_end = 4.3f;
+    view->lower_end = 4.8f;
 }
 
 static bool is_guest(DebugPreview preview)
@@ -183,7 +251,8 @@ static void show_guest(DebugPreviews* previews, DebugPreview which)
 }
 
 // QUICK MENU on slot 1, SAVE STATES open: the quick slot and two others
-// used (today and an older day), no pictures.
+// used (today and an older day), no pictures. UNDO SAVE: slot 1 has an
+// undo, slot 3 none (greyed when picked); UNDO LOAD is on.
 static void show_quick(DebugPreviews* previews)
 {
     QuickMenu* menu = &previews->quick;
@@ -202,6 +271,7 @@ static void show_quick(DebugPreviews* previews)
         menu->slots[used[i]].used = true;
         menu->slots[used[i]].modified = when[i];
     }
+    menu->undo[1] = true;
 }
 
 void debug_preview_show(DebugPreviews* previews, DebugPreview which)
@@ -224,6 +294,14 @@ void debug_preview_show(DebugPreviews* previews, DebugPreview which)
     {
         show_quick(previews);
     }
+    else if (which == DebugPreview::phone_dvr)
+    {
+        show_phone_dvr(previews);
+    }
+    else if (which == DebugPreview::devices)
+    {
+        show_devices(previews);
+    }
 }
 
 void debug_preview_end(DebugPreviews* previews)
@@ -233,6 +311,8 @@ void debug_preview_end(DebugPreviews* previews)
     previews->about = {};
     previews->guest = {};
     previews->quick = {};
+    previews->phone = {};
+    previews->devices.open = false;
 }
 
 bool debug_preview_shown(const DebugPreviews* previews)
@@ -240,11 +320,19 @@ bool debug_preview_shown(const DebugPreviews* previews)
     return previews->shown != DebugPreview::none;
 }
 
-void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open)
+bool debug_preview_covers_screen(const DebugPreviews* previews)
+{
+    return is_phone(previews->shown) || previews->shown == DebugPreview::phone_dvr;
+}
+
+void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open,
+                          bool settings_error_open, bool devices_open, bool dvr_open)
 {
     DebugPreview shown = previews->shown;
     if ((pair_open && is_pair(shown)) || (about_open && shown == DebugPreview::about) ||
-        (guest_open && is_guest(shown)) || (quick_open && shown == DebugPreview::quick_menu))
+        (guest_open && is_guest(shown)) || (quick_open && shown == DebugPreview::quick_menu) ||
+        (settings_error_open && shown == DebugPreview::settings_error) ||
+        (devices_open && shown == DebugPreview::devices) || (dvr_open && shown == DebugPreview::phone_dvr))
     {
         debug_preview_end(previews);
     }
@@ -279,9 +367,41 @@ static void guest_state(GuestWindowState* state, const Localization* strings, De
 }
 
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version)
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright)
 {
+    if (previews->shown == DebugPreview::devices)
+    {
+        ports_widget_state(&view->devices, strings, false, phone_upright, SDL_GetTicks());
+    }
     view->shown = previews->shown;
+    if (previews->shown == DebugPreview::phone_dvr)
+    {
+        DvrViewText* text = &view->dvr_text;
+        text->title = piccolo_text(strings, Str::dvr_title);
+        text->mode = piccolo_text(strings, Str::dvr_mode_scrub);
+        text->readout = "-0:27.8";
+        text->exit = piccolo_text(strings, Str::dvr_back_to_now);
+        text->play_here = piccolo_text(strings, Str::dvr_play_here);
+        text->watch = piccolo_text(strings, Str::dvr_watch);
+        text->jump_back = piccolo_text(strings, Str::dvr_jump_back);
+        text->jump_forward = piccolo_text(strings, Str::dvr_jump_forward);
+        text->lane_recorded = piccolo_text(strings, Str::dvr_tab_recorded);
+        text->lane_kept = piccolo_text(strings, Str::dvr_tab_kept);
+    }
+    if (is_phone(previews->shown))
+    {
+        MobileHomeState* phone = &view->phone;
+        phone->strings = strings;
+        phone->home_shown = previews->shown != DebugPreview::phone_menu;
+        phone->menu_in_game = previews->shown == DebugPreview::phone_menu;
+        phone->menu_shown = phone->menu_in_game;
+        phone->games = previews->shown == DebugPreview::phone_home ? PREVIEW_GAMES : nullptr;
+        phone->game_count = previews->shown == DebugPreview::phone_home
+                                ? static_cast<int32_t>(sizeof(PREVIEW_GAMES) / sizeof(PREVIEW_GAMES[0]))
+                                : 0;
+        phone->menus = menus;
+        phone->menu_count = menu_count;
+    }
     if (is_pair(previews->shown))
     {
         // The network runs (GENERATE PAIRING CODE works).
@@ -295,9 +415,14 @@ void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, 
     {
         about_window_state(&view->about, strings, version);
     }
+    else if (previews->shown == DebugPreview::settings_error)
+    {
+        settings_error_window_state(&view->settings_error, strings);
+        view->settings_error.files = "piccolo.cfg, input.cfg";   // a fake list
+    }
     else if (previews->shown == DebugPreview::quick_menu)
     {
-        quick_menu_state(&view->quick, &previews->quick, strings, PREVIEW_CORE, PREVIEW_GAME, false);
+        quick_menu_state(&view->quick, &previews->quick, strings, PREVIEW_CORE, PREVIEW_GAME, false, true);
     }
 }
 
@@ -327,9 +452,34 @@ void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, R
     {
         about_window_draw(&previews->about, &view->about, pixel_font, scale, &actions->about);
     }
+    else if (view->shown == DebugPreview::settings_error)
+    {
+        settings_error_window_draw(&view->settings_error, pixel_font, scale, &actions->settings_error);
+    }
     else if (view->shown == DebugPreview::quick_menu)
     {
         quick_menu_draw(&previews->quick, &view->quick, pixel_font, scale, &actions->quick);
+    }
+    else if (view->shown == DebugPreview::devices)
+    {
+        ports_widget_draw_board(&previews->devices, &view->devices, pixel_font, scale, &actions->devices);
+    }
+    else if (view->shown == DebugPreview::phone_dvr)
+    {
+        // At the phone's touch scale; the game's room is left empty.
+        const ImGuiIO& io = ImGui::GetIO();
+        int32_t phone_scale = touch_ui_scale_for(io.DisplaySize.x, io.DisplaySize.y);
+        float block = static_cast<float>(phone_scale);
+        DvrPhoneAreas areas;
+        dvr_view_phone_areas(&previews->phone_dvr, io.DisplaySize.x / block, io.DisplaySize.y / block, 4.0f / 3.0f, &areas);
+        dvr_view_draw_phone(&previews->phone_dvr, pixel_font, phone_scale, &view->dvr_text, &areas, &actions->dvr);
+    }
+    else if (is_phone(view->shown))
+    {
+        // At the phone's touch scale whatever the screen (the desktop's is smaller).
+        const ImGuiIO& io = ImGui::GetIO();
+        int32_t phone_scale = touch_ui_scale_for(io.DisplaySize.x, io.DisplaySize.y);
+        mobile_home_draw(&previews->phone, &view->phone, pixel_font, phone_scale, &actions->phone);
     }
 }
 
@@ -346,6 +496,26 @@ void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* act
     closed = closed || (is_guest(previews->shown) && !previews->guest.open);
     closed = closed || (previews->shown == DebugPreview::about && actions->about.closed);
     closed = closed || (previews->shown == DebugPreview::quick_menu && actions->quick.closed);
+    // SETTINGS COULD NOT BE READ: OK ends it (the real one's answer isn't applied).
+    closed = closed || (previews->shown == DebugPreview::settings_error &&
+                        settings_error_window_apply(&actions->settings_error));
+    // The phone's: ☰ on HOME moves on to the sidebar, a menu's name opens
+    // its items, ◀ goes back; any other tap ends it.
+    if (is_phone(previews->shown))
+    {
+        mobile_home_apply(&previews->phone, &actions->phone, previews->shown == DebugPreview::phone_menu);
+    }
+    if (is_phone(previews->shown) && actions->phone.open_menu)
+    {
+        previews->shown = DebugPreview::phone_menu;
+    }
+    // DEVICES: DONE ends it; a move is ignored (the pick still shows).
+    closed = closed || (previews->shown == DebugPreview::devices && actions->devices.done);
+    // The DVR's: BACK TO NOW or PLAY FROM HERE ends it; the rest is ignored.
+    closed = closed || (previews->shown == DebugPreview::phone_dvr && (actions->dvr.action == DvrViewAction::back_to_now ||
+                                                                        actions->dvr.action == DvrViewAction::play_here));
+    closed = closed || (is_phone(previews->shown) &&
+                        (actions->phone.close_menu || actions->phone.picked != RETRO_UI_MENU_NONE || actions->phone.rotate));
     if (closed)
     {
         debug_preview_end(previews);

@@ -1,0 +1,6 @@
+piccolo (0.3~git-1) UNRELEASED; urgency=medium
+
+  * Placeholder: tools/make-ppa-source.sh writes the changelog of every
+    upload (version, series, signer).
+
+ -- andres-asm <andres-asm@retromods.org>  Sun, 22 Nov 2026 12:00:00 +0000

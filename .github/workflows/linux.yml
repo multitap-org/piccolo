@@ -1,0 +1,75 @@
+# Builds piccolo on Linux with warnings as errors and runs the tests (ctest:
+# the libraries' and piccolo's own), the checks done by hand before a merge:
+# a Debug build, and an ASan + UBSan one (tools/lsan-suppressions.txt for the
+# leaks that aren't ours). Nothing is uploaded: the Linux build people install
+# is the Flatpak (flatpak.yml). The same job as piccoletto's linux.yml and
+# multitap-net's CI.
+name: Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debug
+            sanitize: OFF
+          - name: ASan
+            sanitize: ON
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The submodules the build uses (windows.yml's list). deps/librashader
+      # not recursive: CMake only needs its C header, and its own submodules
+      # are test shaders and a naga fork.
+      - name: Submodules
+        run: |
+          git submodule update --init --recursive --depth 1 \
+            deps/SDL deps/imgui deps/libretro-common deps/libsamplerate \
+            deps/gamemode deps/miniz deps/7zip deps/enet deps/monocypher deps/qrcodegen deps/beacon \
+            deps/piccolo-shaders deps/piccolo-shaders-legacy \
+            deps/common/hosts-common deps/common/multitap-net deps/common/frontends-common deps/common/retroui \
+            deps/libretro/host-libretro deps/libretro/frontend-libretro \
+            deps/libdatachannel
+          git submodule update --init --depth 1 deps/librashader
+          # Test libretro (the tests load it). Its nested submodules
+          # (imguisw's) have SSH URLs: fetched over HTTPS instead.
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive --checkout --depth 1 deps/test-libretro
+
+      # tools/build-linux.sh --deps's list (SDL is built from deps/SDL: its
+      # X11, Wayland, audio and input backends need their headers).
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake ninja-build \
+            libvulkan-dev libssl-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libegl-dev libgl-dev libgles-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libdbus-1-dev libudev-dev libibus-1.0-dev
+
+      # MULTITAP_PICCOLO_DIR empty: nothing is copied out of the build.
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DMULTITAP_WARNINGS_AS_ERRORS=ON -DMULTITAP_SANITIZE=${{ matrix.sanitize }} \
+            -DMULTITAP_PICCOLO_DIR=
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        env:
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tools/lsan-suppressions.txt
+        run: ctest --test-dir build --output-on-failure

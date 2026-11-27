@@ -21,12 +21,16 @@
 
 #include "about_window.h"
 #include "debug_window.h"
+#include "dvr_view.h"
 #include "guest_window.h"
 #include "hud_view.h"
 #include "localization.h"
+#include "mobile_home.h"
+#include "ports_widget.h"
 #include "net_share_link.h"
 #include "pair_window.h"
 #include "quick_menu.h"
+#include "settings_error_window.h"
 
 #include "retro_ui_font.h"
 
@@ -52,6 +56,9 @@ struct DebugPreviews
     AboutWindow        about;
     GuestWindow        guest;          // REMOTE PLAY (its picture: none)
     QuickMenu          quick;          // its slots: a few used, no pictures
+    MobileHome         phone;          // the phone's HOME and ☰
+    DvrView            phone_dvr;      // the DVR's phone panel: five empty pictures, a kept lane
+    PortsWidget        devices;        // DEVICES: its board open, fake controllers
 };
 
 // What the preview shows this frame (UiView).
@@ -62,6 +69,10 @@ struct DebugPreviewView
     AboutWindowState about = {};
     GuestWindowState guest = {};
     QuickMenuState   quick = {};
+    MobileHomeState  phone = {};
+    DvrViewText      dvr_text = {};
+    PortsWidgetState devices = {};
+    SettingsErrorWindowState settings_error = {};
 };
 
 // What was pressed in it (UiActions): only closing it counts.
@@ -71,21 +82,33 @@ struct DebugPreviewActions
     AboutWindowAction about = {};
     GuestWindowAction guest = {};
     QuickMenuAction   quick = {};
+    MobileHomeAction  phone = {};
+    DvrViewInput      dvr = {};
+    PortsWidgetAction devices = {};
+    SettingsErrorWindowAction settings_error = {};
 };
 
 // Shows `which` (another one shown ends), from its first step's fake state.
 void debug_preview_show(DebugPreviews* previews, DebugPreview which);
 void debug_preview_end(DebugPreviews* previews);
 bool debug_preview_shown(const DebugPreviews* previews);
-// Before the view, every frame: the real window open ends its preview.
-void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open);
-// `version`: ABOUT's (PICCOLO_VERSION).
+// A phone screen is shown: it covers the whole screen, so the debug window
+// (and the phone's own HOME) step aside until it ends.
+bool debug_preview_covers_screen(const DebugPreviews* previews);
+// Before the view, every frame: the real window open ends its preview
+// (`devices_open`: the ports widget's DEVICES board; `dvr_open`: the DVR).
+void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open,
+                          bool settings_error_open, bool devices_open, bool dvr_open);
+// `version`: ABOUT's (PICCOLO_VERSION). `menus`: the menu bar's, for the
+// phone's ☰ (the real items; only the games and the paused game are fake).
+// `phone_upright`: the phone UI held upright (DEVICES' rows).
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version);
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright);
 // Draws the window shown, if any.
 void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, RetroUiFont* pixel_font,
                         int32_t scale, DebugPreviewActions* actions);
-// Ends the preview when it was closed; everything else pressed is ignored.
+// Ends the preview when it was closed; everything else pressed is ignored
+// (the phone's HOME: ☰ moves on to the sidebar's preview).
 void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* actions);
 
 void debug_preview_show_card(DebugPreviews* previews, DebugCard card, uint64_t now_ms);

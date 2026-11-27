@@ -1,6 +1,8 @@
 <!doctype html>
 <!-- piccolo in the browser: choose the emulator. One folder per core
-     (web/package.sh), each a piccolo built with that core linked in. The
+     (web/package.sh), each a piccolo built with that core linked in. Where
+     the site has two builds (web/channels.sh: the latest release and main's),
+     RELEASE | DEV at the top goes from one to the other. The
      look is piccolo's websites' (_site/v1, copied in by web/package.sh;
      the sites bar and footer are filled in between their markers). -->
 <html lang="en">
@@ -28,6 +30,17 @@
   .notes { color: var(--muted); font-size: 14px; max-width: 46em; }
   .notes p { margin: 0 0 8px; }
   #drop-hint { background: var(--accent); color: var(--on-accent); padding: 10px 14px; font-weight: 700; }
+  /* RELEASE | DEV (channels.json, web/channels.sh): the build shown is the lit one. */
+  .channels { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 28px; }
+  .channels .label { margin: 0; }
+  .channels .choice { display: flex; border: 2px solid var(--edge); }
+  .channels .choice a { padding: 8px 18px; text-decoration: none; color: var(--text);
+             font: 700 13px/1.4 var(--font-text); letter-spacing: 0.08em; text-transform: uppercase; }
+  .channels .choice a + a { border-left: 2px solid var(--edge); }
+  .channels .choice a:hover { color: var(--heading-accent); }
+  .channels .choice a[aria-current] { background: var(--accent); color: var(--on-accent); }
+  .channels .choice a[aria-disabled] { color: var(--muted); cursor: default; }
+  .channels small { font: 400 12px/1.4 var(--font-text); letter-spacing: 0; text-transform: none; opacity: 0.8; margin-left: 6px; }
   .channel { display: inline-block; margin-left: 10px; padding: 2px 8px; vertical-align: middle; background: var(--accent);
              color: var(--on-accent); font: 700 12px/1.4 var(--font-text); letter-spacing: 0.08em; text-shadow: none; }
 </style>
@@ -38,6 +51,13 @@
 <main class="wrap">
   <h1><span data-i18n="web_play_title"></span><span class="channel" id="channel" hidden>DEV @COMMIT@</span></h1>
   <p class="intro" data-i18n="web_play_intro"></p>
+  <nav class="channels" id="channels" hidden>
+    <p class="label" data-i18n="web_channels"></p>
+    <div class="choice">
+      <a id="channel-release" data-i18n-title="web_channel_release_title"><span data-i18n="web_channel_release"></span><small></small></a>
+      <a id="channel-dev" data-i18n-title="web_channel_dev_title"><span data-i18n="web_channel_dev"></span><small></small></a>
+    </div>
+  </nav>
   <p class="label" data-i18n="web_emulators"></p>
   <div class="cores">
     <a class="core panel" href="sameboy/"><div><b>SameBoy</b><span>Game Boy, Game Boy Color, Super Game Boy</span></div><span class="go" data-i18n="web_play"></span></a>
@@ -64,6 +84,46 @@
   if (document.body.dataset.channel === 'dev') {
     document.getElementById('channel').hidden = false;
   }
+  // RELEASE | DEV: a site with both builds has channels.json at its top
+  // (web/channels.sh), which is this folder for one build and the parent for
+  // the other. Paths in it are relative to it. A lone build has none.
+  function piccolo_channels_show(channels, base) {
+    const here = document.body.dataset.channel === 'dev' ? 'dev' : 'release';
+    for (const name of ['release', 'dev']) {
+      const link = document.getElementById('channel-' + name);
+      const entry = channels[name];
+      if (!entry) {   // no release yet: greyed out, says so
+        link.removeAttribute('href');
+        link.setAttribute('aria-disabled', 'true');
+        link.dataset.i18nTitle = 'web_channel_none_title';
+        link.title = piccolo_web_text('web_channel_none_title');
+        continue;
+      }
+      link.href = new URL(entry.path, base).href;
+      link.querySelector('small').textContent = entry.label || '';
+      if (name === here) {
+        link.setAttribute('aria-current', 'page');
+      }
+    }
+    document.getElementById('channels').hidden = false;
+  }
+  function piccolo_channels_find(paths) {
+    if (paths.length === 0) {
+      return;
+    }
+    const base = new URL(paths[0], location.href);
+    fetch(base).then(function (response) {
+      if (!response.ok) {
+        throw new Error('none here');
+      }
+      return response.json();
+    }).then(function (channels) {
+      piccolo_channels_show(channels, base);
+    }).catch(function () {
+      piccolo_channels_find(paths.slice(1));
+    });
+  }
+  piccolo_channels_find(['channels.json', '../channels.json']);
   // piccoletto is listed only when this site has it (web/package.sh with PICCOLETTO).
   fetch('piccoletto/manifest.webmanifest', { method: 'HEAD' }).then(function (response) {
     document.getElementById('piccoletto').hidden = !response.ok;

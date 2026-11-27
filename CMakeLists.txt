@@ -199,6 +199,7 @@ set(PICCOLO_SOURCES
     src/piccolo_settings.cpp
     src/settings_ui.cpp
     src/settings_window.cpp
+    src/button_names.cpp
     src/input_window.cpp
     src/net_caps_ui.cpp
     src/net_window.cpp
@@ -217,20 +218,27 @@ set(PICCOLO_SOURCES
     src/debug_window.cpp
     src/debug_preview.cpp
     src/about_window.cpp
+    src/mobile_home.cpp
     src/core_options_ui.cpp
     src/cores_window.cpp
     src/share_window.cpp
     src/share_paths.cpp
+    src/state_undo.cpp
     src/pair_window.cpp
     src/safe_start_window.cpp
+    src/settings_error_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
+    src/ui_picture.cpp
+    src/continue_card.cpp
+    src/continue_panel.cpp
     src/core_config_window.cpp
     src/ports_widget.cpp
     src/dvr_widget.cpp
     src/fps_meter.cpp
     src/remap_widget.cpp
     src/state_widget.cpp
+    src/message_widget.cpp
     src/onscreen_pad.cpp
 )
 if(ANDROID)
@@ -517,6 +525,14 @@ if(MULTITAP_BUILD_TESTS)
     target_link_libraries(piccolo_settings_view_test PRIVATE piccolo_logic)
     multitap_set_project_flags(piccolo_settings_view_test)
     add_test(NAME piccolo_settings_view COMMAND piccolo_settings_view_test)
+    add_executable(piccolo_theme_settings_test tools/theme_settings_test.cpp src/piccolo_settings.cpp)
+    target_link_libraries(piccolo_theme_settings_test PRIVATE piccolo_logic retroui host_common SDL3::SDL3)
+    multitap_set_project_flags(piccolo_theme_settings_test)
+    add_test(NAME piccolo_theme_settings COMMAND piccolo_theme_settings_test
+             "${CMAKE_CURRENT_BINARY_DIR}/theme_settings_scratch" "${CMAKE_CURRENT_SOURCE_DIR}/themes")
+    set_tests_properties(piccolo_theme_settings PROPERTIES
+        PASS_REGULAR_EXPRESSION "theme settings: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
     set_tests_properties(piccolo_settings_view PROPERTIES
         PASS_REGULAR_EXPRESSION "settings view: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
@@ -537,6 +553,39 @@ if(MULTITAP_BUILD_TESTS)
              COMMAND piccolo_recent_games_test "${CMAKE_CURRENT_BINARY_DIR}/recent_games_test")
     set_tests_properties(piccolo_recent_games PROPERTIES
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # The CONTINUE card's model: which card for which files, its record, the dates.
+    add_executable(piccolo_continue_card_test tools/continue_card_test.cpp src/continue_card.cpp)
+    target_include_directories(piccolo_continue_card_test PRIVATE src)
+    target_link_libraries(piccolo_continue_card_test PRIVATE host_common)
+    multitap_set_project_flags(piccolo_continue_card_test)
+    add_test(NAME piccolo_continue_card
+             COMMAND piccolo_continue_card_test "${CMAKE_CURRENT_BINARY_DIR}/continue_card_test")
+    set_tests_properties(piccolo_continue_card PROPERTIES
+        PASS_REGULAR_EXPRESSION "continue card: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # UNDO SAVE STATE's files: the slot and its undo swapped, no core.
+    add_executable(piccolo_state_undo_test tools/state_undo_test.cpp src/state_undo.cpp)
+    target_include_directories(piccolo_state_undo_test PRIVATE src)
+    target_link_libraries(piccolo_state_undo_test PRIVATE host_common)
+    multitap_set_project_flags(piccolo_state_undo_test)
+    add_test(NAME piccolo_state_undo
+             COMMAND piccolo_state_undo_test "${CMAKE_CURRENT_BINARY_DIR}/state_undo_test")
+    set_tests_properties(piccolo_state_undo PROPERTIES
+        PASS_REGULAR_EXPRESSION "state undo: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+
+    # How controls are named (the DVR's hints, INPUT): layouts, SDL's labels, the font's glyphs. No SDL.
+    add_executable(piccolo_button_names_test tools/button_names_test.cpp src/button_names.cpp)
+    target_include_directories(piccolo_button_names_test PRIVATE src)
+    target_link_libraries(piccolo_button_names_test PRIVATE frontend_common retroui_font)
+    multitap_set_project_flags(piccolo_button_names_test)
+    add_test(NAME piccolo_button_names
+             COMMAND piccolo_button_names_test "${CMAKE_CURRENT_SOURCE_DIR}/layouts")
+    set_tests_properties(piccolo_button_names PROPERTIES
+        PASS_REGULAR_EXPRESSION "button names: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 
     # FILE TRANSFER's target paths (MIRROR FOLDER STRUCTURE), no GUI.
     add_executable(piccolo_share_paths_test tools/share_paths_test.cpp src/share_paths.cpp)

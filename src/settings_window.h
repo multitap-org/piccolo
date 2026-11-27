@@ -78,10 +78,8 @@ struct SettingsWindowNotes
     uint32_t           audio_device_count = 0;
     const char*        audio_latency = "";  // the latency in use, for the Sound tab
     const char*        game_mode = "";      // GameMode's state, for the General tab
-    const char*        rewind_note = "";    // what AUTO chose for the running game ("" = nothing to say)
+    const char*        rewind_note = "";    // the running game's rewind: AUTO's choice, the mode now ("" = no game)
     bool               rewind_known = false;   // the running game has AUTO's verdict (MEASURE AGAIN shows)
-    const char*        rewind_in_use = "";  // the running game's rewind mode now (SCRUB, SNAPSHOTS, OFF...);
-                                            // "" = no game: REWIND's header shows the setting
 };
 
 constexpr uint32_t SETTINGS_FOLDER_COUNT = 5;   // CORES, SYSTEM, SAVES, STATES, SCREENSHOTS
@@ -96,9 +94,14 @@ struct SettingsWindowState
     SettingsWindowNotes notes;
     // FOLDERS: the default folders, shown in empty fields (in the order above).
     const char*         folder_hints[SETTINGS_FOLDER_COUNT] = {};
-    // GAME FOLDERS: the ones set (the slots have no gaps).
+    // GAME FOLDERS: the ones set, like piccolo_settings_game_folders (a file
+    // edited by hand may have gaps). game_folder_slots[i] is the slot row i
+    // came from (what REMOVE and CHOOSE FOLDER take); game_folder_free is the
+    // first empty slot, where "+" adds.
     const char*         game_folders[PICCOLO_GAME_FOLDER_MAX] = {};
+    uint32_t            game_folder_slots[PICCOLO_GAME_FOLDER_MAX] = {};
     uint32_t            game_folder_count = 0;
+    uint32_t            game_folder_free = 0;
     bool                game_mode_supported = false;   // Linux only: GAME MODE shows
     // At the scope being edited:
     bool                window_fixed = false;      // WINDOW MODE is FIXED (ASPECT and HEIGHT, else SCALE)
@@ -106,7 +109,6 @@ struct SettingsWindowState
     bool                frame_delay_usable = false;   // WAIT FOR PRESENT is on
     bool                frame_delay_auto = false;     // FRAME DELAY AUTO is on
     bool                rate_control = false;         // RATE CONTROL is on (MAX DEVIATION usable)
-    const char*         rewind_mode = "";             // REWIND's header: the mode in use now
     const std::vector<PiccoloThemeFile>* themes = nullptr;   // themes/*.cfg, for THEME
     ImageWindowState    image;                   // IMAGE SETTINGS (and the crop shown under its button)
     const NetWindowState* network = nullptr;     // the NETWORK tab; nullptr: no tab
@@ -125,6 +127,7 @@ struct SettingsWindowAction
     SettingLayer   latency_scope = SettingLayer::global;
     bool           set_palette = false;        // THEME or CUSTOM THEME picked: every interface color
     RetroUiPalette palette = {};
+    std::string    theme_id;                   // ... and the theme piccolo.cfg names (ui_theme)
     const char*    choose_folder = nullptr;    // a folder field or "+": that setting (CHOOSE FOLDER)
     bool           search_frame_delay = false; // SEARCH AGAIN
     bool           rewind_measure_again = false;   // MEASURE AGAIN

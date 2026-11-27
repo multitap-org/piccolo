@@ -1963,8 +1963,9 @@ void core_config_window_open(CoreConfigWindow* config)
     config->select_tab = true;   // back on the tab it was closed on
     config->shader_choose_scope = true;
     config->remap = false;
-    config->capturing = false;
-    config->bind_all = false;
+    // capturing / bind_all stay: they are not ours to clear here (the input
+    // capture would stay on and pause every controller). The remap view is
+    // closed, so drop_unseen_capture cancels the capture on the next apply.
     config->pad_action = InputAction::count;
     config->combo_editing = false;
     config->macro_editing = false;

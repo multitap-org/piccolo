@@ -50,6 +50,14 @@ msgctxt "menu_load_state"
 msgid "LOAD STATE"
 msgstr "CARGAR ESTADO"
 
+msgctxt "menu_undo_save_state"
+msgid "UNDO SAVE STATE"
+msgstr "DESHACER GUARDAR ESTADO"
+
+msgctxt "menu_undo_load_state"
+msgid "UNDO LOAD STATE"
+msgstr "DESHACER CARGAR ESTADO"
+
 msgctxt "menu_quick_save"
 msgid "QUICK SAVE"
 msgstr "GUARDADO RÁPIDO"
@@ -106,21 +114,137 @@ msgctxt "menu_clear_recents"
 msgid "CLEAR ALL"
 msgstr "BORRAR TODO"
 
+msgctxt "mobile_recent_games"
+msgid "RECENT GAMES"
+msgstr "JUEGOS RECIENTES"
+
+msgctxt "mobile_continue"
+msgid "CONTINUE"
+msgstr "SEGUIR JUGANDO"
+
+msgctxt "mobile_no_games"
+msgid "NO GAMES YET"
+msgstr "TODAVÍA NO HAY JUEGOS"
+
+msgctxt "mobile_no_games_hint"
+msgid "LOAD ONE TO PLAY IT"
+msgstr "CARGA UNO PARA JUGARLO"
+
+msgctxt "mobile_no_games_more"
+msgid "YOUR LAST GAMES SHOW HERE"
+msgstr "TUS ÚLTIMOS JUEGOS APARECEN AQUÍ"
+
+msgctxt "mobile_load_game"
+msgid "LOAD GAME"
+msgstr "CARGAR JUEGO"
+
+msgctxt "mobile_menu"
+msgid "MENU"
+msgstr "MENÚ"
+
 msgctxt "recent_no_game"
 msgid "NO GAME"
 msgstr "SIN JUEGO"
-
-msgctxt "status_start"
-msgid "GAME > LOAD GAME TO START"
-msgstr "JUEGO > CARGAR JUEGO PARA EMPEZAR"
 
 msgctxt "status_reset"
 msgid "RESET"
 msgstr "REINICIADO"
 
-msgctxt "status_not_there_yet"
-msgid "NOT THERE YET"
-msgstr "TODAVÍA NO ESTÁ"
+msgctxt "status_undo_save"
+msgid "SAVE STATE UNDONE, SLOT %u"
+msgstr "GUARDADO DESHECHO, SLOT %u"
+
+msgctxt "status_undo_load"
+msgid "LOAD STATE UNDONE"
+msgstr "CARGA DESHECHA"
+
+msgctxt "status_undo_nothing"
+msgid "NOTHING TO UNDO"
+msgstr "NADA QUE DESHACER"
+
+msgctxt "status_resumed"
+msgid "RESUMED WHERE YOU LEFT OFF"
+msgstr "SIGUES DONDE LO DEJASTE"
+
+msgctxt "status_resume_failed"
+msgid "COULD NOT RESUME WHERE YOU LEFT OFF"
+msgstr "NO SE PUDO SEGUIR DONDE LO DEJASTE"
+
+msgctxt "continue_resume"
+msgid "RESUME"
+msgstr "CONTINUAR"
+
+msgctxt "continue_start"
+msgid "START"
+msgstr "EMPEZAR"
+
+msgctxt "continue_hint"
+msgid "A / ENTER: RESUME · OTHER GAMES: ☰"
+msgstr "A / ENTER: CONTINUAR · OTROS JUEGOS: ☰"
+
+msgctxt "continue_played_today"
+msgid "PLAYED TODAY AT"
+msgstr "JUGADO HOY A LAS"
+
+msgctxt "continue_played_yesterday"
+msgid "PLAYED YESTERDAY AT"
+msgstr "JUGADO AYER A LAS"
+
+msgctxt "continue_played_on"
+msgid "PLAYED ON"
+msgstr "JUGADO EL"
+
+msgctxt "continue_at"
+msgid "AT"
+msgstr "A LAS"
+
+msgctxt "continue_monday"
+msgid "MONDAY"
+msgstr "LUNES"
+
+msgctxt "continue_tuesday"
+msgid "TUESDAY"
+msgstr "MARTES"
+
+msgctxt "continue_wednesday"
+msgid "WEDNESDAY"
+msgstr "MIÉRCOLES"
+
+msgctxt "continue_thursday"
+msgid "THURSDAY"
+msgstr "JUEVES"
+
+msgctxt "continue_friday"
+msgid "FRIDAY"
+msgstr "VIERNES"
+
+msgctxt "continue_saturday"
+msgid "SATURDAY"
+msgstr "SÁBADO"
+
+msgctxt "continue_sunday"
+msgid "SUNDAY"
+msgstr "DOMINGO"
+
+msgctxt "continue_why_no_states"
+msgid "THIS CORE CAN'T SAVE STATES: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT."
+msgstr "ESTE CORE NO GUARDA ESTADOS: EL JUEGO EMPIEZA DESDE EL PRINCIPIO. SUS PARTIDAS GUARDADAS SE CONSERVAN."
+
+msgctxt "continue_why_incomplete"
+msgid "THIS CORE'S STATES ARE INCOMPLETE: THE GAME STARTS FROM THE BEGINNING. ITS OWN SAVES ARE KEPT."
+msgstr "LOS ESTADOS DE ESTE CORE SON INCOMPLETOS: EL JUEGO EMPIEZA DESDE EL PRINCIPIO. SUS PARTIDAS GUARDADAS SE CONSERVAN."
+
+msgctxt "continue_why_off"
+msgid "SAVE STATE ON EXIT IS OFF: THE GAME STARTS FROM THE BEGINNING."
+msgstr "GUARDAR ESTADO AL SALIR ESTÁ APAGADO: EL JUEGO EMPIEZA DESDE EL PRINCIPIO."
+
+msgctxt "continue_why_missing"
+msgid "ITS AUTOMATIC STATE IS GONE: THE GAME STARTS FROM THE BEGINNING."
+msgstr "SU ESTADO AUTOMÁTICO YA NO ESTÁ: EL JUEGO EMPIEZA DESDE EL PRINCIPIO."
+
+msgctxt "continue_why_newer_save"
+msgid "ITS SAVE FILE IS NEWER THAN THIS POINT (COPIED, OR PLAYED ELSEWHERE). RESUMING GOES BACK TO BEFORE THAT SAVE."
+msgstr "SU PARTIDA GUARDADA ES MÁS NUEVA QUE ESTE PUNTO (COPIADA, O JUGADA EN OTRO LADO). CONTINUAR VUELVE A ANTES DE ESA PARTIDA."
 
 msgctxt "picker_title"
 msgid "LOAD GAME"
@@ -133,6 +257,14 @@ msgstr "CORE"
 msgctxt "picker_folder"
 msgid "FOLDER"
 msgstr "CARPETA"
+
+msgctxt "picker_filter"
+msgid "FILTER"
+msgstr "FILTRO"
+
+msgctxt "picker_filter_hint"
+msgid "PART OF A NAME"
+msgstr "PARTE DE UN NOMBRE"
 
 msgctxt "picker_home"
 msgid "HOME"
@@ -430,10 +562,6 @@ msgctxt "setting_pause_on_disconnect_help"
 msgid "Pause when the last controller playing goes away (unplugged, out of battery, a phone that dropped). Not when the keyboard, the mouse, a device's pad or the on-screen pad was what played. It goes on when a controller is back, or when the keyboard plays."
 msgstr "Pausa cuando se va el último control que estaba jugando (desconectado, sin batería, un teléfono que se cayó). No si se jugaba con el teclado, el ratón, el control de un dispositivo o el control en pantalla. Sigue cuando vuelve un control o cuando juega el teclado."
 
-msgctxt "status_paused_disconnected"
-msgid "CONTROLLER DISCONNECTED"
-msgstr "CONTROL DESCONECTADO"
-
 msgctxt "setting_screensaver"
 msgid "ALLOW SCREENSAVER WHILE PAUSED"
 msgstr "PERMITIR PROTECTOR DE PANTALLA EN PAUSA"
@@ -441,6 +569,14 @@ msgstr "PERMITIR PROTECTOR DE PANTALLA EN PAUSA"
 msgctxt "setting_screensaver_help"
 msgid "While a game runs the screensaver is always blocked. On: it may start while paused or in the menu."
 msgstr "Con un juego corriendo el protector de pantalla siempre está bloqueado. Encendido: puede activarse en pausa o en el menú."
+
+msgctxt "setting_savestate_on_exit"
+msgid "SAVE STATE ON EXIT"
+msgstr "GUARDAR ESTADO AL SALIR"
+
+msgctxt "setting_savestate_on_exit_help"
+msgid "Closing a game saves where you are; starting it again continues from there. UNDO LOAD STATE goes back to the start."
+msgstr "Cerrar un juego guarda dónde estás; al abrirlo otra vez sigue desde ahí. DESHACER CARGAR ESTADO vuelve al principio."
 
 msgctxt "setting_path_cores"
 msgid "CORES"
@@ -511,16 +647,16 @@ msgid "SCALING"
 msgstr "ESCALA"
 
 msgctxt "setting_scaling_help"
-msgid "Integer sizes keep every pixel the same size. Auto: one size up if it goes past the window by at most the % below."
-msgstr "Los tamaños enteros dejan todos los píxeles del mismo tamaño. Auto: un tamaño más si se sale de la ventana como mucho el % de abajo."
+msgid "Integer sizes keep every pixel the same size. Integer (auto): one size up if it goes past the window by at most the % below."
+msgstr "Los tamaños enteros dejan todos los píxeles del mismo tamaño. Entero (auto): un tamaño más si se sale de la ventana como mucho el % de abajo."
 
 msgctxt "setting_max_offscreen"
-msgid "AUTO: MAX OFFSCREEN"
-msgstr "AUTO: MÁXIMO FUERA DE PANTALLA"
+msgid "INTEGER (AUTO): MAX OFFSCREEN"
+msgstr "ENTERO (AUTO): MÁXIMO FUERA DE PANTALLA"
 
 msgctxt "setting_max_offscreen_help"
-msgid "How much of the picture Auto may push past the window edges."
-msgstr "Cuánto de la imagen puede sacar Auto fuera de los bordes de la ventana."
+msgid "How much of the picture Integer (auto) may push past the window edges."
+msgstr "Cuánto de la imagen puede sacar Entero (auto) fuera de los bordes de la ventana."
 
 msgctxt "setting_filter"
 msgid "FILTER"
@@ -847,8 +983,8 @@ msgid "INTEGER (OVER)"
 msgstr "ENTERA (POR ENCIMA)"
 
 msgctxt "value_scaling_auto"
-msgid "AUTO"
-msgstr "AUTO"
+msgid "INTEGER (AUTO)"
+msgstr "ENTERO (AUTO)"
 
 msgctxt "value_osk_auto"
 msgid "AUTO"
@@ -1250,6 +1386,22 @@ msgctxt "safe_start_cancel"
 msgid "CANCEL"
 msgstr "CANCELAR"
 
+msgctxt "settings_error_title"
+msgid "SETTINGS COULD NOT BE READ"
+msgstr "NO SE PUDIERON LEER LOS AJUSTES"
+
+msgctxt "settings_error_text"
+msgid "These files are there but could not be read:"
+msgstr "Estos archivos están, pero no se pudieron leer:"
+
+msgctxt "settings_error_defaults"
+msgid "What they hold is at its defaults for now, and nothing is saved over them. Close piccolo, check the files, and start again."
+msgstr "Lo que contienen está en sus valores por defecto por ahora, y no se guarda nada encima. Cierra piccolo, revisa los archivos y vuelve a arrancar."
+
+msgctxt "settings_error_ok"
+msgid "OK"
+msgstr "ACEPTAR"
+
 msgctxt "text_input_title"
 msgid "ENTER TEXT"
 msgstr "ESCRIBIR TEXTO"
@@ -1282,6 +1434,14 @@ msgctxt "quick_menu_load"
 msgid "LOAD"
 msgstr "CARGAR"
 
+msgctxt "quick_menu_undo_save"
+msgid "UNDO SAVE"
+msgstr "DESHACER GUARDADO"
+
+msgctxt "quick_menu_undo_load"
+msgid "UNDO LOAD"
+msgstr "DESHACER CARGA"
+
 msgctxt "quick_menu_quick_save"
 msgid "QUICK SAVE"
 msgstr "GUARDAR YA"
@@ -1310,13 +1470,9 @@ msgctxt "quick_menu_keys"
 msgid "ARROWS OR 0-9: SLOT. S: SAVE. L: LOAD. F1 OR ESC: BACK TO THE GAME."
 msgstr "FLECHAS O 0-9: SLOT. S: GUARDAR. L: CARGAR. F1 O ESC: VOLVER AL JUEGO."
 
-msgctxt "status_game_closed"
-msgid "GAME CLOSED"
-msgstr "JUEGO CERRADO"
-
 msgctxt "status_no_core_for_file"
-msgid "NO CORE FOR THIS FILE"
-msgstr "NINGÚN CORE ABRE ESTE ARCHIVO"
+msgid "NO CORE FOUND FOR THIS FILE TYPE"
+msgstr "NO HAY NÚCLEO PARA ESTE TIPO DE ARCHIVO"
 
 msgctxt "core_options_section"
 msgid "SECTION"
@@ -1597,6 +1753,22 @@ msgstr "EFECTOS EN PANTALLA"
 msgctxt "setting_screen_effects_help"
 msgid "Short effects on the game picture: a camera snap when the DVR plays from here, a shutter when a screenshot is taken."
 msgstr "Efectos breves sobre la imagen del juego: un disparo de cámara cuando el DVR juega desde aquí, un obturador al sacar una captura."
+
+msgctxt "setting_screen_effect_rewind"
+msgid "REWIND"
+msgstr "REBOBINAR"
+
+msgctxt "setting_screen_effect_rewind_help"
+msgid "When the DVR plays from here: the picture starts grey and a little zoomed in, with a faint flash, and settles back."
+msgstr "Cuando el DVR juega desde aquí: la imagen empieza gris y un poco ampliada, con un destello suave, y vuelve a su sitio."
+
+msgctxt "setting_screen_effect_screenshot"
+msgid "SCREENSHOT"
+msgstr "CAPTURA"
+
+msgctxt "setting_screen_effect_screenshot_help"
+msgid "When a screenshot is taken: black closes from the top and the bottom and opens again, like a camera shutter."
+msgstr "Al sacar una captura: el negro se cierra desde arriba y abajo y se vuelve a abrir, como el obturador de una cámara."
 
 msgctxt "setting_ui_color_background"
 msgid "BACKGROUND"
@@ -3072,10 +3244,6 @@ msgctxt "status_net_paired"
 msgid "PAIRED WITH"
 msgstr "VINCULADO CON"
 
-msgctxt "status_net_pairing_failed"
-msgid "PAIRING FAILED: TOO MANY WRONG CODES"
-msgstr "VINCULACIÓN FALLIDA: DEMASIADOS CÓDIGOS ERRÓNEOS"
-
 msgctxt "action_slot_next"
 msgid "NEXT SLOT"
 msgstr "SLOT SIGUIENTE"
@@ -3095,10 +3263,6 @@ msgstr "REINICIAR"
 msgctxt "status_paused_remotely"
 msgid "PAUSED FROM"
 msgstr "EN PAUSA DESDE"
-
-msgctxt "status_resumed"
-msgid "RESUMED"
-msgstr "REANUDADO"
 
 msgctxt "status_link_unknown"
 msgid "NOTHING OPENS THIS LINK YET:"
@@ -3289,8 +3453,8 @@ msgid "THE NETWORK COULDN'T START (SEE THE LOG)."
 msgstr "LA RED NO PUDO ARRANCAR (MIRA EL REGISTRO)."
 
 msgctxt "share_needs_owner"
-msgid "CONNECTED, BUT THAT PICCOLO DIDN'T GIVE US SHARE ACCESS. GIVE IT THERE: SETTINGS > NETWORK, THIS DEVICE, SHARE."
-msgstr "CONECTADO, PERO ESE PICCOLO NO NOS DIO ACCESO PARA COMPARTIR. DALO ALLÁ: AJUSTES > RED, ESTE DISPOSITIVO, COMPARTIR."
+msgid "CONNECTED, BUT THAT PICCOLO DIDN'T GIVE US FILE TRANSFER. IT CAN GRANT IT IN TOOLS > PAIR."
+msgstr "CONECTADO, PERO ESE PICCOLO NO NOS DIO TRANSFERIR ARCHIVOS. PUEDE CONCEDERLO EN HERRAMIENTAS > VINCULAR."
 
 msgctxt "share_disconnect"
 msgid "DISCONNECT"
@@ -3349,8 +3513,8 @@ msgid "A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)"
 msgstr "UN PICCOLO EN OTRA RED (SIN VINCULAR)"
 
 msgctxt "share_pair_internet_help"
-msgid "CONNECT shows a code in TOOLS > PAIR...: type it on the other piccolo in PAIR WITH A CLIENT. Both need the same BEACON SERVER."
-msgstr "CONECTAR muestra un código en HERRAMIENTAS > VINCULAR...: escríbelo en el otro piccolo en VINCULAR CON UN CLIENTE. Los dos necesitan el mismo SERVIDOR BEACON."
+msgid "PAIR opens ENTER A CODE: type the code the other piccolo shows in TOOLS > PAIR > GENERATE PAIRING CODE. Both need the same BEACON SERVER."
+msgstr "VINCULAR abre ESCRIBIR UN CÓDIGO: escribe el código que muestra el otro piccolo en HERRAMIENTAS > VINCULAR > GENERAR CÓDIGO. Los dos necesitan el mismo SERVIDOR BEACON."
 
 msgctxt "share_refused_host_offline"
 msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."
@@ -3488,6 +3652,10 @@ msgctxt "ports_done"
 msgid "DONE"
 msgstr "LISTO"
 
+msgctxt "ports_move_here"
+msgid "MOVE HERE"
+msgstr "MOVER AQUÍ"
+
 msgctxt "ports_help"
 msgid "LEFT / RIGHT: MOVE YOUR CONTROLLER. PORT 1: UP / DOWN PICKS ANY OR DONE, B: DONE (THE MOVES HAPPEN THEN)"
 msgstr "IZQUIERDA / DERECHA: MUEVE TU CONTROL. PUERTO 1: ARRIBA / ABAJO ELIGE CUALQUIERA O LISTO, B: LISTO (AHÍ SE APLICA)"
@@ -3564,37 +3732,13 @@ msgctxt "touch_pad_quick"
 msgid "..."
 msgstr "..."
 
-msgctxt "setting_menu_backdrop"
-msgid "BACKDROP"
-msgstr "FONDO"
+msgctxt "setting_ui_background_transparency"
+msgid "BACKGROUND TRANSPARENCY"
+msgstr "TRANSPARENCIA DEL FONDO"
 
-msgctxt "setting_menu_backdrop_help"
-msgid "While the menu or a window is open, what's behind them (the game too) is darkened this much so the text reads well over any picture (0: not darkened)."
-msgstr "Mientras el menú o una ventana están abiertos, lo que hay detrás (también el juego) se oscurece así para que el texto se lea bien sobre cualquier imagen (0: sin oscurecer)."
-
-msgctxt "paused_why"
-msgid "PAUSED: %s"
-msgstr "EN PAUSA: %s"
-
-msgctxt "pause_cause_menu"
-msgid "MENU"
-msgstr "MENÚ"
-
-msgctxt "pause_cause_focus"
-msgid "FOCUS"
-msgstr "FOCO"
-
-msgctxt "pause_cause_controllers"
-msgid "CONTROLLERS"
-msgstr "CONTROLES"
-
-msgctxt "pause_cause_user"
-msgid "USER"
-msgstr "USUARIO"
-
-msgctxt "pause_cause_background"
-msgid "BACKGROUND"
-msgstr "SEGUNDO PLANO"
+msgctxt "setting_ui_background_transparency_help"
+msgid "While the menu or a window is open, the theme's BACKGROUND color covers what's behind them (the game too), so the text reads well over any picture. This much of the game still shows through (100: not covered). Saved with the theme."
+msgstr "Mientras el menú o una ventana están abiertos, el color de FONDO del tema cubre lo que hay detrás (también el juego), para que el texto se lea bien sobre cualquier imagen. Esto es lo que se sigue viendo del juego (100: sin cubrir). Se guarda con el tema."
 
 msgctxt "quick_menu_pause"
 msgid "PAUSE"
@@ -3640,89 +3784,21 @@ msgctxt "value_rewind_snapshots"
 msgid "SNAPSHOTS"
 msgstr "SNAPSHOTS"
 
-msgctxt "setting_rewind_scrub_length"
-msgid "SCRUB LENGTH"
-msgstr "DURACIÓN DE SCRUB"
+msgctxt "setting_rewind_length"
+msgid "LENGTH (MIN)"
+msgstr "DURACIÓN (MIN)"
 
-msgctxt "setting_rewind_scrub_length_help"
-msgid "How far back SCRUB keeps every frame. ALL MEMORY HOLDS: as far as MEMORY goes."
-msgstr "Hasta dónde guarda SCRUB cada frame. TODO LO QUE ENTRE: hasta donde alcance la MEMORIA."
+msgctxt "setting_rewind_length_help"
+msgid "How far back the DVR can go, in minutes, in either mode. Never more than MEMORY holds."
+msgstr "Hasta dónde puede volver el DVR, en minutos, en cualquiera de los modos. Nunca más de lo que cabe en MEMORIA."
 
-msgctxt "value_rewind_all"
-msgid "ALL MEMORY HOLDS"
-msgstr "TODO LO QUE ENTRE"
+msgctxt "setting_rewind_snapshot_frequency"
+msgid "SNAPSHOT FREQUENCY (S)"
+msgstr "FRECUENCIA DE SNAPSHOTS (S)"
 
-msgctxt "value_minutes_1"
-msgid "1 MIN"
-msgstr "1 MIN"
-
-msgctxt "value_minutes_2"
-msgid "2 MIN"
-msgstr "2 MIN"
-
-msgctxt "value_minutes_5"
-msgid "5 MIN"
-msgstr "5 MIN"
-
-msgctxt "value_minutes_10"
-msgid "10 MIN"
-msgstr "10 MIN"
-
-msgctxt "value_minutes_30"
-msgid "30 MIN"
-msgstr "30 MIN"
-
-msgctxt "setting_rewind_snapshot_every"
-msgid "SNAPSHOT EVERY"
-msgstr "UN SNAPSHOT CADA"
-
-msgctxt "setting_rewind_snapshot_every_help"
-msgid "In SNAPSHOTS, a state this often; the frames between them are played again from the input."
-msgstr "En SNAPSHOTS, un estado con esta frecuencia; los frames entre ellos se vuelven a jugar desde el input."
-
-msgctxt "value_seconds_5"
-msgid "5 S"
-msgstr "5 S"
-
-msgctxt "value_seconds_10"
-msgid "10 S"
-msgstr "10 S"
-
-msgctxt "value_seconds_15"
-msgid "15 S"
-msgstr "15 S"
-
-msgctxt "value_seconds_30"
-msgid "30 S"
-msgstr "30 S"
-
-msgctxt "value_seconds_60"
-msgid "60 S"
-msgstr "60 S"
-
-msgctxt "setting_rewind_snapshots_kept"
-msgid "SNAPSHOTS KEPT"
-msgstr "SNAPSHOTS GUARDADOS"
-
-msgctxt "setting_rewind_snapshots_kept_help"
-msgid "How many snapshots SNAPSHOTS keeps. ALL MEMORY HOLDS: as many as MEMORY takes."
-msgstr "Cuántos snapshots guarda SNAPSHOTS. TODO LO QUE ENTRE: los que quepan en la MEMORIA."
-
-msgctxt "value_count_10"
-msgid "10"
-msgstr "10"
-
-msgctxt "value_count_30"
-msgid "30"
-msgstr "30"
-
-msgctxt "value_count_60"
-msgid "60"
-msgstr "60"
-
-msgctxt "value_count_120"
-msgid "120"
-msgstr "120"
+msgctxt "setting_rewind_snapshot_frequency_help"
+msgid "In SNAPSHOTS, a state this often, in seconds; the frames between them are played again from the input."
+msgstr "En SNAPSHOTS, un estado con esta frecuencia, en segundos; los fotogramas entre ellos se vuelven a jugar desde la entrada."
 
 msgctxt "setting_rewind_memory"
 msgid "MEMORY"
@@ -3756,9 +3832,9 @@ msgctxt "value_memory_2048"
 msgid "2 GB"
 msgstr "2 GB"
 
-msgctxt "rewind_note_chose"
-msgid "THIS GAME: AUTO CHOSE"
-msgstr "ESTE JUEGO: AUTO ELIGIÓ"
+msgctxt "rewind_note_current"
+msgid "CURRENT MODE:"
+msgstr "MODO ACTUAL:"
 
 msgctxt "rewind_note_measuring"
 msgid "THIS GAME: AUTO IS MEASURING THE CORE."
@@ -3840,6 +3916,22 @@ msgctxt "dvr_lane_kept"
 msgid "KEPT LANE"
 msgstr "LÍNEA GUARDADA"
 
+msgctxt "dvr_tab_recorded"
+msgid "RECORDED"
+msgstr "GRABADA"
+
+msgctxt "dvr_tab_kept"
+msgid "KEPT"
+msgstr "GUARDADA"
+
+msgctxt "dvr_jump_back"
+msgid "-5 S"
+msgstr "-5 S"
+
+msgctxt "dvr_jump_forward"
+msgid "+5 S"
+msgstr "+5 S"
+
 msgctxt "dvr_hud_nothing"
 msgid "REWIND: NOTHING RECORDED YET"
 msgstr "REBOBINAR: NADA GRABADO TODAVÍA"
@@ -3905,8 +3997,8 @@ msgid "Folder for screenshots (PNG). Empty: the screenshots folder in piccolo's 
 msgstr "Carpeta para las capturas (PNG). Vacía: la carpeta screenshots en la carpeta de piccolo."
 
 msgctxt "status_screenshot_saved"
-msgid "SCREENSHOT SAVED: %s"
-msgstr "CAPTURA GUARDADA: %s"
+msgid "SCREENSHOT SAVED"
+msgstr "CAPTURA GUARDADA"
 
 msgctxt "status_screenshot_failed"
 msgid "THE SCREENSHOT COULD NOT BE SAVED (SEE THE LOG)"
@@ -3919,6 +4011,18 @@ msgstr "TODAVÍA SE ESTÁ GUARDANDO LA ÚLTIMA CAPTURA"
 msgctxt "input_action_hotkey_screenshot"
 msgid "SCREENSHOT"
 msgstr "CAPTURA"
+
+msgctxt "input_action_hotkey_reset"
+msgid "RESET"
+msgstr "REINICIAR"
+
+msgctxt "input_action_hotkey_undo_save_state"
+msgid "UNDO SAVE STATE"
+msgstr "DESHACER GUARDAR ESTADO"
+
+msgctxt "input_action_hotkey_undo_load_state"
+msgid "UNDO LOAD STATE"
+msgstr "DESHACER CARGAR ESTADO"
 
 msgctxt "quick_menu_config"
 msgid "CORE CONFIG"
@@ -3935,10 +4039,6 @@ msgstr "CONFIGURACIÓN DEL CORE"
 msgctxt "menu_core_config"
 msgid "CORE CONFIGURATION..."
 msgstr "CONFIGURACIÓN DEL CORE..."
-
-msgctxt "pause_cause_pairing"
-msgid "PAIRING REQUEST"
-msgstr "SOLICITUD DE VINCULACIÓN"
 
 msgctxt "menu_guests"
 msgid "REMOTE PLAY..."
@@ -4049,12 +4149,16 @@ msgid "REMOTE PLAY ENDED"
 msgstr "TERMINÓ JUGAR A DISTANCIA"
 
 msgctxt "status_guest_joined"
-msgid "JOINED:"
-msgstr "SE UNIÓ:"
+msgid "%s JOINED THE SESSION"
+msgstr "%s SE UNIÓ A LA SESIÓN"
+
+msgctxt "status_guest_left"
+msgid "%s LEFT THE SESSION"
+msgstr "%s SALIÓ DE LA SESIÓN"
 
 msgctxt "status_guest_link"
-msgid "GUEST LINKS OPEN IN PICCOLETTO: OPENING IT IN THE BROWSER"
-msgstr "LOS ENLACES DE INVITADO SE ABREN EN PICCOLETTO: SE ABRE EN EL NAVEGADOR"
+msgid "REMOTE PLAY UNSUPPORTED, USE PICCOLETTO"
+msgstr "JUEGO REMOTO NO DISPONIBLE, USA PICCOLETTO"
 
 msgctxt "menu_pair"
 msgid "PAIR..."
@@ -4272,6 +4376,30 @@ msgstr "Elige un emulador y abre un archivo de juego o arrástralo a la página.
 msgctxt "web_emulators"
 msgid "Emulators"
 msgstr "Emuladores"
+
+msgctxt "web_channels"
+msgid "Build"
+msgstr "Versión"
+
+msgctxt "web_channel_release"
+msgid "Release"
+msgstr "Release"
+
+msgctxt "web_channel_dev"
+msgid "Dev"
+msgstr "Dev"
+
+msgctxt "web_channel_release_title"
+msgid "The latest release"
+msgstr "El último release"
+
+msgctxt "web_channel_dev_title"
+msgid "Every push to main: newer, less tested"
+msgstr "Cada push a main: más nuevo, menos probado"
+
+msgctxt "web_channel_none_title"
+msgid "No release yet"
+msgstr "Todavía no hay un release"
 
 msgctxt "web_play"
 msgid "Play"

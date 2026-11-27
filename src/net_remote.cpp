@@ -39,24 +39,27 @@ static void build_layout(std::vector<LayoutRow>* rows)
     add_row(rows, Str::tab_general, none, none, PICCOLO_PAUSE_ON_FOCUS_LOSS);
     add_row(rows, Str::tab_general, none, none, PICCOLO_PAUSE_ON_DISCONNECT);
     add_row(rows, Str::tab_general, none, none, PICCOLO_SCREENSAVER_WHEN_PAUSED);
+    add_row(rows, Str::tab_general, none, none, PICCOLO_SAVESTATE_ON_EXIT);
     if (game_mode_supported())
     {
         add_row(rows, Str::tab_general, none, none, PICCOLO_GAME_MODE);
     }
     add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SCRUB_LENGTH);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOT_EVERY);
-    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOTS_KEPT);
+    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_LENGTH);
+    add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_SNAPSHOT_FREQUENCY);
     add_row(rows, Str::tab_general, none, text_id(Str::section_rewind), PICCOLO_REWIND_MEMORY);
 
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_MENU_BOXES);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_SHADOWS);
     add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_THEME_CURSOR);
+    add_row(rows, Str::tab_interface, none, none, PICCOLO_UI_BACKGROUND_TRANSPARENCY);
     for (uint32_t i = 0; i < piccolo_settings_ui_color_count(); i++)
     {
         add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), piccolo_settings_ui_color_key(i));
     }
     add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_REWIND);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_SCREENSHOT);
 
     uint32_t picture = text_id(Str::tab_picture);
     add_row(rows, Str::tab_video, picture, none, PICCOLO_VIDEO_ASPECT);
@@ -123,6 +126,11 @@ bool net_remote_init(NetRemote* remote, const Settings* settings)
         return false;
     }
     remote->strings_language = 0;
+    for (uint32_t i = 0; i < PICCOLO_LANGUAGE_COUNT; i++)
+    {
+        remote->loaded[i] = remote->strings;   // the table, in English; parsed on first use
+        remote->language_loaded[i] = false;
+    }
     remote->reply.resize(NET_LINK_MAX_PAYLOAD);
     std::vector<LayoutRow> rows;
     build_layout(&rows);
@@ -151,7 +159,12 @@ static void use_language(NetRemote* remote, const char* code, const char* root)
     }
     if (language != remote->strings_language)
     {
-        piccolo_text_load_language(&remote->strings, language, root);
+        if (!remote->language_loaded[language])
+        {
+            piccolo_text_load_language(&remote->loaded[language], language, root);
+            remote->language_loaded[language] = true;
+        }
+        remote->strings = remote->loaded[language];
         remote->strings_language = language;
     }
 }
@@ -236,8 +249,13 @@ size_t net_remote_answer_settings(NetRemote* remote, Settings* settings, const c
     {
         status = net_settings_apply(settings, layer, reset, key.c_str(), value.c_str());
     }
+    // A setting not offered gets no values back (folders, servers): only the refusal.
     NetSettingValues values;
-    net_settings_values(settings, key.c_str(), &values);
+    values.key = key;   // the reply still names what was asked
+    if (offered(remote, key.c_str()))
+    {
+        net_settings_values(settings, key.c_str(), &values);
+    }
     return net_settings_write_set_result(remote->reply.data(), remote->reply.size(), id, status, &values);
 }
 
@@ -301,6 +319,8 @@ struct ActionInfo
 static const ActionInfo ACTIONS[] = {
     {"save_state", Str::menu_save_state, NetActionKind::press, NET_CAP_STREAM},
     {"load_state", Str::menu_load_state, NetActionKind::press, NET_CAP_STREAM},
+    {"undo_save_state", Str::menu_undo_save_state, NetActionKind::press, NET_CAP_STREAM},
+    {"undo_load_state", Str::menu_undo_load_state, NetActionKind::press, NET_CAP_STREAM},
     {"slot_previous", Str::action_slot_previous, NetActionKind::press, NET_CAP_STREAM},
     {"slot_next", Str::action_slot_next, NetActionKind::press, NET_CAP_STREAM},
     {"fast_forward", Str::input_action_hotkey_fast_forward, NetActionKind::hold, NET_CAP_STREAM},

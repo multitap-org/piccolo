@@ -9,6 +9,7 @@
 #include "debug_ui.h"
 #include "pixel_font_imgui.h"
 #include "retro_ui.h"
+#include "touch_ui.h"   // touch_ui_scale_for
 
 static int32_t g_scale = 1;
 static std::string g_layout_file;   // ImGui keeps a pointer to it
@@ -45,6 +46,16 @@ void ui_toolkit_set_scale(int32_t scale)
 int32_t ui_toolkit_scale_for_screen(float width, float height)
 {
     return retro_ui_scale_for_window(width, height);
+}
+
+int32_t ui_toolkit_scale_for_phone(float width, float height)
+{
+    return touch_ui_scale_for(width, height);
+}
+
+void ui_toolkit_set_phone(bool on)
+{
+    retro_ui_set_page_mode(on);
 }
 
 void ui_toolkit_set_palette(const RetroUiPalette* palette)

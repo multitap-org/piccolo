@@ -156,7 +156,8 @@ struct PairWindow
     NetCaps         host_uses = 0;
     NetCaps         given = 0;              // done: what it lets us use
     NetCaps         ticks = 0;              // done: what it may use here
-    int32_t         device = -1;            // done: its index in the status' `paired`
+    int32_t         device = -1;            // done: its index in the status' `paired` when it connected (>= 0: a device was paired)
+    uint8_t         device_key[NET_KEY_SIZE] = {};   // done: its key; DONE looks the index up again (the list may have changed)
     bool            newly_paired = false;
     bool            seen_connecting = false;   // the link took our connect
     uint64_t        device_since_ms = 0;    // typing / checking since (pair_window_update stamps it)
@@ -175,6 +176,7 @@ struct PairWindow
 
     // The red question (FILE TRANSFER / SETTINGS for an unsigned build).
     NetCapsUnsignedAsk ask;
+    uint32_t        ask_peer = 0;           // ask.target == request: the peer it was asked about (with ask.name)
 
     // A request shown as a card in the game: START held on it.
     InputHold       accept_hold;
@@ -261,6 +263,8 @@ void pair_window_granted(PairWindow* window, const NetAccessEvent* event);
 void pair_window_code_expired(PairWindow* window, uint64_t now_ms);
 // A request ended without pairing (it cancelled, left, or failed).
 void pair_window_request_gone(PairWindow* window, uint32_t peer);
+// A device typed too many wrong codes for the code shown: PAIRING FAILED (the notice).
+void pair_window_failed(PairWindow* window, uint64_t now_ms);
 // Networking stopped (turned off, or the listener restarted): the request
 // and the shown code belonged to the NetAccess that's gone.
 void pair_window_network_stopped(PairWindow* window);

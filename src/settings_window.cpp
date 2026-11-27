@@ -24,9 +24,9 @@
 void settings_window_update(SettingsWindow* window, const Settings* settings, const char* core_name,
                             const char* game_name)
 {
-    if (!window->open)
+    if (!window->open && !window->image_open)
     {
-        return;   // as before, the scope is checked while the window shows
+        return;   // IMAGE SETTINGS is its own window and uses the scope too
     }
     bool has_core = core_name[0] != '\0';
     bool has_game = has_core && game_name[0] != '\0';
@@ -38,32 +38,6 @@ static bool true_at_scope(const Settings* settings, SettingLayer scope, const ch
 {
     const char* value = settings_get_at(settings, scope, key, nullptr);
     return value != nullptr && std::strcmp(value, "true") == 0;
-}
-
-// A REWIND value as its label ("auto" -> AUTO); "" for an unknown one.
-static const char* rewind_value_text(const Localization* strings, const char* value)
-{
-    if (value == nullptr)
-    {
-        return "";
-    }
-    if (std::strcmp(value, "off") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_off);
-    }
-    if (std::strcmp(value, "auto") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_auto);
-    }
-    if (std::strcmp(value, "scrub") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_scrub);
-    }
-    if (std::strcmp(value, "snapshots") == 0)
-    {
-        return piccolo_text(strings, Str::value_rewind_snapshots);
-    }
-    return "";
 }
 
 void settings_window_state(SettingsWindowState* state, const SettingsWindow* window, const Settings* settings,
@@ -84,11 +58,20 @@ void settings_window_state(SettingsWindowState* state, const SettingsWindow* win
     state->folder_hints[3] = paths->states.c_str();
     state->folder_hints[4] = paths->screenshots.c_str();
     state->game_folder_count = 0;
-    while (state->game_folder_count < PICCOLO_GAME_FOLDER_MAX &&
-           settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count])[0] != '\0')
+    state->game_folder_free = PICCOLO_GAME_FOLDER_MAX;
+    for (uint32_t slot = 0; slot < PICCOLO_GAME_FOLDER_MAX; slot++)
     {
-        state->game_folders[state->game_folder_count] =
-            settings_get_text(settings, PICCOLO_PATH_GAMES[state->game_folder_count]);
+        const char* folder = settings_get_text(settings, PICCOLO_PATH_GAMES[slot]);
+        if (folder[0] == '\0')
+        {
+            if (state->game_folder_free == PICCOLO_GAME_FOLDER_MAX)
+            {
+                state->game_folder_free = slot;
+            }
+            continue;   // a gap: skipped, as piccolo_settings_game_folders does
+        }
+        state->game_folders[state->game_folder_count] = folder;
+        state->game_folder_slots[state->game_folder_count] = slot;
         state->game_folder_count++;
     }
     state->game_mode_supported = game_mode_supported();
@@ -100,14 +83,6 @@ void settings_window_state(SettingsWindowState* state, const SettingsWindow* win
     state->themes = themes;
     image_window_state(&state->image, settings, strings, scope, image);
     state->network = network;
-    // REWIND's header: what runs now (AUTO's choice for the running game),
-    // else the setting at the scope being edited.
-    state->rewind_mode = notes->rewind_in_use;
-    if (state->rewind_mode == nullptr || state->rewind_mode[0] == '\0')
-    {
-        const char* value = settings_get_at(settings, scope, PICCOLO_REWIND, nullptr);
-        state->rewind_mode = rewind_value_text(strings, value);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +131,7 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     for (uint32_t i = 0; i < set; i++)
     {
         RetroUiRow row = {};
-        row.id = PICCOLO_PATH_GAMES[i];
+        row.id = PICCOLO_PATH_GAMES[state->game_folder_slots[i]];
         row.label = label;
         row.help = piccolo_text(ui->strings, Str::setting_path_games_help);
         row.label_width = ui->label_width;
@@ -166,11 +141,11 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
         if (retro_ui_picker_field("value", nullptr, state->game_folders[i],
                                   piccolo_text(ui->strings, Str::game_folder_choose_help)))
         {
-            action->choose_folder = PICCOLO_PATH_GAMES[i];
+            action->choose_folder = PICCOLO_PATH_GAMES[state->game_folder_slots[i]];
         }
         if (retro_ui_row_end(&row))
         {
-            remove = static_cast<int32_t>(i);
+            remove = static_cast<int32_t>(state->game_folder_slots[i]);
         }
     }
     if (remove >= 0)
@@ -185,7 +160,7 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     retro_ui_begin_disabled(set >= PICCOLO_GAME_FOLDER_MAX);
     if (retro_ui_button("+"))
     {
-        action->choose_folder = PICCOLO_PATH_GAMES[set];
+        action->choose_folder = PICCOLO_PATH_GAMES[state->game_folder_free];
     }
     retro_ui_end_disabled();
     retro_ui_item_tooltip(piccolo_text(ui->strings, Str::game_folder_add_help));
@@ -197,18 +172,17 @@ static void draw_game_folders(SettingsWindow* window, const SettingsUiContext* u
     }
 }
 
-// REWIND, folded at first: its header shows the mode in use now (what AUTO
-// chose for the running game, else the setting), so it says enough closed.
+// REWIND, folded at first. Its header is just REWIND (testing round 3); what
+// runs now is the note under the rows.
 static void draw_rewind(const SettingsUiContext* ui, const SettingsWindowState* state, SettingsWindowAction* action)
 {
-    if (!settings_ui_section("rewind", piccolo_text(ui->strings, Str::section_rewind), state->rewind_mode, false))
+    if (!settings_ui_section("rewind", piccolo_text(ui->strings, Str::section_rewind), nullptr, false))
     {
         return;
     }
     settings_ui_row(ui, PICCOLO_REWIND, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SCRUB_LENGTH, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_EVERY, nullptr);
-    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOTS_KEPT, nullptr);
+    settings_ui_row(ui, PICCOLO_REWIND_LENGTH, nullptr);
+    settings_ui_row(ui, PICCOLO_REWIND_SNAPSHOT_FREQUENCY, nullptr);
     settings_ui_row(ui, PICCOLO_REWIND_MEMORY, nullptr);
     if (state->notes.rewind_note != nullptr && state->notes.rewind_note[0] != '\0')
     {
@@ -232,6 +206,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
     settings_ui_row(ui, PICCOLO_PAUSE_ON_FOCUS_LOSS, nullptr);
     settings_ui_row(ui, PICCOLO_PAUSE_ON_DISCONNECT, nullptr);
     settings_ui_row(ui, PICCOLO_SCREENSAVER_WHEN_PAUSED, nullptr);
+    settings_ui_row(ui, PICCOLO_SAVESTATE_ON_EXIT, nullptr);
     if (state->game_mode_supported)   // Linux only: nothing to turn on elsewhere
     {
         settings_ui_row(ui, PICCOLO_GAME_MODE, nullptr);
@@ -427,6 +402,7 @@ static void draw_sound(const SettingsUiContext* ui, const SettingsWindowState* s
 struct ThemeChoice
 {
     std::string           label;
+    std::string           id;        // ui_theme's value
     const RetroUiPalette* palette = nullptr;
 };
 
@@ -489,6 +465,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
     {
         ThemeChoice choice = {};
         choice.label = piccolo_text(strings, piccolo_settings_ui_theme_name(static_cast<RetroUiTheme>(i)));
+        choice.id = piccolo_ui_theme_id(static_cast<RetroUiTheme>(i));
         choice.palette = retro_ui_theme_palette(static_cast<RetroUiTheme>(i));
         shipped.push_back(choice);
     }
@@ -496,6 +473,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
     {
         ThemeChoice choice = {};
         choice.label = (*files)[i].name;
+        choice.id = piccolo_ui_theme_file_id(&(*files)[i]);
         choice.palette = &(*files)[i].palette;
         if ((*files)[i].custom)
         {
@@ -531,6 +509,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             {
                 action->set_palette = true;
                 action->palette = *shipped[i].palette;
+                action->theme_id = shipped[i].id;
                 window->theme_choice = shipped[i].label;
                 window->theme_custom = false;
             }
@@ -562,6 +541,7 @@ static void draw_theme_preset(SettingsWindow* window, const SettingsUiContext* u
             {
                 action->set_palette = true;
                 action->palette = *custom[i].palette;
+                action->theme_id = custom[i].id;
                 window->theme_choice = custom[i].label;
                 window->theme_custom = true;
             }
@@ -743,7 +723,7 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
     settings_ui_row(ui, PICCOLO_UI_MENU_BOXES, nullptr);
     settings_ui_row(ui, PICCOLO_UI_SHADOWS, nullptr);
     settings_ui_row(ui, PICCOLO_UI_THEME_CURSOR, nullptr);
-    settings_ui_row(ui, PICCOLO_MENU_BACKDROP, nullptr);
+    settings_ui_row(ui, PICCOLO_UI_BACKGROUND_TRANSPARENCY, nullptr);
     // COLORS, then EFFECTS (Andrés, testing round 1). COLORS is a long list
     // THEME already sets: folded at first. EFFECTS is one row: open.
     if (settings_ui_section("colors", piccolo_text(ui->strings, Str::section_colors), nullptr, false))
@@ -756,6 +736,11 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
     if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, false))
     {
         settings_ui_row(ui, PICCOLO_SCREEN_EFFECTS, nullptr);
+        // Each effect, under the switch for all of them (greyed out while it's off).
+        retro_ui_begin_disabled(!settings_get_bool(ui->settings, PICCOLO_SCREEN_EFFECTS));
+        settings_ui_row(ui, PICCOLO_SCREEN_EFFECT_REWIND, nullptr);
+        settings_ui_row(ui, PICCOLO_SCREEN_EFFECT_SCREENSHOT, nullptr);
+        retro_ui_end_disabled();
     }
 }
 
@@ -822,8 +807,9 @@ static void draw_tabs(SettingsWindow* window, NetWindow* network_window, const S
                 end_tab_content();
                 retro_ui_end_tab();
             }
-            // DISPLAY (full screen, the window): the browser's page owns them.
-            if (!PICCOLO_BROWSER && retro_ui_begin_tab("display", piccolo_text(strings, Str::tab_display), false))
+            // DISPLAY (full screen, the window): the browser's page owns them;
+            // a phone is always full screen.
+            if (!PICCOLO_BROWSER && !PICCOLO_MOBILE && retro_ui_begin_tab("display", piccolo_text(strings, Str::tab_display), false))
             {
                 begin_tab_content();
                 draw_display(ui, state);
@@ -950,6 +936,10 @@ bool settings_window_apply(const SettingsWindowAction* action, Settings* setting
     if (action->set_palette)
     {
         changed = piccolo_settings_apply_ui_palette(settings, &action->palette) || changed;
+        if (!action->theme_id.empty())
+        {
+            changed = settings_set(settings, SettingLayer::global, PICCOLO_UI_THEME, action->theme_id.c_str()) || changed;
+        }
     }
     return changed;
 }

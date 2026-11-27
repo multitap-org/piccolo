@@ -24,15 +24,20 @@
 //                      the other way, Y or an end; held, 2x while held.
 //                      SNAPSHOTS: a snapshot; held, one a second
 //                      (Andrés, 2026-11-22)
-//       L / R          5 s (SCRUB) or a snapshot
+//       L / R          5 s (SCRUB) or a snapshot (INTERFACE's PAGE LEFT / RIGHT)
 //       B (accept)     PLAY FROM HERE: play on from the cursor
-//       Y              WATCH = RIGHT; while it plays either way, pauses
+//       Y (menu)       WATCH = RIGHT; while it plays either way, pauses
 //                      (keyboard: Space)
 //       A (back)       BACK TO NOW (the game as it was), and Escape
+//     (The RetroPad's names for INTERFACE's default buttons: the bottom,
+//     left and right face buttons and the shoulders.)
 //     A move that can't go further (the oldest or newest frame) lands on
 //     the end and the selected thumbnail bounces, its border blinking.
 //     Each action is logged (what it did to the cursor).
-//     The hints name the keyboard's keys when it was used last.
+//     The hints name the controls bound to those INTERFACE actions on the
+//     gamepad used last (its profile's, layout's or SDL's names: A / X / B
+//     LB RB on an Xbox pad, ✕ □ ○ L1 R1 on a PlayStation one), or the
+//     keyboard's keys when it was used last (dvr_widget_name_keys).
 //   - HUD (no input, never pauses): the PLAY state icon after PLAY FROM
 //     HERE (state_widget), or a notification card saying why it didn't open.
 //
@@ -57,6 +62,9 @@ struct HudStack;
 struct CoreSession;
 #include "retro_ui_font.h"
 struct InputFrame;
+struct InputLayouts;
+struct InputSdl;
+struct InputSystem;
 struct Localization;
 struct Settings;
 
@@ -64,6 +72,10 @@ struct DvrWidget
 {
     CoreRewind rewind;            // the history (CoreSession::rewind points here)
     bool       open = false;
+    // The core's aspect ratio (its geometry's; 0: its pictures' own, pixels
+    // square). The thumbnails take it, as the game is shown (Andrés, testing
+    // round 3). The caller sets it every frame (SET_GEOMETRY may change it).
+    float      core_aspect = 0.0f;
 
     // The strip.
     DvrView               view;
@@ -90,6 +102,15 @@ struct DvrWidget
 
     // The keyboard was used last (the hints show its keys, Space is WATCH).
     bool keyboard = false;
+    // The gamepad used last in the interface (a controller index, -1 none
+    // yet: port 1's first gamepad), whose buttons the hints name.
+    int32_t gamepad = -1;
+    // The hints' control names (dvr_widget_name_keys): PLAY FROM HERE,
+    // WATCH, BACK TO NOW and the jumps' pair. "" = the RetroPad's.
+    char key_accept[32] = {};
+    char key_watch[32]  = {};
+    char key_back[32]   = {};
+    char key_pages[64]  = {};
 
     // A move hit an end of the history: the selected thumbnail bounces.
     int32_t  bump_direction = 0;   // -1 the oldest, 1 the newest
@@ -103,6 +124,13 @@ struct DvrWidget
     char     hud[96] = {};
     uint64_t hud_since_ms = 0;
     uint64_t played_from_ms = 0;   // the last PLAY FROM HERE: the PLAY state icon (state_widget)
+
+    // The phone's strip held by a finger (dvr_view_draw_phone): SCRUB moves
+    // faster the further it is from where it went down; SNAPSHOTS moves a
+    // snapshot per picture it slides.
+    bool     dragging = false;
+    uint64_t drag_last_ms = 0;
+    double   drag_frames = 0.0;   // SCRUB: the part of a frame due; SNAPSHOTS: of a picture
 
     char readout[16] = {};
     char kept[32]    = {};
@@ -121,8 +149,13 @@ bool dvr_widget_open(DvrWidget* widget, const Localization* strings, uint64_t no
 // BACK TO NOW: closes, the game as it was.
 void dvr_widget_close(DvrWidget* widget);
 
-// While open, after input_update: the gamepads' and keyboard's actions.
+// Every frame, after input_update: the gamepads' and keyboard's actions
+// while open (and, open or not, which gamepad was used last).
 void dvr_widget_update(DvrWidget* widget, const InputFrame* frame, uint64_t now_ms);
+
+// While open, before dvr_widget_prepare: names the hints' controls from the
+// INTERFACE bindings of the gamepad used last, or the keyboard's.
+void dvr_widget_name_keys(DvrWidget* widget, const InputSystem* input, const InputSdl* sdl, const InputLayouts* layouts);
 
 // While open, in a frame (after app_shell_acquire, before the session's own
 // upload): makes the next missing thumbnail.
@@ -140,7 +173,9 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
 // What the strip shows besides its view (the widget's own, from prepare).
 struct DvrWidgetState
 {
-    DvrViewText text;   // title, mode, kept, readout, BACK TO NOW, the lane
+    DvrViewText text;   // title, mode, kept, readout, BACK TO NOW, the lane, the phone's buttons
+    bool  phone = false;          // the phone UI: dvr_view_draw_phone, at the touch scale
+    float game_aspect = 4.0f / 3.0f;   // the game's picture (the phone's layout leaves it room)
 };
 
 // What a click / tap on the strip (or Space) did this frame.
@@ -149,9 +184,19 @@ struct DvrWidgetAction
     DvrViewAction press = DvrViewAction::none;
     int32_t       clicked = -1;      // a thumbnail clicked (-1 none): the cursor goes there
     bool          keyboard = false;  // Space was WATCH: the hints name the keyboard's keys
+    bool          dragging = false;  // the phone's strip held (dvr_view_draw_phone's)
+    float         drag_from = 0.0f;
+    float         drag_moved = 0.0f;
 };
 
-void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings);
+void dvr_widget_state(DvrWidgetState* state, const DvrWidget* widget, const Localization* strings, bool phone,
+                      float game_aspect);
+
+// The phone UI while the DVR is open: the game's room (window pixels) on a
+// screen this size, the panel taking the rest (dvr_view_phone_areas).
+// False when closed.
+bool dvr_widget_phone_game_area(const DvrWidget* widget, float screen_width, float screen_height, int32_t scale,
+                                float game_aspect, float* width, float* height);
 
 // The strip, above every window.
 void dvr_widget_draw(DvrWidget* widget, const DvrWidgetState* state, RetroUiFont* pixel_font, int32_t scale,
@@ -163,7 +208,8 @@ void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t
 // Why it didn't open, as a notification card for a few seconds (hud_view).
 void dvr_widget_add_hud(const DvrWidget* widget, HudStack* stack, uint64_t now_ms);
 
-// For SETTINGS > GENERAL: what AUTO chose for the running game ("" = nothing).
+// For SETTINGS > GENERAL: AUTO measuring, or no savestates ("" = nothing; the
+// mode in use is the caller's CURRENT MODE).
 void dvr_widget_note(const DvrWidget* widget, const Localization* strings, char* out, size_t out_size);
 
 // Frees the thumbnails (the history goes with the game: core_session_stop).

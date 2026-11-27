@@ -67,6 +67,16 @@ int main(int argc, char** argv)
             g_failures++;
             continue;
         }
+        // The loader keeps English for a translation whose printf conversions
+        // differ from the English text's (it would be undefined behaviour in
+        // snprintf): fail here so it is fixed, not silently shown in English.
+        // The loader logs which entries; the log is in the test output.
+        if (strings.refused > 0)
+        {
+            std::printf("FAIL %s: %u translation(s) refused, their printf conversions differ from English (see the log)\n",
+                        code, strings.refused);
+            g_failures++;
+        }
         // Language names are shown in their own language: not translated.
         for (uint32_t id = 0; id < count; id++)
         {

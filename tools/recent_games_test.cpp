@@ -68,6 +68,11 @@ int main(int argc, char** argv)
     game.content_path = "";
     recent_games_label(&game, "NO GAME", label, sizeof(label));
     check(std::strcmp(label, "NO GAME  [snes9x]") == 0, "label: a core alone");
+    char name[256] = {};
+    char core[256] = {};
+    game.content_path = "/roms/Super Mario World (USA).sfc";
+    recent_games_names(&game, "NO GAME", name, sizeof(name), core, sizeof(core));
+    check(std::strcmp(name, "Super Mario World (USA)") == 0 && std::strcmp(core, "snes9x") == 0, "names: game and core apart");
 
     std::string path = std::string(argv[1]) + "/recent.cfg";
     std::remove(path.c_str());
@@ -83,6 +88,21 @@ int main(int argc, char** argv)
     check(loaded.games.size() == 2 && loaded.games[0].core_path == SNES && loaded.games[0].content_path.empty(),
           "order and the core-only entry kept");
     check(loaded.games.size() == 2 && loaded.games[1].content_path == "/roms/Pokémon ポケモン.gba", "UTF-8 path kept");
+
+    // A path settings_file_set refuses (a blank at its end) doesn't stop the
+    // others from being saved: it's left out, the rest numbered without a gap.
+    RecentGames mixed = {};
+    recent_games_add(&mixed, SNES, "/roms/last.sfc");
+    recent_games_add(&mixed, SNES, "/roms/ends in a blank.sfc ");
+    recent_games_add(&mixed, GBA, "/roms/first.gba");
+    check(mixed.games.size() == 3, "the refused path is in the list");
+    check(recent_games_save(&mixed, path.c_str()), "save with a refused path");
+    RecentGames mixed_loaded = {};
+    check(recent_games_load(&mixed_loaded, path.c_str()), "load after a refused path");
+    check(mixed_loaded.games.size() == 2, "the refused path is left out");
+    check(mixed_loaded.games.size() == 2 && mixed_loaded.games[0].content_path == "/roms/first.gba" &&
+              mixed_loaded.games[1].content_path == "/roms/last.sfc",
+          "the others kept, in order");
 
     if (g_failures == 0)
     {

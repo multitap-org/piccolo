@@ -85,28 +85,6 @@ static const SettingEnumValue REWIND_VALUES[] = {
 };
 constexpr uint32_t REWIND_COUNT = sizeof(REWIND_VALUES) / sizeof(REWIND_VALUES[0]);
 
-// Minutes ("0": all the memory holds).
-static const SettingEnumValue SCRUB_LENGTH_VALUES[] = {
-    {"0", text_id(Str::value_rewind_all)},  {"1", text_id(Str::value_minutes_1)},
-    {"2", text_id(Str::value_minutes_2)},   {"5", text_id(Str::value_minutes_5)},
-    {"10", text_id(Str::value_minutes_10)}, {"30", text_id(Str::value_minutes_30)},
-};
-constexpr uint32_t SCRUB_LENGTH_COUNT = sizeof(SCRUB_LENGTH_VALUES) / sizeof(SCRUB_LENGTH_VALUES[0]);
-
-static const SettingEnumValue SNAPSHOT_EVERY_VALUES[] = {
-    {"5", text_id(Str::value_seconds_5)},   {"10", text_id(Str::value_seconds_10)},
-    {"15", text_id(Str::value_seconds_15)}, {"30", text_id(Str::value_seconds_30)},
-    {"60", text_id(Str::value_seconds_60)},
-};
-constexpr uint32_t SNAPSHOT_EVERY_COUNT = sizeof(SNAPSHOT_EVERY_VALUES) / sizeof(SNAPSHOT_EVERY_VALUES[0]);
-
-static const SettingEnumValue SNAPSHOTS_KEPT_VALUES[] = {
-    {"0", text_id(Str::value_rewind_all)}, {"10", text_id(Str::value_count_10)},
-    {"30", text_id(Str::value_count_30)},  {"60", text_id(Str::value_count_60)},
-    {"120", text_id(Str::value_count_120)},
-};
-constexpr uint32_t SNAPSHOTS_KEPT_COUNT = sizeof(SNAPSHOTS_KEPT_VALUES) / sizeof(SNAPSHOTS_KEPT_VALUES[0]);
-
 // MB ("auto": 256, 128 on Android).
 static const SettingEnumValue REWIND_MEMORY_VALUES[] = {
     {"auto", text_id(Str::value_memory_auto)}, {"128", text_id(Str::value_memory_128)},
@@ -128,6 +106,8 @@ static const SettingEnumValue LANGUAGE_VALUES[] = {
     {"es", text_id(Str::value_language_spanish)},
 };
 constexpr uint32_t LANGUAGE_COUNT = sizeof(LANGUAGE_VALUES) / sizeof(LANGUAGE_VALUES[0]);
+// "auto" comes first, then one value per language: piccolo_settings_language() returns choice - 1.
+static_assert(LANGUAGE_COUNT == PICCOLO_LANGUAGE_COUNT + 1, "auto, then one value per language");
 
 static const SettingEnumValue OSK_VALUES[] = {
     {"auto", text_id(Str::value_osk_auto)},
@@ -165,6 +145,8 @@ static const SettingEnumValue WINDOW_ASPECT_VALUES[] = {
     {"4:3"},
 };
 static const double WINDOW_ASPECTS[] = {16.0 / 9.0, 16.0 / 10.0, 4.0 / 3.0};
+static_assert(sizeof(WINDOW_ASPECTS) / sizeof(WINDOW_ASPECTS[0]) == sizeof(WINDOW_ASPECT_VALUES) / sizeof(WINDOW_ASPECT_VALUES[0]),
+              "one ratio per window aspect value");
 
 static const SettingEnumValue WINDOW_HEIGHT_VALUES[] = {
     {"720"},
@@ -174,6 +156,8 @@ static const SettingEnumValue WINDOW_HEIGHT_VALUES[] = {
     {"1440"},
 };
 static const uint32_t WINDOW_HEIGHTS[] = {720, 900, 1080, 1200, 1440};
+static_assert(sizeof(WINDOW_HEIGHTS) / sizeof(WINDOW_HEIGHTS[0]) == sizeof(WINDOW_HEIGHT_VALUES) / sizeof(WINDOW_HEIGHT_VALUES[0]),
+              "one height per window height value");
 
 constexpr uint32_t FULLSCREEN_TYPE_COUNT = sizeof(FULLSCREEN_TYPE_VALUES) / sizeof(FULLSCREEN_TYPE_VALUES[0]);
 constexpr uint32_t WINDOW_MODE_COUNT = sizeof(WINDOW_MODE_VALUES) / sizeof(WINDOW_MODE_VALUES[0]);
@@ -196,6 +180,7 @@ static const SettingEnumValue LATENCY_VALUES[] = {
 constexpr uint32_t AUTO_LATENCY_START_MS = PICCOLO_BROWSER ? 100 : RATE_CONTROL_AUTO_START_MS;
 static const uint32_t LATENCIES[] = {AUTO_LATENCY_START_MS, 40, 50, 60, 80, 100, 120, 160, 200};
 constexpr uint32_t LATENCY_COUNT = sizeof(LATENCY_VALUES) / sizeof(LATENCY_VALUES[0]);
+static_assert(sizeof(LATENCIES) / sizeof(LATENCIES[0]) == LATENCY_COUNT, "one latency per value (\"auto\" is entry 0 in both)");
 
 static const SettingEnumValue QUALITY_VALUES[] = {
     {"fastest", text_id(Str::value_quality_fastest)},
@@ -204,6 +189,7 @@ static const SettingEnumValue QUALITY_VALUES[] = {
 };
 static const AudioQuality QUALITIES[] = {AudioQuality::fastest, AudioQuality::medium, AudioQuality::best};
 constexpr uint32_t QUALITY_COUNT = sizeof(QUALITY_VALUES) / sizeof(QUALITY_VALUES[0]);
+static_assert(sizeof(QUALITIES) / sizeof(QUALITIES[0]) == QUALITY_COUNT, "one quality per value");
 
 constexpr uint32_t ASPECT_COUNT = sizeof(ASPECT_VALUES) / sizeof(ASPECT_VALUES[0]);
 constexpr uint32_t SCALING_COUNT = sizeof(SCALING_VALUES) / sizeof(SCALING_VALUES[0]);
@@ -231,6 +217,8 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_SCREENSAVER_WHEN_PAUSED, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_screensaver),
      .help = text_id(Str::setting_screensaver_help)},
+    {.key = PICCOLO_SAVESTATE_ON_EXIT, .type = SettingType::boolean, .default_value = "true", .overridable = true,
+     .label = text_id(Str::setting_savestate_on_exit), .help = text_id(Str::setting_savestate_on_exit_help)},
     // Input (overridable per core / game; the bindings are per controller, in input.cfg)
     {.key = PICCOLO_INPUT_SHARE_PORT1, .type = SettingType::boolean, .default_value = "true", .overridable = true,
      .label = text_id(Str::setting_input_share_port1), .help = text_id(Str::setting_input_share_port1_help)},
@@ -271,15 +259,11 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_REWIND, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
      .values = REWIND_VALUES, .value_count = REWIND_COUNT, .label = text_id(Str::setting_rewind),
      .help = text_id(Str::setting_rewind_help)},
-    {.key = PICCOLO_REWIND_SCRUB_LENGTH, .type = SettingType::enumeration, .default_value = "0",
-     .values = SCRUB_LENGTH_VALUES, .value_count = SCRUB_LENGTH_COUNT, .label = text_id(Str::setting_rewind_scrub_length),
-     .help = text_id(Str::setting_rewind_scrub_length_help)},
-    {.key = PICCOLO_REWIND_SNAPSHOT_EVERY, .type = SettingType::enumeration, .default_value = "10",
-     .values = SNAPSHOT_EVERY_VALUES, .value_count = SNAPSHOT_EVERY_COUNT,
-     .label = text_id(Str::setting_rewind_snapshot_every), .help = text_id(Str::setting_rewind_snapshot_every_help)},
-    {.key = PICCOLO_REWIND_SNAPSHOTS_KEPT, .type = SettingType::enumeration, .default_value = "0",
-     .values = SNAPSHOTS_KEPT_VALUES, .value_count = SNAPSHOTS_KEPT_COUNT,
-     .label = text_id(Str::setting_rewind_snapshots_kept), .help = text_id(Str::setting_rewind_snapshots_kept_help)},
+    {.key = PICCOLO_REWIND_LENGTH, .type = SettingType::integer, .default_value = "5", .min = 1, .max = 30, .step = 1,
+     .label = text_id(Str::setting_rewind_length), .help = text_id(Str::setting_rewind_length_help)},
+    {.key = PICCOLO_REWIND_SNAPSHOT_FREQUENCY, .type = SettingType::integer, .default_value = "10", .min = 1, .max = 60,
+     .step = 1, .label = text_id(Str::setting_rewind_snapshot_frequency),
+     .help = text_id(Str::setting_rewind_snapshot_frequency_help)},
     {.key = PICCOLO_REWIND_MEMORY, .type = SettingType::enumeration, .default_value = "auto",
      .values = REWIND_MEMORY_VALUES, .value_count = REWIND_MEMORY_COUNT, .label = text_id(Str::setting_rewind_memory),
      .help = text_id(Str::setting_rewind_memory_help)},
@@ -344,13 +328,16 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_VIDEO_ASPECT, .type = SettingType::enumeration, .default_value = "core", .overridable = true,
      .values = ASPECT_VALUES, .value_count = ASPECT_COUNT, .label = text_id(Str::setting_aspect),
      .help = text_id(Str::setting_aspect_help)},
-    {.key = PICCOLO_VIDEO_SCALING, .type = SettingType::enumeration, .default_value = "auto", .overridable = true,
+    // FULL with SHARP BILINEAR (the filter below): the picture fills the screen
+    // and stays crisp, by default on every platform (Andrés, 2026-11-25).
+    {.key = PICCOLO_VIDEO_SCALING, .type = SettingType::enumeration, .default_value = "full", .overridable = true,
      .values = SCALING_VALUES, .value_count = SCALING_COUNT, .label = text_id(Str::setting_scaling),
      .help = text_id(Str::setting_scaling_help)},
     {.key = PICCOLO_VIDEO_MAX_OFFSCREEN, .type = SettingType::real, .default_value = "5", .overridable = true,
      .min_real = 0.0, .max_real = 50.0, .step_real = 0.5, .label = text_id(Str::setting_max_offscreen),
      .help = text_id(Str::setting_max_offscreen_help)},
-    {.key = PICCOLO_VIDEO_FILTER, .type = SettingType::enumeration, .default_value = "nearest", .overridable = true,
+    // SHARP BILINEAR by default (with FULL, above), on every platform.
+    {.key = PICCOLO_VIDEO_FILTER, .type = SettingType::enumeration, .default_value = "sharp_bilinear", .overridable = true,
      .values = FILTER_VALUES, .value_count = FILTER_COUNT, .label = text_id(Str::setting_filter),
      .help = text_id(Str::setting_filter_help)},
     {.key = PICCOLO_VIDEO_SHADER_PRESET, .type = SettingType::path, .default_value = "", .overridable = true,
@@ -362,37 +349,37 @@ static const SettingDescriptor SETTINGS[] = {
      .help = text_id(Str::setting_image_color_profile_help)},
     {.key = PICCOLO_IMAGE_PROFILE_STRENGTH, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 1.0, .step_real = 0.05, .label = text_id(Str::setting_image_profile_strength),
-     .help = text_id(Str::setting_image_profile_strength_help)},
+     .help = text_id(Str::setting_image_profile_strength_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_BRIGHTNESS, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -1.0, .max_real = 1.0, .step_real = 0.01, .label = text_id(Str::setting_image_brightness),
-     .help = text_id(Str::setting_image_brightness_help)},
+     .help = text_id(Str::setting_image_brightness_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_CONTRAST, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_contrast),
-     .help = text_id(Str::setting_image_contrast_help)},
+     .help = text_id(Str::setting_image_contrast_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_SATURATION, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_saturation),
-     .help = text_id(Str::setting_image_saturation_help)},
+     .help = text_id(Str::setting_image_saturation_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_HUE, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -180.0, .max_real = 180.0, .step_real = 1.0, .label = text_id(Str::setting_image_hue),
-     .help = text_id(Str::setting_image_hue_help)},
+     .help = text_id(Str::setting_image_hue_help), .real_format = "%.0f"},
     {.key = PICCOLO_IMAGE_GAMMA, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.5, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gamma),
-     .help = text_id(Str::setting_image_gamma_help)},
+     .help = text_id(Str::setting_image_gamma_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_BLACK_LEVEL, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -0.5, .max_real = 0.5, .step_real = 0.01, .label = text_id(Str::setting_image_black_level),
-     .help = text_id(Str::setting_image_black_level_help)},
+     .help = text_id(Str::setting_image_black_level_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_TEMPERATURE, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -1.0, .max_real = 1.0, .step_real = 0.01, .label = text_id(Str::setting_image_temperature),
-     .help = text_id(Str::setting_image_temperature_help)},
+     .help = text_id(Str::setting_image_temperature_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_RED, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_red),
-     .help = text_id(Str::setting_image_gain_red_help)},
+     .help = text_id(Str::setting_image_gain_red_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_GREEN, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_green),
-     .help = text_id(Str::setting_image_gain_green_help)},
+     .help = text_id(Str::setting_image_gain_green_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_BLUE, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_blue),
-     .help = text_id(Str::setting_image_gain_blue_help)},
+     .help = text_id(Str::setting_image_gain_blue_help), .real_format = "%.2f"},
 
     {.key = PICCOLO_VIDEO_POSITION, .type = SettingType::enumeration, .default_value = "center", .overridable = true,
      .values = POSITION_VALUES, .value_count = POSITION_COUNT, .label = text_id(Str::setting_position),
@@ -458,15 +445,22 @@ static const SettingDescriptor SETTINGS[] = {
 
     // Interface (global-only): MENU TITLE BOXES and the palette; defaults =
     // the BLUE theme (retro_ui.cpp). The THEME presets set them all.
+    {.key = PICCOLO_UI_THEME, .type = SettingType::text, .default_value = "blue"},
     {.key = PICCOLO_UI_MENU_BOXES, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_menu_boxes), .help = text_id(Str::setting_ui_menu_boxes_help)},
-    {.key = PICCOLO_MENU_BACKDROP, .type = SettingType::integer, .default_value = "60", .min = 0, .max = 100, .step = 10,
-     .label = text_id(Str::setting_menu_backdrop), .help = text_id(Str::setting_menu_backdrop_help)},
+    {.key = PICCOLO_UI_BACKGROUND_TRANSPARENCY, .type = SettingType::integer, .default_value = "40", .min = 0, .max = 100,
+     .step = 10, .label = text_id(Str::setting_ui_background_transparency),
+     .help = text_id(Str::setting_ui_background_transparency_help)},
     {.key = PICCOLO_UI_SHADOWS, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_shadows), .help = text_id(Str::setting_ui_shadows_help)},
     {.key = PICCOLO_SCREEN_EFFECTS, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_screen_effects), .help = text_id(Str::setting_screen_effects_help)},
-    {.key = PICCOLO_UI_COLOR_BACKGROUND, .type = SettingType::color, .default_value = "#000000",
+    {.key = PICCOLO_SCREEN_EFFECT_REWIND, .type = SettingType::boolean, .default_value = "true",
+     .label = text_id(Str::setting_screen_effect_rewind), .help = text_id(Str::setting_screen_effect_rewind_help)},
+    {.key = PICCOLO_SCREEN_EFFECT_SCREENSHOT, .type = SettingType::boolean, .default_value = "true",
+     .label = text_id(Str::setting_screen_effect_screenshot),
+     .help = text_id(Str::setting_screen_effect_screenshot_help)},
+    {.key = PICCOLO_UI_COLOR_BACKGROUND, .type = SettingType::color, .default_value = "#34507C",
      .label = text_id(Str::setting_ui_color_background), .help = text_id(Str::setting_ui_color_background_help)},
     {.key = PICCOLO_UI_COLOR_BAR, .type = SettingType::color, .default_value = "#34507C",
      .label = text_id(Str::setting_ui_color_bar), .help = text_id(Str::setting_ui_color_bar_help)},
@@ -515,13 +509,13 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_ui_color_section), .help = text_id(Str::setting_ui_color_section_help)},
     {.key = PICCOLO_UI_THEME_CURSOR, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_theme_cursor), .help = text_id(Str::setting_ui_theme_cursor_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button), .help = text_id(Str::setting_ui_color_button_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_BOTTOM, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_BOTTOM, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_bottom), .help = text_id(Str::setting_ui_color_button_bottom_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_LIGHT, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_LIGHT, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_light), .help = text_id(Str::setting_ui_color_button_light_help)},
-    {.key = PICCOLO_UI_COLOR_BUTTON_DARK, .type = SettingType::color, .default_value = "#34507C",
+    {.key = PICCOLO_UI_COLOR_BUTTON_DARK, .type = SettingType::color, .default_value = "#4A6898",
      .label = text_id(Str::setting_ui_color_button_dark), .help = text_id(Str::setting_ui_color_button_dark_help)},
     {.key = PICCOLO_UI_COLOR_BUTTON_TEXT, .type = SettingType::color, .default_value = "#E0E6F0",
      .label = text_id(Str::setting_ui_color_button_text), .help = text_id(Str::setting_ui_color_button_text_help)},
@@ -589,6 +583,8 @@ static const ColorProfile COLOR_PROFILES[] = {
     {2.2f, 2.4f, true, 1.0f, {{1.5071f, -0.3724f, -0.0832f}, {-0.0275f, 0.935f, 0.067f}, {-0.0272f, -0.0401f, 1.1679f}}},   // ntsc-colors
 };
 static_assert(sizeof(COLOR_PROFILES) / sizeof(COLOR_PROFILES[0]) == COLOR_PROFILE_COUNT, "one profile per value");
+static_assert(sizeof(PICCOLO_INPUT_PORT_DEVICES) / sizeof(PICCOLO_INPUT_PORT_DEVICES[0]) == INPUT_PORT_COUNT,
+              "one device setting per input port");
 
 const char* const PICCOLO_PROFILE_PARAM_NAMES[PICCOLO_PROFILE_PARAM_COUNT] = {
     "PROFILE_GAMMA_IN", "PROFILE_GAMMA_OUT", "PROFILE_CURVE", "PROFILE_STRENGTH",
@@ -655,6 +651,11 @@ void piccolo_settings_viewport(const Settings* settings, ViewportInput* input)
         ViewportAnchor::left,        ViewportAnchor::center, ViewportAnchor::right,
         ViewportAnchor::bottom_left, ViewportAnchor::bottom, ViewportAnchor::bottom_right,
     };
+    static_assert(sizeof(ASPECTS) / sizeof(ASPECTS[0]) == ASPECT_COUNT && sizeof(FIXED) / sizeof(FIXED[0]) == ASPECT_COUNT,
+                  "an aspect mode and a ratio per aspect value");
+    static_assert(sizeof(SCALINGS) / sizeof(SCALINGS[0]) == SCALING_COUNT, "one scaling per value");
+    static_assert(sizeof(FILTERS) / sizeof(FILTERS[0]) == FILTER_COUNT, "one filter per value");
+    static_assert(sizeof(ANCHORS) / sizeof(ANCHORS[0]) == POSITION_COUNT, "one anchor per position value");
 
     uint32_t aspect = settings_get_enum(settings, PICCOLO_VIDEO_ASPECT);
     input->aspect = ASPECTS[aspect];
@@ -721,6 +722,35 @@ bool piccolo_settings_remove_game_folder(Settings* settings, uint32_t index)
     }
     settings_reset(settings, SettingLayer::global, PICCOLO_PATH_GAMES[PICCOLO_GAME_FOLDER_MAX - 1]);
     return true;
+}
+
+void piccolo_settings_compact_game_folders(Settings* settings)
+{
+    uint32_t next = 0;   // the first slot not yet filled
+    bool moved = false;
+    for (uint32_t i = 0; i < PICCOLO_GAME_FOLDER_MAX; i++)
+    {
+        const char* text = settings_get_layer(settings, SettingLayer::global, PICCOLO_PATH_GAMES[i]);
+        if (text == nullptr || text[0] == '\0')
+        {
+            continue;
+        }
+        if (i != next)
+        {
+            std::string folder = text;   // the set below may move the text it points into
+            settings_set(settings, SettingLayer::global, PICCOLO_PATH_GAMES[next], folder.c_str());
+            moved = true;
+        }
+        next++;
+    }
+    if (!moved)
+    {
+        return;   // already compact: nothing written, nothing dirty
+    }
+    for (uint32_t i = next; i < PICCOLO_GAME_FOLDER_MAX; i++)
+    {
+        settings_reset(settings, SettingLayer::global, PICCOLO_PATH_GAMES[i]);
+    }
 }
 
 double piccolo_settings_window_aspect(const Settings* settings)
@@ -864,6 +894,11 @@ void piccolo_settings_palette(const Settings* settings, RetroUiPalette* palette)
     {
         *retro_ui_palette_color(palette, i) = settings_get_color(settings, retro_ui_palette_color_key(i));
     }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        int32_t level = settings_get_int(settings, retro_ui_palette_level_key(i));
+        *retro_ui_palette_level(palette, i) = static_cast<uint32_t>(level < 0 ? 0 : (level > 100 ? 100 : level));
+    }
 }
 
 Str piccolo_settings_ui_theme_name(RetroUiTheme theme)
@@ -916,6 +951,11 @@ bool piccolo_settings_apply_ui_palette(Settings* settings, const RetroUiPalette*
         ok = settings_set_color(settings, SettingLayer::global, retro_ui_palette_color_key(i),
                                 retro_ui_palette_color_value(palette, i)) && ok;
     }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        ok = settings_set_int(settings, SettingLayer::global, retro_ui_palette_level_key(i),
+                              static_cast<int32_t>(retro_ui_palette_level_value(palette, i))) && ok;
+    }
     return ok;
 }
 
@@ -963,6 +1003,7 @@ void piccolo_themes_load_directory(std::vector<PiccoloThemeFile>* themes, const 
 
         PiccoloThemeFile theme = {};
         theme.path = path;
+        theme.file = file_name;
         theme.custom = file_name.size() > 11 && file_name.compare(file_name.size() - 11, 11, "-custom.cfg") == 0;
         theme.palette = *retro_ui_theme_palette(RetroUiTheme::blue);
         const char* name = settings_file_get(&file, "", "name");
@@ -1047,6 +1088,8 @@ bool piccolo_themes_save(const Settings* settings, const char* name, const char*
         SDL_Log("Couldn't save the theme %s to %s", theme.name.c_str(), theme.path.c_str());
         return false;
     }
+    size_t slash = theme.path.find_last_of('/');
+    theme.file = slash == std::string::npos ? theme.path : theme.path.substr(slash + 1);
     SDL_Log("Theme %s saved to %s", theme.name.c_str(), theme.path.c_str());
     add_theme(themes, &theme);
     std::sort(themes->begin(), themes->end(), theme_name_before);
@@ -1069,6 +1112,14 @@ bool piccolo_settings_check_ui_keys(const Settings* settings)
         if (settings_find(settings, retro_ui_palette_flag_key(i)) == nullptr)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Settings: no %s (retroui's palette)", retro_ui_palette_flag_key(i));
+            ok = false;
+        }
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        if (settings_find(settings, retro_ui_palette_level_key(i)) == nullptr)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Settings: no %s (retroui's palette)", retro_ui_palette_level_key(i));
             ok = false;
         }
     }
@@ -1134,6 +1185,15 @@ bool piccolo_settings_complete_ui_theme(Settings* settings)
             changed = settings_set_bool(settings, SettingLayer::global, key, retro_ui_palette_flag_value(palette, i)) || changed;
         }
     }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        const char* key = retro_ui_palette_level_key(i);
+        if (settings_get_layer(settings, SettingLayer::global, key) == nullptr)
+        {
+            changed = settings_set_int(settings, SettingLayer::global, key,
+                                       static_cast<int32_t>(retro_ui_palette_level_value(palette, i))) || changed;
+        }
+    }
     return changed;
 }
 
@@ -1186,4 +1246,158 @@ bool piccolo_settings_osk(const Settings* settings)
     }
     return SDL_HasScreenKeyboardSupport();
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// The theme piccolo.cfg names (ui_theme), not its colors
+
+std::string piccolo_ui_theme_id(RetroUiTheme theme)
+{
+    switch (theme)
+    {
+    case RetroUiTheme::blue:
+        return "blue";
+    case RetroUiTheme::purple:
+        return "purple";
+    case RetroUiTheme::zsnes:
+        return "zsnes";
+    case RetroUiTheme::black:
+        return "black";
+    case RetroUiTheme::count:
+        break;
+    }
+    return "blue";
+}
+
+std::string piccolo_ui_theme_file_id(const PiccoloThemeFile* theme)
+{
+    return "file:" + theme->file;
+}
+
+bool piccolo_ui_theme_palette(const char* id, const std::vector<PiccoloThemeFile>* themes, RetroUiPalette* palette)
+{
+    for (uint32_t t = 0; t < static_cast<uint32_t>(RetroUiTheme::count); t++)
+    {
+        if (piccolo_ui_theme_id(static_cast<RetroUiTheme>(t)) == id)
+        {
+            *palette = *retro_ui_theme_palette(static_cast<RetroUiTheme>(t));
+            return true;
+        }
+    }
+    for (size_t i = 0; themes != nullptr && i < themes->size(); i++)
+    {
+        if (piccolo_ui_theme_file_id(&(*themes)[i]) == id)
+        {
+            *palette = (*themes)[i].palette;
+            return true;
+        }
+    }
+    *palette = *retro_ui_theme_palette(RetroUiTheme::blue);
+    return false;
+}
+
+// Whether piccolo.cfg itself sets any of the interface's colors, switches or levels.
+static bool ui_keys_saved(const Settings* settings)
+{
+    bool saved = false;
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_color_key(i)) != nullptr;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_flag_key(i)) != nullptr;
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        saved = saved || settings_get_layer(settings, SettingLayer::global, retro_ui_palette_level_key(i)) != nullptr;
+    }
+    return saved;
+}
+
+// The theme the colors piccolo.cfg kept (before ui_theme) are: a built-in
+// one (BLUE and PURPLE also as they were before buttons got a face of
+// their own: today's), a theme file's, or "" for none.
+static std::string kept_colors_theme(const Settings* settings, const std::vector<PiccoloThemeFile>* themes)
+{
+    for (uint32_t t = 0; t < static_cast<uint32_t>(RetroUiTheme::count); t++)
+    {
+        RetroUiTheme theme = static_cast<RetroUiTheme>(t);
+        RetroUiPalette before = *retro_ui_theme_palette(theme);
+        before.button_face = before.background;
+        before.button_bottom = before.background;
+        before.button_light = before.background;
+        before.button_dark = before.background;
+        bool old = (theme == RetroUiTheme::blue || theme == RetroUiTheme::purple) &&
+                   piccolo_settings_ui_palette_is(settings, &before);
+        if (old || piccolo_settings_ui_palette_is(settings, retro_ui_theme_palette(theme)))
+        {
+            return piccolo_ui_theme_id(theme);
+        }
+    }
+    for (size_t i = 0; i < themes->size(); i++)
+    {
+        if (piccolo_settings_ui_palette_is(settings, &(*themes)[i].palette))
+        {
+            return piccolo_ui_theme_file_id(&(*themes)[i]);
+        }
+    }
+    return std::string();
+}
+
+void piccolo_settings_start_ui_theme(Settings* settings, std::vector<PiccoloThemeFile>* themes,
+                                     const char* themes_directory)
+{
+    if (settings_get_layer(settings, SettingLayer::global, PICCOLO_UI_THEME) == nullptr && ui_keys_saved(settings))
+    {
+        piccolo_settings_complete_ui_theme(settings);
+        std::string id = kept_colors_theme(settings, themes);
+        const char* saved_name = "SAVED THEME";
+        if (id.empty() && themes_directory != nullptr && themes_directory[0] != '\0' &&
+            piccolo_themes_save(settings, saved_name, themes_directory, themes))
+        {
+            for (size_t i = 0; i < themes->size(); i++)
+            {
+                if ((*themes)[i].custom && (*themes)[i].name == saved_name)
+                {
+                    id = piccolo_ui_theme_file_id(&(*themes)[i]);
+                }
+            }
+        }
+        if (!id.empty())
+        {
+            settings_set(settings, SettingLayer::global, PICCOLO_UI_THEME, id.c_str());
+            SDL_Log("Interface: piccolo.cfg's colors are the theme %s from now on", id.c_str());
+        }
+    }
+    const char* id = settings_get_text(settings, PICCOLO_UI_THEME);
+    RetroUiPalette palette = {};
+    if (!piccolo_ui_theme_palette(id, themes, &palette))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Interface: no theme %s, using BLUE", id);
+    }
+    piccolo_settings_apply_ui_palette(settings, &palette);
+}
+
+bool piccolo_settings_save(Settings* settings, const char* path)
+{
+    Settings kept = *settings;
+    for (uint32_t i = 0; i < retro_ui_palette_color_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_color_key(i));
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_flag_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_flag_key(i));
+    }
+    for (uint32_t i = 0; i < retro_ui_palette_level_count(); i++)
+    {
+        settings_reset(&kept, SettingLayer::global, retro_ui_palette_level_key(i));
+    }
+    if (!settings_save(&kept, path, "piccolo settings"))
+    {
+        return false;
+    }
+    settings->dirty = false;
+    return true;
 }

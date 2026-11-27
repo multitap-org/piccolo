@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "content_archive.h"
+#include "host_log.h"
 #include "libretro_host.h"   // libretro_core_short_name
 #include "settings_file.h"
 
@@ -58,31 +59,48 @@ bool recent_games_load(RecentGames* recent, const char* path)
 bool recent_games_save(const RecentGames* recent, const char* path)
 {
     SettingsFile file = {};
+    uint32_t saved = 0;
     for (size_t i = 0; i < recent->games.size(); i++)
     {
-        char section[32] = {};   // room for any size_t
-        std::snprintf(section, sizeof(section), "%zu", i + 1);
         const RecentGame* game = &recent->games[i];
-        if (!settings_file_set(&file, section, "core", game->core_path.c_str()) ||
-            !settings_file_set(&file, section, "content", game->content_path.c_str()))
+        // Tried on a scratch file first: settings_file_set refuses a path that
+        // ends in a blank or holds a line break, and one such game must not
+        // stop the others from being saved (nor leave half an entry). It stays
+        // in the list and playable; only RECENT after a restart forgets it.
+        SettingsFile probe = {};
+        if (!settings_file_set(&probe, "1", "core", game->core_path.c_str()) ||
+            !settings_file_set(&probe, "1", "content", game->content_path.c_str()))
         {
-            return false;   // logged (e.g. a path with a line break)
+            host_log(LogLevel::warning, "Recent games: %s can't be stored in recent.cfg; left out",
+                     game->content_path.c_str());
+            continue;
         }
+        char section[32] = {};   // room for any size_t
+        std::snprintf(section, sizeof(section), "%zu", static_cast<size_t>(saved) + 1);
+        settings_file_set(&file, section, "core", game->core_path.c_str());
+        settings_file_set(&file, section, "content", game->content_path.c_str());
+        saved++;
     }
     return settings_file_save(&file, path, "piccolo: recent games, most recent first");
+}
+
+void recent_games_names(const RecentGame* game, const char* no_game, char* name, size_t name_size, char* core,
+                        size_t core_size)
+{
+    if (!libretro_core_short_name(game->core_path.c_str(), core, core_size))
+    {
+        std::snprintf(core, core_size, "?");
+    }
+    if (game->content_path.empty() || !content_archive_game_name(game->content_path.c_str(), name, name_size))
+    {
+        std::snprintf(name, name_size, "%s", no_game);
+    }
 }
 
 void recent_games_label(const RecentGame* game, const char* no_game, char* out, size_t out_size)
 {
     char core[256] = {};
     char content[256] = {};
-    if (!libretro_core_short_name(game->core_path.c_str(), core, sizeof(core)))
-    {
-        std::snprintf(core, sizeof(core), "?");
-    }
-    if (game->content_path.empty() || !content_archive_game_name(game->content_path.c_str(), content, sizeof(content)))
-    {
-        std::snprintf(content, sizeof(content), "%s", no_game);
-    }
+    recent_games_names(game, no_game, content, sizeof(content), core, sizeof(core));
     std::snprintf(out, out_size, "%s  [%s]", content, core);
 }

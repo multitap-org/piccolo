@@ -307,13 +307,15 @@ static PortsViewText view_text(const Localization* strings)
     text.title = piccolo_text(strings, Str::ports_title);
     text.done = piccolo_text(strings, Str::ports_done);
     text.help = piccolo_text(strings, Str::ports_help);
+    text.move_here = piccolo_text(strings, Str::ports_move_here);
     return text;
 }
 
-void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, uint64_t now_ms)
+void ports_widget_state(PortsWidgetState* state, const Localization* strings, bool menu_shown, bool rows, uint64_t now_ms)
 {
     state->text = view_text(strings);
     state->menu_shown = menu_shown;
+    state->rows = rows;
     state->now_ms = now_ms;
 }
 
@@ -335,6 +337,7 @@ void ports_widget_draw_board(PortsWidget* widget, const PortsWidgetState* state,
         return;
     }
     PortsViewBoardInput clicks;
+    widget->view.rows = state->rows;
     ports_view_draw_board(&widget->view, pixel_font, scale, &state->text, state->now_ms, &clicks);
     action->move = clicks.move;
     action->key = clicks.key;

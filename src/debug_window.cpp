@@ -68,6 +68,16 @@ static void draw_hud_widgets(DebugWindowAction* action)
     press(action, retro_ui_button("PAIRING TIMED OUT card"), DebugWindowPress::card_pair_timed_out);
     retro_ui_same_line();
     press(action, retro_ui_button("PAIRING FAILED card"), DebugWindowPress::card_pair_failed);
+    // The undos' cards (a hotkey's or a device's), with a fake slot.
+    press(action, retro_ui_button("UNDO SAVE card"), DebugWindowPress::card_undo_save);
+    retro_ui_same_line();
+    press(action, retro_ui_button("UNDO LOAD card"), DebugWindowPress::card_undo_load);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NOTHING TO UNDO card"), DebugWindowPress::card_undo_nothing);
+    // SAVE STATE ON EXIT's cards, as a game starts.
+    press(action, retro_ui_button("RESUMED card"), DebugWindowPress::card_resumed);
+    retro_ui_same_line();
+    press(action, retro_ui_button("COULD NOT RESUME card"), DebugWindowPress::card_resume_failed);
     retro_ui_check("pair_request_card", "Pairing request card (a fake device)", &action->pair_request_card);
     retro_ui_dim_text("In the game, START held fills its key and the card goes; nothing opens.", nullptr);
 }
@@ -86,6 +96,33 @@ static void draw_window_widgets(const DebugWindowState* state, DebugWindowAction
     press(action, retro_ui_button("KEEP / REVERT") && state->keep_revert_allowed, DebugWindowPress::keep_revert);
     retro_ui_end_disabled();
     retro_ui_dim_text("Text box and KEEP / REVERT show once the menu is closed.", nullptr);
+}
+
+// The screen effects on the game picture, played now (SCREEN EFFECTS off:
+// nothing plays; each effect's own switch is ignored here).
+static void draw_screen_effects(const DebugWindowState* state, DebugWindowAction* action)
+{
+    retro_ui_begin_disabled(!state->game_running);
+    press(action, retro_ui_button("REWIND (SNAP)"), DebugWindowPress::effect_snap);
+    retro_ui_same_line();
+    press(action, retro_ui_button("SCREENSHOT (SHUTTER)"), DebugWindowPress::effect_shutter);
+    retro_ui_end_disabled();
+}
+
+// The CONTINUE card (continue_panel.h), fake, on the empty screen behind
+// this window (close it to see the first button highlighted); the phone's
+// card over everything. A fake card's button ends it.
+static void draw_continue_card(DebugWindowAction* action)
+{
+    press(action, retro_ui_button("RESUME"), DebugWindowPress::continue_resume);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NO SAVESTATES"), DebugWindowPress::continue_no_states);
+    retro_ui_same_line();
+    press(action, retro_ui_button("NEWER SAVE"), DebugWindowPress::continue_newer_save);
+    press(action, retro_ui_button("PHONE (HOME card)"), DebugWindowPress::continue_phone);
+    retro_ui_same_line();
+    press(action, retro_ui_button("REAL CARD"), DebugWindowPress::continue_real);
+    retro_ui_dim_text("Drawn behind the windows: close this one to see it active.", nullptr);
 }
 
 static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)
@@ -137,6 +174,16 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     // The real QUICK MENU needs a game; this one is a fake game's, its
     // slots without pictures.
     preview_button(action, "QUICK MENU, SAVE STATES open", DebugPreview::quick_menu, true);
+    retro_ui_begin_disabled(state->settings_error_open);
+    preview_button(action, "SETTINGS COULD NOT BE READ", DebugPreview::settings_error, false);
+    retro_ui_end_disabled();
+    // The phone's screens (on any screen: drawn at the phone's scale).
+    retro_ui_text("PHONE UI");
+    preview_button(action, "HOME", DebugPreview::phone_home, false);
+    preview_button(action, "HOME, no games", DebugPreview::phone_home_empty, true);
+    preview_button(action, "MENU over a game", DebugPreview::phone_menu, true);
+    preview_button(action, "DVR", DebugPreview::phone_dvr, true);
+    preview_button(action, "DEVICES", DebugPreview::devices, true);
 }
 
 // The knobs' sliders line up in a column after the widest label.
@@ -235,6 +282,14 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
         if (retro_ui_section_header("windows", "Widgets (windows; a game must run)", false))
         {
             draw_window_widgets(state, action);
+        }
+        if (retro_ui_section_header("effects", "Screen effects (a game must run)", false))
+        {
+            draw_screen_effects(state, action);
+        }
+        if (retro_ui_section_header("continue", "CONTINUE card (fake)", false))
+        {
+            draw_continue_card(action);
         }
         if (retro_ui_section_header("previews", "Dialogs (preview)", false))
         {

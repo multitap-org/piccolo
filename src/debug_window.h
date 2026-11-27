@@ -44,6 +44,13 @@ enum class DebugPreview
     remote_no_guests,          // a link, nobody in
     remote_guests,             // a link, a player on a port and a spectator
     quick_menu,                // QUICK MENU with SAVE STATES open (quick_menu.h): no game needed
+    // The phone UI (mobile_home.h), at the phone's touch scale.
+    phone_home,                // HOME with recent games
+    phone_home_empty,          // HOME, no recent games yet
+    phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
+    phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
+    devices,                   // DEVICES (ports_view's board): fake controllers on four ports; rows upright on a phone
+    settings_error,            // the red SETTINGS COULD NOT BE READ dialog (settings_error_window.h)
 };
 
 // MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced
@@ -90,6 +97,7 @@ struct DebugWindowState
     bool pair_request_card = false;   // the fake pairing request's card is up
     bool pair_open = false;           // the real PAIR is open (no preview of it meanwhile)
     bool about_open = false;          // the real ABOUT
+    bool settings_error_open = false; // the real SETTINGS COULD NOT BE READ dialog
     bool guest_open = false;          // the real REMOTE PLAY
 
     // EASTER EGGS
@@ -115,8 +123,20 @@ enum class DebugWindowPress
     card_link_copied,     // REMOTE PLAY's LINK COPIED TO THE CLIPBOARD
     card_pair_timed_out,  // PAIRING TIMED OUT
     card_pair_failed,     // PAIRING FAILED
+    card_undo_save,       // SAVE STATE UNDONE, SLOT 3
+    card_undo_load,       // LOAD STATE UNDONE
+    card_undo_nothing,    // NOTHING TO UNDO
+    card_resumed,         // RESUMED WHERE YOU LEFT OFF (SAVE STATE ON EXIT)
+    card_resume_failed,   // COULD NOT RESUME WHERE YOU LEFT OFF
+    effect_snap,          // the REWIND screen effect (SNAP), as after PLAY FROM HERE
+    effect_shutter,       // the SCREENSHOT screen effect (SHUTTER), without a screenshot
     sleigh_now,           // the December 25 sleigh crosses now (the snow must be falling)
     snow_restart,         // the snow starts again from the sky
+    continue_resume,      // the CONTINUE card, fake: RESUME
+    continue_no_states,   // ... START, the core can't save states
+    continue_newer_save,  // ... START / RESUME, the save file is newer
+    continue_phone,       // ... the phone's HOME card
+    continue_real,        // the real card again (or none)
 };
 
 struct DebugWindowAction

@@ -93,8 +93,8 @@ static void draw_preview(GuestWindow* window, float width, const Localization* s
 // column of the link's button and of PLAYER (SPECTATOR has one as wide).
 struct GuestGrid
 {
-    float left = 0.0f;       // the grid's left edge, from the window's
-    float width = 0.0f;      // to the window's right edge
+    float left = 0.0f;       // the grid's left edge, in the group it's drawn in (0)
+    float width = 0.0f;      // from there to the window's right edge
     float label = 0.0f;      // LINK / GUESTS, and the gap after them
     float number = 0.0f;     // GUESTS' field
     float role = 0.0f;       // ROLE's label
@@ -330,7 +330,10 @@ void guest_window_draw(GuestWindow* window, const GuestWindowState* state, Retro
         retro_ui_spacing();
         draw_preview(window, preview_width(), strings);
         retro_ui_same_line();
-        grid.left = retro_ui_cursor_x();
+        // Inside the group retro_ui_same_line_at counts from the group's
+        // left edge, not the window's: the grid starts at 0 (counting the
+        // preview again pushed LINK and ROLE past the window's right edge).
+        grid.left = 0.0f;
         retro_ui_begin_group();
         draw_link_row(window, state, &grid, action);
         draw_guests_row(window, strings, &grid, action);

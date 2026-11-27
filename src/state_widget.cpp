@@ -19,6 +19,8 @@ void state_widget_add_hud(const StateWidget* widget, const StateFacts* facts, Hu
     }
     bool playing_on = facts->played_from_ms != 0 && now_ms >= facts->played_from_ms &&
                       now_ms - facts->played_from_ms < STATE_WIDGET_PLAY_MS;
+    playing_on = playing_on || (facts->resumed_ms != 0 && now_ms >= facts->resumed_ms &&
+                                now_ms - facts->resumed_ms < STATE_WIDGET_RESUMED_MS);
     if (shown(widget, StateIcon::play, playing_on))
     {
         hud_view_add_icon(stack, HudIcon::play, "");

@@ -17,6 +17,7 @@
 
 #include "about_window.h"
 #include "core_config_window.h"
+#include "continue_panel.h"
 #include "core_options_ui.h"
 #include "cores_window.h"
 #include "debug_preview.h"
@@ -28,6 +29,7 @@
 #include "hud_view.h"
 #include "input_window.h"
 #include "map_window.h"
+#include "mobile_home.h"
 #include "net_share_link.h"
 #include "net_window.h"
 #include "onscreen_pad.h"
@@ -37,6 +39,7 @@
 #include "retro_ui.h"
 #include "retro_ui_font.h"
 #include "safe_start_window.h"
+#include "settings_error_window.h"
 #include "settings_window.h"
 #include "shader_check_view.h"
 #include "share_window.h"
@@ -44,7 +47,6 @@
 #include "shown_image.h"
 #include "text_input_window.h"
 
-constexpr size_t UI_STATUS_MAX = 400;
 constexpr size_t UI_NOTE_MAX = 200;
 
 // SETTINGS' notes as text (SettingsWindowNotes points into these).
@@ -54,7 +56,6 @@ struct UiSettingsText
     char audio_latency[UI_NOTE_MAX] = {};
     char frame_delay[UI_NOTE_MAX] = {};
     char run_ahead[UI_NOTE_MAX] = {};
-    char rewind_mode[UI_NOTE_MAX] = {};   // REWIND's header: the mode in use now
 };
 
 // Everything the frame shows, in drawing order. Filled by main.cpp
@@ -77,15 +78,19 @@ struct UiView
     const HudStack*  hud = nullptr;     // the App's, built this frame
     HudArea          hud_area = {};     // retro pixels
     uint64_t         hud_now_ms = 0;
-    uint32_t         backdrop_alpha = 0;   // INTERFACE > BACKDROP behind the windows (0: none)
+    ContinuePanelView continue_card;  // the CONTINUE card on the empty screen (or the debug window's fake one)
+    uint32_t         backdrop = 0;   // ARGB behind the windows: BACKGROUND, at 100 - BACKGROUND TRANSPARENCY (alpha 0: none)
 
-    // The status line, alone over a paused game or with the menu bar.
-    char               status[UI_STATUS_MAX] = {};
-    bool               status_alone = false;
+    // The menu bar (messages are HUD cards: message_widget.h).
     bool               menu_shown = false;   // the MAIN MENU's bar (not during EDIT LAYOUT)
     const RetroUiMenu* menus = nullptr;
     int32_t            menu_count = 0;
     bool               open_first_menu = false;
+
+    // The phone UI (PICCOLO_MOBILE, --mobile): HOME and the ☰ sidebar in
+    // place of the menu bar (mobile_home.h); the windows are pages.
+    bool            phone = false;
+    MobileHomeState mobile_home = {};
 
     // The windows, in drawing order.
     UiSettingsText          settings_text;
@@ -112,6 +117,8 @@ struct UiView
     MapWindowState          map = {};
     bool                    safe_start_shown = false;
     SafeStartWindowState    safe_start = {};
+    bool                    settings_error_shown = false;   // piccolo.cfg could not be read, not answered yet
+    SettingsErrorWindowState settings_error = {};
     bool                    shader_check_shown = false;
     ShaderCheckText         shader_check_text;
     std::string             shader_check_preset;   // the preset's file name, no folder or extension
@@ -135,6 +142,7 @@ struct UiView
 struct UiWindows
 {
     OnscreenPad*       pad = nullptr;
+    MobileHome*        mobile_home = nullptr;
     PortsWidget*       ports = nullptr;
     SettingsWindow*    settings = nullptr;
     NetWindow*         network = nullptr;   // SETTINGS > NETWORK
@@ -162,6 +170,8 @@ struct UiActions
 {
     OnscreenPadAction        pad = {};
     int32_t                  menu_picked = -1;   // the menu bar's item id (-1: none)
+    MobileHomeAction         mobile_home = {};   // the phone's HOME and ☰ (their picks are the bar's ids)
+    ContinueViewButton       continue_pressed = ContinueViewButton::none;   // the CONTINUE card's button
     SettingsWindowAction     settings = {};
     FilePickerAction         picker = {};
     QuickMenuAction          quick = {};
@@ -177,6 +187,7 @@ struct UiActions
     InputWindowAction        input = {};
     MapWindowAction          map = {};
     SafeStartWindowAction    safe_start = {};
+    SettingsErrorWindowAction settings_error = {};
     ShaderCheckChoice        shader_check = ShaderCheckChoice::none;
     TextInputWindowAction    text_input = {};
     DebugWindowAction        debug = {};
@@ -184,8 +195,8 @@ struct UiActions
     AboutWindowAction        about = {};
 };
 
-// All the frame's drawing, back to front: the game, the menu snow, the touch gamepad, the
-// ports' tabs, the HUD, the backdrop, the status line and menu bar, the
+// All the frame's drawing, back to front: the game, the menu snow, the touch
+// gamepad, the ports' tabs, the HUD, the CONTINUE card, the backdrop, the menu bar, the
 // windows, the debug window, the FPS meter, the scrollbars, the cursor.
 // Between the toolkit's begin and end of frame.
 void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, int32_t scale, UiActions* actions);

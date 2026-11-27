@@ -1,0 +1,225 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: piccolo
+Upstream-Contact: https://github.com/multitap-org/piccolo/issues
+Source: https://github.com/multitap-org/piccolo
+Comment:
+ The source tarball (tools/make-source-tarball.sh) holds piccolo and every
+ git submodule in deps/ at the commit piccolo pins, plus vendor/librashader:
+ the Rust crates librashader needs. Each of them keeps its own license files
+ in its folder; this file names the main licenses, not every file. Only the
+ parts piccolo builds end up in the package (deps/7zip: only the LZMA / 7z
+ decoder of its C/ folder, not the RAR code).
+
+Files: *
+Copyright: 2026 Andrés (andres-asm) and piccolo contributors
+License: Expat
+
+Files:
+ deps/common/*
+ deps/libretro/*
+ deps/beacon/*
+ deps/test-libretro/LICENSE
+ deps/test-libretro/src/*
+ deps/piccolo-shaders-legacy/*
+Copyright: 2026 Andrés (andres-asm) and Multitap contributors
+License: Expat
+
+Files: deps/SDL/*
+Copyright: 1997-2026 Sam Lantinga <slouken@libsdl.org>
+License: Zlib
+
+Files: deps/imgui/* deps/test-libretro/deps/imgui/*
+Copyright: 2014-2026 Omar Cornut
+License: Expat
+
+Files: deps/libretro-common/* deps/test-libretro/deps/libretro-common/*
+Copyright: 2010-2024 The RetroArch team
+License: Expat
+
+Files: deps/libsamplerate/*
+Copyright: 2012-2016 Erik de Castro Lopo <erikd@mega-nerd.com>
+License: BSD-2-clause
+
+Files: deps/gamemode/*
+Copyright: 2017-2024 Feral Interactive
+License: BSD-3-clause
+
+Files: deps/miniz/*
+Copyright:
+ 2013-2014 RAD Game Tools and Valve Software
+ 2010-2014 Rich Geldreich and Tenacious Software LLC
+License: Expat
+
+Files: deps/7zip/*
+Copyright: 1999-2026 Igor Pavlov
+License: LGPL-2.1+ and public-domain
+Comment: See deps/7zip/DOC/License.txt: the LZMA SDK files that piccolo
+ builds (C/) are public domain; the rest of 7-Zip is LGPL-2.1+, with BSD-3
+ files and the unRAR restriction for CPP/7zip/Compress/Rar* (not built).
+
+Files: deps/enet/*
+Copyright:
+ 2002-2016 Lee Salzman
+ 2017-2022 Vladyslav Hrytsenko, Dominik Madarász
+License: Expat
+
+Files: deps/monocypher/*
+Copyright: 2017-2023 Loup Vaillant
+License: BSD-2-clause or CC0-1.0
+
+Files: deps/qrcodegen/*
+Copyright: Project Nayuki
+License: Expat
+
+Files: deps/libdatachannel/* deps/libdatachannel/deps/libjuice/*
+Copyright: 2019-2025 Paul-Louis Ageneau
+License: MPL-2.0
+
+Files: deps/libdatachannel/deps/usrsctp/*
+Copyright: 2015 Randall Stewart and Michael Tuexen
+License: BSD-3-clause
+
+Files: deps/libdatachannel/deps/libsrtp/*
+Copyright: 2001-2017 Cisco Systems, Inc.
+License: BSD-3-clause
+
+Files: deps/libdatachannel/deps/plog/*
+Copyright: 2022 Sergey Podobry
+License: Expat
+
+Files: deps/libdatachannel/deps/json/*
+Copyright: 2013-2025 Niels Lohmann
+License: Expat
+
+Files: deps/librashader/*
+Copyright: 2022-2026 Ronny Chan and librashader contributors
+License: MPL-2.0
+Comment: librashader's C API headers are under a more permissive license
+ (see deps/librashader/README.md); piccolo loads librashader.so at run time.
+
+Files: deps/piccolo-shaders/*
+Copyright: libretro slang-shaders authors
+License: GPL-2+ and GPL-3+ and LGPL-2.1+ and MPL-2.0 and Expat and public-domain
+Comment: A trimmed copy of libretro's slang-shaders; each preset carries its
+ own license in its header, the texts are in deps/piccolo-shaders/LICENSES.
+
+Files: vendor/librashader/*
+Copyright: The authors of each crate (see its Cargo.toml)
+License: Expat or Apache-2.0 or others
+Comment: Rust crates from crates.io (cargo vendor); each crate's folder has
+ its license files. Most are MIT or Apache-2.0; the spirv-cross and glslang
+ crates bundle SPIRV-Cross and glslang (Apache-2.0, BSD-3-clause).
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+License: Zlib
+ This software is provided 'as-is', without any express or implied warranty.
+ In no event will the authors be held liable for any damages arising from the
+ use of this software.
+ .
+ Permission is granted to anyone to use this software for any purpose,
+ including commercial applications, and to alter it and redistribute it
+ freely, subject to the following restrictions:
+ .
+ 1. The origin of this software must not be misrepresented; you must not
+    claim that you wrote the original software. If you use this software in a
+    product, an acknowledgment in the product documentation would be
+    appreciated but is not required.
+ 2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+ 3. This notice may not be removed or altered from any source distribution.
+
+License: BSD-2-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+ 1. Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ POSSIBILITY OF SUCH DAMAGE.
+
+License: BSD-3-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+ 1. Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+ 3. Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from this
+    software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ POSSIBILITY OF SUCH DAMAGE.
+
+License: MPL-2.0
+ On Debian and Ubuntu systems the full text of the Mozilla Public License 2.0
+ is in /usr/share/common-licenses/MPL-2.0.
+
+License: LGPL-2.1+
+ On Debian and Ubuntu systems the full text of the GNU Lesser General Public
+ License 2.1 is in /usr/share/common-licenses/LGPL-2.1.
+
+License: GPL-2+
+ On Debian and Ubuntu systems the full text of the GNU General Public License
+ version 2 is in /usr/share/common-licenses/GPL-2.
+
+License: GPL-3+
+ On Debian and Ubuntu systems the full text of the GNU General Public License
+ version 3 is in /usr/share/common-licenses/GPL-3.
+
+License: CC0-1.0
+ On Debian and Ubuntu systems the full text of the CC0 1.0 Universal license
+ is in /usr/share/common-licenses/CC0-1.0.
+
+License: Apache-2.0
+ On Debian and Ubuntu systems the full text of the Apache License 2.0 is in
+ /usr/share/common-licenses/Apache-2.0.
+
+License: public-domain
+ The files under this license are placed in the public domain by their
+ authors (see each file).
+
+License: others
+ See the license files in each crate's folder.
