@@ -21,6 +21,11 @@
 //     at the same opacities; a tap outside (or the burger again) closes it.
 //   - SHOW: AUTO (a touch screen: shown until a real gamepad plays, a tap
 //     brings it back), ON, OFF.
+//   - STYLE: AUTO (the default) looks like the game's controller, by its file
+//     extension (layouts/*.cfg extensions =): a NES or Game Boy game the NES /
+//     GAME BOY pad, a Super Nintendo game the SUPER NINTENDO one, each in its
+//     MINIMAL arrangement (only its buttons, bigger: retroui PadMinimal), any
+//     other game the RetroPad (FULL). RETROPAD or a layout by name otherwise.
 //   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD, or the pad's burger
 //     menu): piccoletto's editor; saved in <settings>/touch_layouts.cfg, its
 //     sliders in the settings.
@@ -84,14 +89,16 @@ struct OnscreenPad
     // into the InputLayouts it came from, which live as long as the app.
     PadStyle     style;
     bool         styled = false;   // false: the whole RetroPad
-    std::string  style_name;       // the setting's value it was made from
+    std::string  style_name;       // the setting's value it was made from (AUTO: with the layout it picked)
+    PadMinimal   minimal = PadMinimal::none;   // the style's MINIMAL arrangement (its layout's touch =)
     PadLook      look;             // this frame's opacities (the theme's, the settings, or EDIT LAYOUT's sliders)
     bool         menu_open = false;   // the burger menu's pop-up is up (drawn from the frame after the press)
 };
 
 // STYLE: look like `layout` (a controller layout from layouts/: only its
-// buttons, with its names; its sticks only if it has them); nullptr = the
-// whole RetroPad. `name` is the setting's value, kept to see it change.
+// buttons, with its names; its sticks only if it has them; in its MINIMAL
+// arrangement if it names one, touch = two / snes); nullptr = the whole
+// RetroPad. `name` is what it was made from, kept to see it change.
 void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const char* name);
 
 // Loads the layouts (`settings_dir` "" = nothing saved) and opens the vibrator.

@@ -194,6 +194,17 @@ void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const c
     pad->style_name = name;
     pad->style = PadStyle{};
     pad->styled = layout != nullptr;
+    // MINIMAL: the layout file's touch arrangement (touch = two / snes), else
+    // the whole RetroPad's places (FULL).
+    pad->minimal = PadMinimal::none;
+    if (layout != nullptr && layout->touch == "two")
+    {
+        pad->minimal = PadMinimal::two;
+    }
+    else if (layout != nullptr && layout->touch == "snes")
+    {
+        pad->minimal = PadMinimal::snes;
+    }
     if (layout == nullptr)
     {
         return;
@@ -224,7 +235,7 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
     // Landscape over the picture; upright under it if it fits, else over a
     // tall picture (retroui decides, the same as piccoletto's REMOTE PLAY).
     float block = static_cast<float>(touch_ui_scale_for(width, height));
-    pad->placement = pad_layouts_place(&pad->layouts, width / block, height / block, aspect, BELOW_GAP);
+    pad->placement = pad_layouts_place(&pad->layouts, width / block, height / block, aspect, BELOW_GAP, pad->minimal);
     pad->layout = pad->placement.id;
     pad->below = pad->shown && pad->placement.below;
     pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
