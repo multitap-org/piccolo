@@ -88,7 +88,7 @@ macOS builds but isn't tested.
   access) and copy games, saves and states both ways, side by side.
 
 **The rest**
-- The retro UI: themes (BLUE, PURPLE, ZSNES, BLACK, your own), the 5x5 pixel
+- The retro UI: themes (BLUE, ATOMIC PURPLE, ZSNES, BLACK, your own), the 5x5 pixel
   font, scaled to the window (see [Interface themes](#interface-themes)).
 - English and Spanish (GENERAL > LANGUAGE).
 - Settings global, per core or per game (see [Settings and overrides](#settings-and-overrides)).
@@ -219,7 +219,7 @@ SETTINGS > INTERFACE sets the look. THEME sets everything at once:
 | Theme | Look |
 |-------|------|
 | BLUE | navy and flat, no shadows (the default) |
-| PURPLE | the same in atomic purple |
+| ATOMIC PURPLE | the indigo GameCube controller: indigo windows, yellow headings; on the touch pad a green A, a red B, grey X, Y, d-pad and stick |
 | ZSNES | a purple background, a blue gradient menu bar with a box behind each menu title, grey menus with a magenta highlight, blue windows with gradient title bars and black fields, raised buttons and check boxes, sunken lists, drop shadows under windows and text, an orange arrow cursor |
 | BLACK | flat and dark, never a shadow; the menus are the bar's color |
 
@@ -241,7 +241,7 @@ can MENU TITLE BOXES, DROP SHADOWS and THEME CURSOR (piccolo draws its own
 pixel arrow instead of the system's, while the menu or a window is up).
 Raised and sunken edges (buttons, check boxes, scroll bars, color swatches,
 lists) appear when a theme's button edges have two colors; with one color,
-as in BLUE, PURPLE and BLACK, everything stays flat. The background color shows
+as in BLUE, ATOMIC PURPLE and BLACK, everything stays flat. The background color shows
 only without a game: around a running game it's black. The interface
 settings are global and live in `settings/piccolo.cfg` (`ui_` keys).
 
