@@ -354,19 +354,22 @@ static void draw_settings(InputWindow* window, const InputWindowState* state, In
     {
         settings_ui_row(&ui, TOUCH_KEYS[k], nullptr);
     }
-    // STYLE: the controller layouts (layouts/), by name; "" = RETROPAD.
+    // STYLE: AUTO ("": the game's controller, else the RetroPad), RETROPAD
+    // (kept as that word: no layout has the name), the controller layouts
+    // (layouts/) by name.
     if (state->layouts != nullptr)
     {
         constexpr uint32_t MAX_STYLES = 64;
         const char* names[MAX_STYLES] = {};
-        uint32_t name_count = 0;
+        names[0] = "RETROPAD";
+        uint32_t name_count = 1;
         for (size_t i = 0; i < state->layouts->layouts.size() && name_count < MAX_STYLES; i++)
         {
             names[name_count] = state->layouts->layouts[i].name.c_str();
             name_count++;
         }
         settings_ui_text_choice_row(&ui, PICCOLO_TOUCH_PAD_STYLE, names, name_count,
-                                    piccolo_text(state->strings, Str::touch_pad_style_retropad),
+                                    piccolo_text(state->strings, Str::touch_pad_style_auto),
                                     piccolo_text(state->strings, Str::touch_pad_style_missing));
     }
     if (retro_ui_button(piccolo_text(state->strings, Str::input_touch_pad_edit)))

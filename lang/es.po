@@ -3961,12 +3961,12 @@ msgid "STYLE"
 msgstr "ESTILO"
 
 msgctxt "setting_touch_pad_style_help"
-msgid "Which controller the touch gamepad looks like: RETROPAD has every button and both sticks; the others only the buttons that controller has, with its names (SUPER NINTENDO: no sticks, no L2 / R2). Set it for a core or a game with SCOPE."
-msgstr "A qué control se parece el control táctil: RETROPAD tiene todos los botones y ambos sticks; los demás sólo los botones de ese control, con sus nombres (SUPER NINTENDO: sin sticks, sin L2 / R2). Elígelo para un core o un juego con ÁMBITO."
+msgid "Which controller the touch gamepad looks like. AUTO: the game's own (a NES or Game Boy game: the d-pad, B and A; a Super Nintendo game: its buttons and L / R), only those buttons, bigger; any other game the RETROPAD. RETROPAD has every button and both sticks; the others only the buttons that controller has, with its names. Set it for a core or a game with SCOPE."
+msgstr "A qué control se parece el control táctil. AUTO: el del juego (un juego de NES o Game Boy: la cruz, B y A; uno de Super Nintendo: sus botones y L / R), sólo esos botones, más grandes; cualquier otro juego el RETROPAD. RETROPAD tiene todos los botones y ambos sticks; los demás sólo los botones de ese control, con sus nombres. Elígelo para un core o un juego con ÁMBITO."
 
-msgctxt "touch_pad_style_retropad"
-msgid "RETROPAD"
-msgstr "RETROPAD"
+msgctxt "touch_pad_style_auto"
+msgid "AUTO"
+msgstr "AUTO"
 
 msgctxt "touch_pad_style_missing"
 msgid "(GONE)"

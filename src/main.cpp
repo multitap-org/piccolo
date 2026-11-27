@@ -9,6 +9,7 @@
 // host-libretro test frontend. Cores, saves, states and settings live in
 // piccolo's own folder (app_paths.h: ~/.local/share/piccolo on Linux).
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -3141,7 +3142,7 @@ static UiDerived app_derive(const App* app)
 // to the core. Anything else up (QUICK MENU, a window widget, MAIN MENU)
 // stops the core's input; HUD widgets don't.
 // A controller layout by its shown name (touch_pad_style keeps the name),
-// or nullptr ("" or a layout that's gone: the RetroPad).
+// or nullptr (RETROPAD, AUTO's "" or a layout that's gone: the RetroPad).
 static const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* name)
 {
     for (size_t i = 0; name[0] != '\0' && i < layouts->layouts.size(); i++)
@@ -3152,6 +3153,31 @@ static const InputLayout* find_layout_by_name(const InputLayouts* layouts, const
         }
     }
     return nullptr;
+}
+
+// STYLE's AUTO ("", the default): the layout listing the running game's
+// extension (layouts/*.cfg extensions =; "Game.sfc", or the file inside an
+// archive, "snes.7z#USA/Game.sfc"), or nullptr (the RetroPad).
+static const InputLayout* auto_layout(const App* app)
+{
+    if (!core_session_running(&app->session))
+    {
+        return nullptr;
+    }
+    std::string path = !app->marker_content_path.empty() ? app->marker_content_path : app->session.host->content_path;
+    size_t cut = path.find_last_of("/\\#");
+    std::string file = cut == std::string::npos ? path : path.substr(cut + 1);
+    size_t dot = file.find_last_of('.');
+    if (dot == std::string::npos)
+    {
+        return nullptr;
+    }
+    std::string extension = file.substr(dot + 1);
+    for (size_t i = 0; i < extension.size(); i++)
+    {
+        extension[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(extension[i])));
+    }
+    return input_layouts_for_extension(&app->layouts, extension.c_str());
 }
 
 static bool game_has_keyboard(const App* app)
@@ -6472,12 +6498,16 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     // the overlay); its burger menu opens the MAIN MENU, the QUICK MENU, the
     // GAME DVR, CONTROLLERS and EDIT LAYOUT (as the web page's pad: without a
     // keyboard they're the way to the menus).
-    // STYLE (per core / game): made again only when the setting changes.
+    // STYLE (per core / game): made again only when it changes. AUTO ("",
+    // the default) is the game's controller (auto_layout: NES / Game Boy,
+    // SUPER NINTENDO in their MINIMAL arrangement), else the RetroPad.
     {
         const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
-        if (app->onscreen_pad.style_name != style)
+        const InputLayout* layout = style[0] == '\0' ? auto_layout(app) : find_layout_by_name(&app->layouts, style);
+        std::string made_from = style[0] == '\0' ? "AUTO:" + (layout != nullptr ? layout->id : std::string()) : style;
+        if (app->onscreen_pad.style_name != made_from)
         {
-            onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
+            onscreen_pad_set_style(&app->onscreen_pad, layout, made_from.c_str());
         }
     }
     // The page pad's burger menu (the browser, no keyboard needed): MAIN MENU
