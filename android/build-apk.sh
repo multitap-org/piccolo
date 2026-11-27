@@ -194,7 +194,7 @@ find "$apk_dir/classes" -name '*.class' > "$apk_dir/classes.txt"
 echo "== package"
 # Assets: on Android SDL's base path is the APK's assets, so piccolo finds
 # lang/ there like next to the program; layouts/ and themes/ are copied out at
-# start (src/bundled_files_android.cpp).
+# start (src/platform/bundled_files_android.cpp).
 cp -r "$root/lang" "$root/layouts" "$root/themes" "$root/shaders" "$apk_dir/assets/"
 # The curated shader presets (deps/piccolo-shaders, optional), where the
 # desktop build puts them: shaders/presets. Copied out at start like the rest.

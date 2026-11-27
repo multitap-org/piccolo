@@ -1,4 +1,4 @@
-// Checks how piccolo names controls (src/button_names.h) with no window and
+// Checks how piccolo names controls (src/ui/button_names.h) with no window and
 // no SDL: the DVR's hints on Xbox, Switch and PlayStation pads, from the
 // layouts in layouts/ and from what SDL would say of a pad without one, a
 // rebound INTERFACE button, a profile's own name, the keyboard's keys; and

@@ -338,7 +338,7 @@ Every window is split the same way (`foo_window.h` / `.cpp`): its own state
 `foo_window_update` (polling), `foo_window_draw` (retroui only; it records
 what was pressed in a `FooWindowAction`) and `foo_window_apply` (acts on it,
 no GUI). The frame in `main.cpp` runs update, view, the windows, `ui_draw`,
-then apply. Only `src/ui_toolkit_imgui.cpp` calls ImGui (`ui_toolkit.h` is
+then apply. Only `src/ui/ui_toolkit_imgui.cpp` calls ImGui (`ui_toolkit.h` is
 what the loop asks the toolkit); a build that includes `imgui.h` anywhere
 else in piccolo's logic fails. MISC > DEBUG can show every dialog and HUD
 card with made-up data.

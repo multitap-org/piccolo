@@ -25,7 +25,7 @@ CMake generates `build-review/compile_commands.json`, which `.clangd` uses for
 navigation, diagnostics, and finding references. The preset is shared in
 `CMakePresets.json`, and each clone generates its own `build-review/` files.
 The second command generates the UI string header and can be rerun after
-changes to `src/strings.txt`.
+changes to `src/ui/strings.txt`.
 Run **clangd: Restart language server** after the first configure. On Windows,
 if clangd cannot locate the standard library headers, add a workspace
 `clangd.arguments` entry with

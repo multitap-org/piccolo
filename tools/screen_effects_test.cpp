@@ -1,4 +1,4 @@
-// Checks piccolo's screen effects (src/screen_effects.h) with no window: when
+// Checks piccolo's screen effects (src/widgets/screen_effects.h) with no window: when
 // SNAP and SHUTTER start and end, their curves, and the EFFECTS switch.
 //
 // Exit code 0 = all checks passed. Each failure is printed.

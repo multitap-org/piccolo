@@ -1,4 +1,4 @@
-// Checks the settings rows as plain data (src/settings_view.h) with no
+// Checks the settings rows as plain data (src/settings/settings_view.h) with no
 // window: what a row shows at each scope (greyed out, C / G marker, RESET)
 // and how an action lands in the model (clamping, rounding, empty text,
 // reset), and which scope a settings screen opens on.

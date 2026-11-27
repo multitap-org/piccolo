@@ -73,7 +73,7 @@ modules:
       - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMULTITAP_PICCOLO_DIR= -DMULTITAP_BUILD_TESTS=OFF
       # Test libretro ships in every package (deps/test-libretro must be checked
       # out): in /app/lib/piccolo/cores, copied at start into piccolo's own
-      # cores folder (src/bundled_files.cpp).
+      # cores folder (src/platform/bundled_files.cpp).
       - cmake --build build --target piccolo test_libretro
       # piccolo reads lang/, layouts/ and shaders/ next to its program (SDL_GetBasePath,
       # which follows the symlink in /app/bin).

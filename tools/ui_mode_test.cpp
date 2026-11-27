@@ -1,4 +1,4 @@
-// Checks piccolo's UI modes (src/ui_mode.h) with no window: the transitions,
+// Checks piccolo's UI modes (src/ui/ui_mode.h) with no window: the transitions,
 // MAIN MENU's stack, what Esc / B does, grabs and their owners, and what is
 // derived from the mode (input layer, hotkeys, overlay, pause causes).
 //

@@ -46,7 +46,7 @@ shadow, are the foreground, centered.
 
 ## Colors
 
-From the BLUE theme (the default) (`src/piccolo_settings.cpp`), plus one warm accent:
+From the BLUE theme (the default) (`src/settings/piccolo_settings.cpp`), plus one warm accent:
 
 | Use                 | Dark page | Light page |
 |---------------------|-----------|------------|
