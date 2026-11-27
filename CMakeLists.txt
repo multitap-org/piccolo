@@ -194,7 +194,24 @@ add_subdirectory(deps/libretro/frontend-libretro)
 # (retroui: themed ImGui widgets with the pixel font).
 
 set(PICCOLO_SOURCES
-    src/main.cpp
+    src/app/main.cpp
+    src/app/app_continue.cpp
+    src/app/app_debug.cpp
+    src/app/app_files.cpp
+    src/app/app_game.cpp
+    src/app/app_guest.cpp
+    src/app/app_input.cpp
+    src/app/app_menus.cpp
+    src/app/app_net.cpp
+    src/app/app_net_remote.cpp
+    src/app/app_picture.cpp
+    src/app/app_screenshots.cpp
+    src/app/app_settings.cpp
+    src/app/app_shaders.cpp
+    src/app/app_share.cpp
+    src/app/app_states.cpp
+    src/app/app_ui.cpp
+    src/app/app_ui_modes.cpp
     src/file_picker.cpp
     src/piccolo_settings.cpp
     src/settings_ui.cpp
@@ -244,7 +261,7 @@ set(PICCOLO_SOURCES
 if(ANDROID)
     # Android (hosts-common's cmake/android-toolchain.cmake, android/build-apk.sh):
     # the same piccolo as libmain.so, which SDL's Java activity loads and whose
-    # SDL_main (main.cpp's main, renamed by SDL_main.h) it calls.
+    # SDL_main (app/main.cpp's main, renamed by SDL_main.h) it calls.
     add_library(piccolo SHARED ${PICCOLO_SOURCES} src/bundled_files_android.cpp src/clipboard.cpp src/web_pad.cpp)
     set_target_properties(piccolo PROPERTIES
         OUTPUT_NAME "main"
