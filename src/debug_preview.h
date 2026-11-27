@@ -28,6 +28,7 @@
 #include "mobile_home.h"
 #include "ports_widget.h"
 #include "net_share_link.h"
+#include "onscreen_pad.h"
 #include "pair_window.h"
 #include "quick_menu.h"
 
@@ -71,6 +72,7 @@ struct DebugPreviewView
     MobileHomeState  phone = {};
     DvrViewText      dvr_text = {};
     PortsWidgetState devices = {};
+    OnscreenPadState pad_menu = {};   // the burger menu: its labels and the pad's look
 };
 
 // What was pressed in it (UiActions): only closing it counts.
@@ -83,6 +85,7 @@ struct DebugPreviewActions
     MobileHomeAction  phone = {};
     DvrViewInput      dvr = {};
     PortsWidgetAction devices = {};
+    OnscreenPadMenuPress pad_menu = OnscreenPadMenuPress::none;   // a pick is ignored; a tap outside ends it
 };
 
 // Shows `which` (another one shown ends), from its first step's fake state.
@@ -96,9 +99,11 @@ bool debug_preview_covers_screen(const DebugPreviews* previews);
 void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open);
 // `version`: ABOUT's (PICCOLO_VERSION). `menus`: the menu bar's, for the
 // phone's ☰ (the real items; only the games and the paused game are fake).
-// `phone_upright`: the phone UI held upright (DEVICES' rows).
+// `phone_upright`: the phone UI held upright (DEVICES' rows). `pad`: the
+// touch gamepad's state (onscreen_pad_state), for the burger menu's look.
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright);
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright,
+                         const OnscreenPadState* pad);
 // Draws the window shown, if any.
 void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, RetroUiFont* pixel_font,
                         int32_t scale, DebugPreviewActions* actions);

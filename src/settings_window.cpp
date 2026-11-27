@@ -723,6 +723,11 @@ static void draw_interface(SettingsWindow* window, const SettingsUiContext* cont
         {
             settings_ui_row(ui, piccolo_settings_ui_color_key(i), nullptr);
         }
+        // The touch gamepad's starting opacities (part of the theme).
+        settings_ui_row(ui, PICCOLO_UI_PAD_FILL, nullptr);
+        settings_ui_row(ui, PICCOLO_UI_PAD_BORDER, nullptr);
+        settings_ui_row(ui, PICCOLO_UI_PAD_LABELS, nullptr);
+        settings_ui_row(ui, PICCOLO_UI_PAD_BACKGROUND, nullptr);
     }
     if (settings_ui_section("effects", piccolo_text(ui->strings, Str::section_effects), nullptr, false))
     {

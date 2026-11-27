@@ -348,7 +348,8 @@ static void draw_settings(InputWindow* window, const InputWindowState* state, In
         return;
     }
     static const char* const TOUCH_KEYS[] = {PICCOLO_TOUCH_PAD, PICCOLO_TOUCH_PAD_OPACITY, PICCOLO_TOUCH_PAD_BORDER_OPACITY,
-                                             PICCOLO_TOUCH_PAD_LABEL_OPACITY, PICCOLO_TOUCH_PAD_VIBRATE};
+                                             PICCOLO_TOUCH_PAD_LABEL_OPACITY, PICCOLO_TOUCH_PAD_BACKGROUND_OPACITY,
+                                             PICCOLO_TOUCH_PAD_VIBRATE};
     for (uint32_t k = 0; k < sizeof(TOUCH_KEYS) / sizeof(TOUCH_KEYS[0]); k++)
     {
         settings_ui_row(&ui, TOUCH_KEYS[k], nullptr);
@@ -1264,7 +1265,23 @@ InputWindowRequest input_window_apply(InputWindow* window, const InputWindowActi
                                       Settings* settings, uint64_t now_ms)
 {
     SettingsUiEdit edit = action->setting;
+    // The pad's FILL / BORDER / LABEL / BACKGROUND OPACITY rows show the
+    // theme's values until one is changed: from then on they are the user's,
+    // for every theme (touch_pad_look_set).
+    bool look_edited = false;
+    for (uint32_t e = 0; e < edit.count; e++)
+    {
+        const char* key = edit.entries[e].key;
+        look_edited = look_edited || std::strcmp(key, PICCOLO_TOUCH_PAD_OPACITY) == 0 ||
+                      std::strcmp(key, PICCOLO_TOUCH_PAD_BORDER_OPACITY) == 0 ||
+                      std::strcmp(key, PICCOLO_TOUCH_PAD_LABEL_OPACITY) == 0 ||
+                      std::strcmp(key, PICCOLO_TOUCH_PAD_BACKGROUND_OPACITY) == 0;
+    }
     settings_ui_apply_edit(settings, &edit);   // piccolo saves the settings when the window closes
+    if (look_edited)
+    {
+        settings_set_bool(settings, SettingLayer::global, PICCOLO_TOUCH_PAD_LOOK_SET, true);
+    }
     if (action->rename && action->rename_controller < input->controllers.size())
     {
         input->controllers[action->rename_controller].name = action->name;

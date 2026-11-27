@@ -49,6 +49,7 @@ enum class DebugPreview
     phone_menu,                // the ☰ sidebar over a paused game (RESUME first)
     phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
     devices,                   // DEVICES (ports_view's board): fake controllers on four ports; rows upright on a phone
+    pad_menu,                  // the touch gamepad's burger menu (onscreen_pad.h), over the screen
 };
 
 // MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced

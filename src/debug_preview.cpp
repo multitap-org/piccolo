@@ -364,8 +364,13 @@ static void guest_state(GuestWindowState* state, const Localization* strings, De
 }
 
 void debug_preview_state(DebugPreviewView* view, const DebugPreviews* previews, const Localization* strings,
-                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright)
+                         const char* version, const RetroUiMenu* menus, int32_t menu_count, bool phone_upright,
+                         const OnscreenPadState* pad)
 {
+    if (previews->shown == DebugPreview::pad_menu)
+    {
+        view->pad_menu = *pad;
+    }
     if (previews->shown == DebugPreview::devices)
     {
         ports_widget_state(&view->devices, strings, false, phone_upright, SDL_GetTicks());
@@ -448,6 +453,10 @@ void debug_preview_draw(DebugPreviews* previews, const DebugPreviewView* view, R
     {
         quick_menu_draw(&previews->quick, &view->quick, pixel_font, scale, &actions->quick);
     }
+    else if (view->shown == DebugPreview::pad_menu)
+    {
+        actions->pad_menu = onscreen_pad_menu_preview(&view->pad_menu, pixel_font);
+    }
     else if (view->shown == DebugPreview::devices)
     {
         ports_widget_draw_board(&previews->devices, &view->devices, pixel_font, scale, &actions->devices);
@@ -494,6 +503,8 @@ void debug_preview_apply(DebugPreviews* previews, const DebugPreviewActions* act
     {
         previews->shown = DebugPreview::phone_menu;
     }
+    // The burger menu: a tap outside ends it; a pick is ignored.
+    closed = closed || (previews->shown == DebugPreview::pad_menu && actions->pad_menu == OnscreenPadMenuPress::close);
     // DEVICES: DONE ends it; a move is ignored (the pick still shows).
     closed = closed || (previews->shown == DebugPreview::devices && actions->devices.done);
     // The DVR's: BACK TO NOW or PLAY FROM HERE ends it; the rest is ignored.

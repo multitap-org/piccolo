@@ -77,11 +77,17 @@ constexpr const char* PICCOLO_INPUT_OSK = "input_osk";
 constexpr const char* PICCOLO_TOUCH_PAD = "touch_pad";
 constexpr const char* PICCOLO_TOUCH_PAD_STYLE = "touch_pad_style";   // a layout's name ("" = the RetroPad)
 // The touch gamepad's opacities, percent, the same upright and sideways
-// (EDIT LAYOUT's FILL / BORDER / LABELS): its faces (the key from before
-// there were three), outlines, labels. Colors: the theme's overlay ones.
+// (EDIT LAYOUT's FILL / BORDER / LABELS / BACKGROUND): its faces (the key from
+// before there were four), outlines, labels, and the theme's pad_background
+// over the space the game leaves empty. Colors: the theme's pad_* ones.
+// touch_pad_look_set: false = the theme's levels (ui_pad_*) apply and these
+// settings only show them; true (the user moved a slider or changed a row)
+// = these settings win for every theme.
 constexpr const char* PICCOLO_TOUCH_PAD_OPACITY = "touch_pad_opacity";
 constexpr const char* PICCOLO_TOUCH_PAD_BORDER_OPACITY = "touch_pad_border_opacity";
 constexpr const char* PICCOLO_TOUCH_PAD_LABEL_OPACITY = "touch_pad_label_opacity";
+constexpr const char* PICCOLO_TOUCH_PAD_BACKGROUND_OPACITY = "touch_pad_background_opacity";
+constexpr const char* PICCOLO_TOUCH_PAD_LOOK_SET = "touch_pad_look_set";
 constexpr const char* PICCOLO_TOUCH_PAD_VIBRATE = "touch_pad_vibrate";
 constexpr const char* PICCOLO_INPUT_PORTS = "input_ports";                // CONTROLS: how many ports it shows (of the core's)
 // The emulated device on each port (the core's own ids; 1 = the joypad),
@@ -167,6 +173,12 @@ constexpr const char* PICCOLO_WINDOW_REMEMBER = "window_remember";
 // covered). Part of the theme (the palette's level, retro_ui_theme.h), so
 // SAVE THEME keeps it (Andrés, testing round 3; was BACKDROP, black).
 constexpr const char* PICCOLO_UI_BACKGROUND_TRANSPARENCY = "ui_background_transparency";
+// The theme's starting opacities for the touch gamepad, percent (the theme sets them; INPUT >
+// ON-SCREEN GAMEPAD's own win once touch_pad_look_set is true).
+constexpr const char* PICCOLO_UI_PAD_FILL = "ui_pad_fill";
+constexpr const char* PICCOLO_UI_PAD_BORDER = "ui_pad_border";
+constexpr const char* PICCOLO_UI_PAD_LABELS = "ui_pad_labels";
+constexpr const char* PICCOLO_UI_PAD_BACKGROUND = "ui_pad_background";
 // INTERFACE > EFFECTS: short effects on the game picture (screen_effects.h:
 // SNAP on the DVR's PLAY FROM HERE, SHUTTER on a screenshot). On by default;
 // global only. Not part of a theme (not ui_*).
@@ -184,7 +196,7 @@ constexpr const char* PICCOLO_UI_COLOR_CHECK = "ui_color_check";
 constexpr const char* PICCOLO_UI_COLOR_SECTION = "ui_color_section";
 constexpr const char* PICCOLO_UI_THEME_CURSOR = "ui_theme_cursor";
 // The interface theme piccolo.cfg keeps (Andrés, 2026-11-26: the theme, not
-// its colors): "blue", "purple", "zsnes", "black" (the built-in ones), or
+// its colors): "blue", "purple", "zsnes", "black", "gray8", "red8", "gray16a", "gray16b" (the built-in ones), or
 // "file:<name>.cfg" (themes/, shipped or the user's own). The ui_ color,
 // switch and level settings are filled from it at start and never saved:
 // changed by hand they are CUSTOM (UNSAVED) until SAVE THEME.
@@ -197,9 +209,34 @@ constexpr const char* PICCOLO_UI_COLOR_BUTTON_TEXT = "ui_color_button_text";
 constexpr const char* PICCOLO_UI_COLOR_FIELD_TEXT = "ui_color_field_text";
 constexpr const char* PICCOLO_UI_COLOR_CURSOR = "ui_color_cursor";
 constexpr const char* PICCOLO_UI_COLOR_CURSOR_EDGE = "ui_color_cursor_edge";
-constexpr const char* PICCOLO_UI_COLOR_OVERLAY_FILL = "ui_color_overlay_fill";       // the touch gamepad's faces,
-constexpr const char* PICCOLO_UI_COLOR_OVERLAY_BORDER = "ui_color_overlay_border";   // outlines and sticks' nubs,
-constexpr const char* PICCOLO_UI_COLOR_OVERLAY_TEXT = "ui_color_overlay_text";       // labels
+// The touch gamepad's colors (RetroUiPalette pad_*): each kind of part has its face, its face
+// while held and its label; PAD_BACKGROUND is the empty space around the game.
+constexpr const char* PICCOLO_UI_COLOR_PAD_BACKGROUND = "ui_color_pad_background";
+constexpr const char* PICCOLO_UI_COLOR_PAD_DPAD = "ui_color_pad_dpad";
+constexpr const char* PICCOLO_UI_COLOR_PAD_DPAD_HELD = "ui_color_pad_dpad_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_DPAD_TEXT = "ui_color_pad_dpad_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_A = "ui_color_pad_a";
+constexpr const char* PICCOLO_UI_COLOR_PAD_A_HELD = "ui_color_pad_a_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_A_TEXT = "ui_color_pad_a_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_B = "ui_color_pad_b";
+constexpr const char* PICCOLO_UI_COLOR_PAD_B_HELD = "ui_color_pad_b_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_B_TEXT = "ui_color_pad_b_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_X = "ui_color_pad_x";
+constexpr const char* PICCOLO_UI_COLOR_PAD_X_HELD = "ui_color_pad_x_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_X_TEXT = "ui_color_pad_x_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_Y = "ui_color_pad_y";
+constexpr const char* PICCOLO_UI_COLOR_PAD_Y_HELD = "ui_color_pad_y_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_Y_TEXT = "ui_color_pad_y_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_SHOULDER = "ui_color_pad_shoulder";
+constexpr const char* PICCOLO_UI_COLOR_PAD_SHOULDER_HELD = "ui_color_pad_shoulder_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_SHOULDER_TEXT = "ui_color_pad_shoulder_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_STICK = "ui_color_pad_stick";
+constexpr const char* PICCOLO_UI_COLOR_PAD_STICK_HELD = "ui_color_pad_stick_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_STICK_NUB = "ui_color_pad_stick_nub";
+constexpr const char* PICCOLO_UI_COLOR_PAD_CENTER = "ui_color_pad_center";
+constexpr const char* PICCOLO_UI_COLOR_PAD_CENTER_HELD = "ui_color_pad_center_held";
+constexpr const char* PICCOLO_UI_COLOR_PAD_CENTER_TEXT = "ui_color_pad_center_text";
+constexpr const char* PICCOLO_UI_COLOR_PAD_BORDER = "ui_color_pad_border";
 constexpr const char* PICCOLO_UI_COLOR_BAR = "ui_color_bar";
 constexpr const char* PICCOLO_UI_COLOR_BAR_CENTER = "ui_color_bar_center";
 constexpr const char* PICCOLO_UI_COLOR_BAR_LIGHT = "ui_color_bar_light";

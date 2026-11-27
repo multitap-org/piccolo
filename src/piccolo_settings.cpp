@@ -232,6 +232,9 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_touch_pad_border_opacity), .help = text_id(Str::setting_touch_pad_border_opacity_help)},
     {.key = PICCOLO_TOUCH_PAD_LABEL_OPACITY, .type = SettingType::integer, .default_value = "70", .min = 0, .max = 100, .step = 5,
      .label = text_id(Str::setting_touch_pad_label_opacity), .help = text_id(Str::setting_touch_pad_label_opacity_help)},
+    {.key = PICCOLO_TOUCH_PAD_BACKGROUND_OPACITY, .type = SettingType::integer, .default_value = "100", .min = 0, .max = 100, .step = 5,
+     .label = text_id(Str::setting_touch_pad_background_opacity), .help = text_id(Str::setting_touch_pad_background_opacity_help)},
+    {.key = PICCOLO_TOUCH_PAD_LOOK_SET, .type = SettingType::boolean, .default_value = "false"},
     {.key = PICCOLO_TOUCH_PAD_VIBRATE, .type = SettingType::boolean, .default_value = "true",
      .label = text_id(Str::setting_touch_pad_vibrate), .help = text_id(Str::setting_touch_pad_vibrate_help)},
     {.key = PICCOLO_INPUT_PORTS, .type = SettingType::integer, .default_value = "4", .overridable = true, .min = 1, .max = 4,
@@ -447,6 +450,14 @@ static const SettingDescriptor SETTINGS[] = {
     {.key = PICCOLO_UI_BACKGROUND_TRANSPARENCY, .type = SettingType::integer, .default_value = "40", .min = 0, .max = 100,
      .step = 10, .label = text_id(Str::setting_ui_background_transparency),
      .help = text_id(Str::setting_ui_background_transparency_help)},
+    {.key = PICCOLO_UI_PAD_FILL, .type = SettingType::integer, .default_value = "20", .min = 0, .max = 100, .step = 5,
+     .label = text_id(Str::setting_ui_pad_fill), .help = text_id(Str::setting_ui_pad_fill_help)},
+    {.key = PICCOLO_UI_PAD_BORDER, .type = SettingType::integer, .default_value = "50", .min = 0, .max = 100, .step = 5,
+     .label = text_id(Str::setting_ui_pad_border), .help = text_id(Str::setting_ui_pad_border_help)},
+    {.key = PICCOLO_UI_PAD_LABELS, .type = SettingType::integer, .default_value = "70", .min = 0, .max = 100, .step = 5,
+     .label = text_id(Str::setting_ui_pad_labels), .help = text_id(Str::setting_ui_pad_labels_help)},
+    {.key = PICCOLO_UI_PAD_BACKGROUND, .type = SettingType::integer, .default_value = "100", .min = 0, .max = 100, .step = 5,
+     .label = text_id(Str::setting_ui_pad_background), .help = text_id(Str::setting_ui_pad_background_help)},
     {.key = PICCOLO_UI_SHADOWS, .type = SettingType::boolean, .default_value = "false",
      .label = text_id(Str::setting_ui_shadows), .help = text_id(Str::setting_ui_shadows_help)},
     {.key = PICCOLO_SCREEN_EFFECTS, .type = SettingType::boolean, .default_value = "true",
@@ -521,12 +532,58 @@ static const SettingDescriptor SETTINGS[] = {
      .label = text_id(Str::setting_ui_color_cursor), .help = text_id(Str::setting_ui_color_cursor_help)},
     {.key = PICCOLO_UI_COLOR_CURSOR_EDGE, .type = SettingType::color, .default_value = "#8CB4F0",
      .label = text_id(Str::setting_ui_color_cursor_edge), .help = text_id(Str::setting_ui_color_cursor_edge_help)},
-    {.key = PICCOLO_UI_COLOR_OVERLAY_FILL, .type = SettingType::color, .default_value = "#4A6898",
-     .label = text_id(Str::setting_ui_color_overlay_fill), .help = text_id(Str::setting_ui_color_overlay_fill_help)},
-    {.key = PICCOLO_UI_COLOR_OVERLAY_BORDER, .type = SettingType::color, .default_value = "#8CB4F0",
-     .label = text_id(Str::setting_ui_color_overlay_border), .help = text_id(Str::setting_ui_color_overlay_border_help)},
-    {.key = PICCOLO_UI_COLOR_OVERLAY_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
-     .label = text_id(Str::setting_ui_color_overlay_text), .help = text_id(Str::setting_ui_color_overlay_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_BACKGROUND, .type = SettingType::color, .default_value = "#000000",
+     .label = text_id(Str::setting_ui_color_pad_background), .help = text_id(Str::setting_ui_color_pad_background_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_DPAD, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_dpad), .help = text_id(Str::setting_ui_color_pad_dpad_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_DPAD_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_dpad_held), .help = text_id(Str::setting_ui_color_pad_dpad_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_DPAD_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_dpad_text), .help = text_id(Str::setting_ui_color_pad_dpad_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_A, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_a), .help = text_id(Str::setting_ui_color_pad_a_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_A_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_a_held), .help = text_id(Str::setting_ui_color_pad_a_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_A_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_a_text), .help = text_id(Str::setting_ui_color_pad_a_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_B, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_b), .help = text_id(Str::setting_ui_color_pad_b_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_B_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_b_held), .help = text_id(Str::setting_ui_color_pad_b_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_B_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_b_text), .help = text_id(Str::setting_ui_color_pad_b_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_X, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_x), .help = text_id(Str::setting_ui_color_pad_x_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_X_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_x_held), .help = text_id(Str::setting_ui_color_pad_x_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_X_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_x_text), .help = text_id(Str::setting_ui_color_pad_x_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_Y, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_y), .help = text_id(Str::setting_ui_color_pad_y_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_Y_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_y_held), .help = text_id(Str::setting_ui_color_pad_y_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_Y_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_y_text), .help = text_id(Str::setting_ui_color_pad_y_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_SHOULDER, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_shoulder), .help = text_id(Str::setting_ui_color_pad_shoulder_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_SHOULDER_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_shoulder_held), .help = text_id(Str::setting_ui_color_pad_shoulder_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_SHOULDER_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_shoulder_text), .help = text_id(Str::setting_ui_color_pad_shoulder_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_STICK, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_stick), .help = text_id(Str::setting_ui_color_pad_stick_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_STICK_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_stick_held), .help = text_id(Str::setting_ui_color_pad_stick_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_STICK_NUB, .type = SettingType::color, .default_value = "#8CB4F0",
+     .label = text_id(Str::setting_ui_color_pad_stick_nub), .help = text_id(Str::setting_ui_color_pad_stick_nub_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_CENTER, .type = SettingType::color, .default_value = "#4A6898",
+     .label = text_id(Str::setting_ui_color_pad_center), .help = text_id(Str::setting_ui_color_pad_center_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_CENTER_HELD, .type = SettingType::color, .default_value = "#FFDC50",
+     .label = text_id(Str::setting_ui_color_pad_center_held), .help = text_id(Str::setting_ui_color_pad_center_held_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_CENTER_TEXT, .type = SettingType::color, .default_value = "#FFFFFF",
+     .label = text_id(Str::setting_ui_color_pad_center_text), .help = text_id(Str::setting_ui_color_pad_center_text_help)},
+    {.key = PICCOLO_UI_COLOR_PAD_BORDER, .type = SettingType::color, .default_value = "#8CB4F0",
+     .label = text_id(Str::setting_ui_color_pad_border), .help = text_id(Str::setting_ui_color_pad_border_help)},
 
     // Sound. Volume and latency overridable per core / game (plan-milestones,
     // milestone 2); the device and the advanced ones are global.
@@ -879,6 +936,14 @@ Str piccolo_settings_ui_theme_name(RetroUiTheme theme)
         return Str::theme_zsnes;
     case RetroUiTheme::black:
         return Str::theme_black;
+    case RetroUiTheme::gray8:
+        return Str::theme_gray8;
+    case RetroUiTheme::red8:
+        return Str::theme_red8;
+    case RetroUiTheme::gray16a:
+        return Str::theme_gray16a;
+    case RetroUiTheme::gray16b:
+        return Str::theme_gray16b;
     case RetroUiTheme::count:
         break;
     }
@@ -1229,6 +1294,14 @@ std::string piccolo_ui_theme_id(RetroUiTheme theme)
         return "zsnes";
     case RetroUiTheme::black:
         return "black";
+    case RetroUiTheme::gray8:
+        return "gray8";
+    case RetroUiTheme::red8:
+        return "red8";
+    case RetroUiTheme::gray16a:
+        return "gray16a";
+    case RetroUiTheme::gray16b:
+        return "gray16b";
     case RetroUiTheme::count:
         break;
     }

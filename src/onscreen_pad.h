@@ -9,21 +9,29 @@
 //   - Landscape: over the picture. Upright: under the picture when it fits
 //     (the picture is drawn in the space above it), else over its lower part
 //     (a tall picture). Drawn the same everywhere (Andrés, 2026-11-26): the
-//     theme's overlay colors at the FILL / BORDER / LABEL opacities
-//     (SETTINGS > INPUT, or EDIT LAYOUT's sliders).
-//   - The middle button is MENU (retroui's action button): the QUICK MENU.
+//     theme's pad colors (one set per kind of part) at the FILL / BORDER /
+//     LABEL opacities. While the pad shows, the space the game picture leaves
+//     empty is the theme's pad_background at the BACKGROUND opacity, over
+//     black. The opacities are the theme's own (ui_pad_*) until the user
+//     sets theirs (EDIT LAYOUT's sliders, or SETTINGS > INPUT > ON-SCREEN
+//     GAMEPAD: touch_pad_look_set), then those win for every theme.
+//   - The middle row is SELECT, a menu button (the burger, U+2630) and START.
+//     Pressing the burger opens a pop-up over the picture: MAIN MENU, QUICK
+//     MENU, GAME DVR, CONTROLLERS and EDIT LAYOUT, in the pad_center colors
+//     at the same opacities; a tap outside (or the burger again) closes it.
 //   - SHOW: AUTO (a touch screen: shown until a real gamepad plays, a tap
 //     brings it back), ON, OFF.
-//   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD, or the pad's own EDIT
-//     button): piccoletto's editor; saved in <settings>/touch_layouts.cfg,
-//     its sliders in the settings.
+//   - EDIT LAYOUT (SETTINGS > INPUT > ON-SCREEN GAMEPAD, or the pad's burger
+//     menu): piccoletto's editor; saved in <settings>/touch_layouts.cfg, its
+//     sliders in the settings.
 //
 // Fingers come from SDL's finger events (touch_fingers); with the mouse on
 // a desktop (left button held), so it can be tried there too.
 //
 // Split like every window: onscreen_pad_state fills what it shows (no GUI),
 // onscreen_pad_draw draws it and records what was pressed, and
-// onscreen_pad_apply acts on it (no GUI): EDIT LAYOUT's save, the buzz. The
+// onscreen_pad_apply acts on it (no GUI): EDIT LAYOUT's save and sliders, the
+// buzz. The menus the burger menu names are main.cpp's. The
 // fingers' RetroPad stays the pad's own state (the router reads it next
 // frame, in onscreen_pad_update).
 
@@ -77,7 +85,8 @@ struct OnscreenPad
     PadStyle     style;
     bool         styled = false;   // false: the whole RetroPad
     std::string  style_name;       // the setting's value it was made from
-    PadLook      look;             // this frame's opacities (the settings, or EDIT LAYOUT's sliders)
+    PadLook      look;             // this frame's opacities (the theme's, the settings, or EDIT LAYOUT's sliders)
+    bool         menu_open = false;   // the burger menu's pop-up is up (drawn from the frame after the press)
 };
 
 // STYLE: look like `layout` (a controller layout from layouts/: only its
@@ -108,25 +117,59 @@ void onscreen_pad_update(OnscreenPad* pad, InputSystem* input, bool enabled, Ons
 // height) in a `width` x `height` window.
 void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float width, float height);
 
+// Where the game's picture is this frame, window pixels (the toolkit's
+// units); `shown` false = none (the whole screen is empty space).
+struct OnscreenPadPicture
+{
+    bool  shown = false;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
 struct OnscreenPadState
 {
-    const char* menu_label = "";    // the MAIN MENU button
-    const char* quick_label = "";   // the QUICK MENU button
-    const char* edit_label = "";    // the EDIT button: EDIT LAYOUT
-    PadLook     look;               // FILL / BORDER / LABEL OPACITY, 0..1
-    bool        vibrate = false;    // a buzz on each press
+    const char* menu_label = "";           // the burger button's label
+    const char* main_menu_label = "";      // the burger menu's items
+    const char* quick_menu_label = "";
+    const char* game_dvr_label = "";
+    const char* controllers_label = "";
+    const char* edit_layout_label = "";
+    PadLook     look;                      // FILL / BORDER / LABEL / BACKGROUND OPACITY, 0..1
+    bool        vibrate = false;           // a buzz on each press
+    OnscreenPadPicture picture;            // set by main.cpp (the pad doesn't place the picture)
 };
 
 struct OnscreenPadAction
 {
-    bool menu = false;        // MENU: the MAIN MENU (main.cpp opens it)
-    bool quick = false;       // QUICK: the QUICK MENU (main.cpp opens it)
-    bool edit = false;        // EDIT: EDIT LAYOUT (main.cpp opens it)
-    bool edit_done = false;   // EDIT LAYOUT's DONE
+    // The burger menu's picks (main.cpp opens them).
+    bool main_menu = false;
+    bool quick_menu = false;
+    bool game_dvr = false;
+    bool controllers = false;
+    bool edit_layout = false;    // EDIT LAYOUT (main.cpp starts it: onscreen_pad_edit)
+    bool edit_done = false;      // EDIT LAYOUT's DONE
     bool look_changed = false;   // EDIT LAYOUT's sliders moved: `look` goes to the settings
     PadLook look;
     bool buzz = false;        // a press with VIBRATE on
 };
+
+// What the burger menu's pop-up returned: a pick, or a tap outside.
+enum class OnscreenPadMenuPress
+{
+    none,
+    close,
+    main_menu,
+    quick_menu,
+    game_dvr,
+    controllers,
+    edit_layout,
+};
+
+// The look in force (the theme's levels, or the settings' once the user set
+// them): the pad's, and the browser page's.
+PadLook onscreen_pad_look(const Settings* settings);
 
 void onscreen_pad_state(OnscreenPadState* state, const Settings* settings, const Localization* strings);
 
@@ -134,8 +177,10 @@ void onscreen_pad_state(OnscreenPadState* state, const Settings* settings, const
 void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiFont* pixel_font,
                        OnscreenPadAction* action);
 
-// EDIT LAYOUT's DONE (saved), its sliders (into `settings`, global), the
-// buzz. MENU, QUICK and EDIT are main.cpp's.
+// EDIT LAYOUT's DONE (saved), its sliders (into `settings`, global, and
+// touch_pad_look_set), the buzz; while the look is the theme's, the settings
+// rows are kept showing the theme's values. The burger menu's picks are
+// main.cpp's.
 void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action, Settings* settings);
 
 // After the frame: the fingers' frame ends.
@@ -143,3 +188,8 @@ void onscreen_pad_end_frame(OnscreenPad* pad);
 
 // EDIT LAYOUT on (the layout shown now); saved when DONE.
 void onscreen_pad_edit(OnscreenPad* pad);
+
+// The burger menu's pop-up alone, over the whole screen, for MENU > DEBUG
+// (the caller ignores a pick; a tap outside returns `close`). `state` from
+// onscreen_pad_state.
+OnscreenPadMenuPress onscreen_pad_menu_preview(const OnscreenPadState* state, RetroUiFont* pixel_font);
