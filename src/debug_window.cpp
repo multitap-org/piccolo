@@ -186,6 +186,28 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     preview_button(action, "DEVICES", DebugPreview::devices, true);
 }
 
+// The knobs' sliders line up in a column after the widest label.
+static void snow_label(const char* label)
+{
+    float column = retro_ui_label_column_width(retro_ui_text_width("DRIFT RIGHT (0..)"));
+    float left = retro_ui_cursor_x();
+    retro_ui_label(label);
+    retro_ui_same_line_at(left + column);
+}
+
+static void snow_slider(const char* label, const char* id, float* value, float min, float max, const char* format)
+{
+    snow_label(label);
+    retro_ui_slider(id, value, min, max, format);
+}
+
+static void snow_slider_int(const char* label, const char* id, int32_t* value, int32_t min, int32_t max,
+                            const char* format)
+{
+    snow_label(label);
+    retro_ui_slider_int(id, value, min, max, format);
+}
+
 // The easter eggs: the menu snow and its sleigh (retroui's snow_view).
 static void draw_easter_eggs(const DebugWindowState* state, DebugWindowAction* action)
 {
@@ -207,7 +229,7 @@ static void draw_easter_eggs(const DebugWindowState* state, DebugWindowAction* a
     retro_ui_dim_text(state->snow_in_season ? "AUTO: in season (December 24 to 28), it falls."
                                             : "AUTO: out of season (December 24 to 28), no snow.",
                       nullptr);
-    retro_ui_dim_text("It falls on the empty background and MAIN MENU only; not saved.", nullptr);
+    retro_ui_dim_text("It falls in MAIN MENU and over widgets, never in GAME; not saved.", nullptr);
     retro_ui_begin_disabled(!state->snow_falling);
     press(action, retro_ui_button("SLEIGH NOW"), DebugWindowPress::sleigh_now);
     retro_ui_end_disabled();
@@ -215,6 +237,21 @@ static void draw_easter_eggs(const DebugWindowState* state, DebugWindowAction* a
     retro_ui_dim_text(state->snow_falling ? "On December 25 it crosses once a minute."
                                           : "The snow must be falling: set SNOW to ON first.",
                       nullptr);
+
+    // The knobs, live (memory only; DEFAULTS is the look as shipped).
+    SnowParams* params = &action->snow_params;
+    snow_slider_int("FLAKES: 1 PER", "snow_density", &params->pixels_per_flake, 50, 2000, "%d retro px");
+    snow_slider_int("STEPS A SECOND", "snow_hz", &params->step_hz, 6, 120, "%d Hz");
+    snow_slider("FALL", "snow_fall", &params->fall, 0.0f, 4.0f, "%.2f px a step");
+    snow_slider("FALL EXTRA (0..)", "snow_fall_extra", &params->fall_extra, 0.0f, 4.0f, "%.2f px a step");
+    snow_slider("DRIFT RIGHT (0..)", "snow_drift", &params->drift, 0.0f, 4.0f, "%.2f px a step");
+    snow_slider_int("SHADES TO PANEL", "snow_spread", &params->shade_spread, 0, 100, "%d%%");
+    if (retro_ui_button("DEFAULTS"))
+    {
+        *params = SnowParams{};
+    }
+    retro_ui_same_line();
+    press(action, retro_ui_button("FROM THE SKY"), DebugWindowPress::snow_restart);
 }
 
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action)
@@ -226,6 +263,7 @@ void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, i
     }
     action->pair_request_card = state->pair_request_card;
     action->snow = state->snow;
+    action->snow_params = state->snow_params;
 
     retro_ui_push_theme(pixel_font, scale);
     RetroUiWindow window = {};

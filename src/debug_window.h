@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "retro_ui_font.h"
+#include "snow_view.h"
 
 // The state icons the window can force on (StateIcon order: pause, rewind,
 // play, fast forward).
@@ -102,7 +103,8 @@ struct DebugWindowState
     // EASTER EGGS
     DebugSnow snow = DebugSnow::automatic;
     bool snow_in_season = false;      // today is in the snow's season (local date)
-    bool snow_falling = false;        // the snow shows now (the empty background or MAIN MENU)
+    bool snow_falling = false;        // the snow shows now (MAIN MENU or a widget)
+    SnowParams snow_params = {};      // its knobs (snow_view.h), memory only
 };
 
 enum class DebugWindowPress
@@ -134,6 +136,7 @@ enum class DebugWindowPress
     continue_newer_save,  // ... START / RESUME, the save file is newer
     continue_phone,       // ... the phone's HOME card
     continue_real,        // the real card again (or none)
+    snow_restart,         // the snow starts again from the sky
 };
 
 struct DebugWindowAction
@@ -144,8 +147,9 @@ struct DebugWindowAction
     bool pair_request_card = false;                    // its checkbox after this frame
     DebugPreview preview = DebugPreview::none;         // a preview to show
     DebugSnow snow = DebugSnow::automatic;             // SNOW after this frame
+    SnowParams snow_params = {};                       // the knobs after this frame
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).
-// action->icons_forced, pair_request_card and snow start as the state's.
+// action->icons_forced, pair_request_card, snow and snow_params start as the state's.
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);
