@@ -76,6 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: write   # the Web run on main at the end
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -142,3 +143,12 @@ jobs:
           esac
           gh release create "$tag" release/* --repo "${{ github.repository }}" \
             --title "piccolo ${tag#v}" --verify-tag --generate-notes $flags
+
+      # get-piccolo.app/play/ shows the latest release beside main's build
+      # (web.yml, web/channels.sh): a Web run on main takes this release's
+      # web.zip and redeploys. Not for a beta: it isn't the latest release.
+      - name: Rebuild play/ with this release
+        if: ${{ !contains(github.ref_name, '-beta.') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run web.yml --repo "${{ github.repository }}" --ref main
