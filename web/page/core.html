@@ -14,6 +14,8 @@
 <style>
   /* The look is piccolo's websites' (_site/v1/site.css: tokens, fonts), but
      no sites bar: the game owns the screen. A thin strip on top instead. */
+  /* No drop shadows anywhere on the page (Andrés, 2026-11-27). */
+  h1, h2 { text-shadow: none; }
   html, body { height: 100%; overflow: hidden; }
   body { font-size: 13px; line-height: 1.4; }
   button { font: inherit; }
@@ -27,7 +29,7 @@
   #strip .channel { padding: 1px 6px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 11px; letter-spacing: 0.08em; }
   #strip .space { flex: 1; }
   #strip button { min-height: 26px; padding: 2px 10px; background: var(--bg); color: var(--text); border: 2px solid var(--edge);
-                  box-shadow: 2px 2px 0 var(--shadow); font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+                  font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
   #strip button:hover, #strip button.active { border-color: var(--accent); }
   #strip button.active { background: var(--accent); color: var(--on-accent); }
   #strip button[hidden] { display: none; }
@@ -131,16 +133,15 @@
     body.has-pad #pad-meta { gap: 5vw; padding: 2vw 3vw 7vw; border-top: 0; }
   }
   .pad-button { display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text);
-                border: 2px solid var(--edge); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700; letter-spacing: 0.06em; }
-  .pad-button.held, .dpad span.held { background: var(--accent); color: var(--on-accent); border-color: var(--accent);
-                                      box-shadow: 1px 1px 0 var(--shadow); }
+                border: 2px solid var(--edge); font-weight: 700; letter-spacing: 0.06em; }
+  .pad-button.held, .dpad span.held { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .pad-button.round { width: var(--unit); height: var(--unit); border-radius: 50%; font-size: calc(var(--unit) * 0.38); }
   .pad-button.shoulder { width: calc(var(--unit) * 2.4); height: calc(var(--unit) * 0.7); border-radius: 10px 10px 4px 4px;
                          font-size: calc(var(--unit) * 0.3); }
   .pad-button.meta { width: calc(var(--unit) * 1.6); height: calc(var(--unit) * 0.5); border-radius: 999px; font-size: 10px; }
   .dpad { position: relative; width: calc(var(--unit) * 2.6); height: calc(var(--unit) * 2.6); }
   .dpad span { position: absolute; width: calc(var(--unit) * 0.9); height: calc(var(--unit) * 0.9); background: var(--bg);
-               border: 2px solid var(--edge); box-shadow: 3px 3px 0 var(--shadow); }
+               border: 2px solid var(--edge); }
   .dpad .up { left: calc(var(--unit) * 0.85); top: 0; }
   .dpad .down { left: calc(var(--unit) * 0.85); bottom: 0; }
   .dpad .left { left: 0; top: calc(var(--unit) * 0.85); }
@@ -185,7 +186,7 @@
               flex-direction: column; gap: 6px; width: min(260px, 80%); }
   #pad-menu[hidden] { display: none; }
   #pad-menu button { min-height: 40px; background: var(--pad-center, var(--bg)); color: var(--pad-center-text, var(--text));
-                     border: 2px solid var(--pad-border, var(--edge)); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700;
+                     border: 2px solid var(--pad-border, var(--edge)); font-weight: 700;
                      letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
   #pad-menu button:hover, #pad-menu button:focus-visible { background: var(--pad-center-held, var(--accent));
                                                           color: var(--pad-center-text, var(--on-accent)); outline: none; }

@@ -12,12 +12,15 @@
 <link rel="icon" href="icon-32.png">
 <link rel="stylesheet" href="_site/v1/site.css">
 <style>
+  /* piccolo web draws no drop shadows (Andrés, 2026-11-27). */
+  h1, h2 { text-shadow: none; }
+  .panel { box-shadow: none; }
   main.wrap { padding-top: 40px; padding-bottom: 48px; }
   .intro { max-width: 46em; color: var(--muted); margin: 0 0 28px; }
   .cores { display: grid; gap: 18px; margin-bottom: 32px; }
   a.core { display: flex; align-items: center; gap: 18px; padding: 18px 22px; text-decoration: none; color: var(--text);
            border-left: 6px solid var(--edge); }
-  a.core:hover { color: var(--text); border-left-color: var(--accent); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--shadow); }
+  a.core:hover { color: var(--text); border-left-color: var(--accent); transform: translate(2px, 2px); }
   a.core b { display: block; font: 600 24px/1.2 var(--font-heading); }
   a.core span { display: block; color: var(--muted); font-size: 14px; }
   a.core .go { margin-left: auto; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--heading-accent); white-space: nowrap; }
