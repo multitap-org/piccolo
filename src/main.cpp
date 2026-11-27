@@ -6282,7 +6282,8 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     {
         open_game_dvr(app);
     }
-    if (web_pad_take_controllers() && game_has_keyboard(app))
+    // CONTROLLERS from anywhere: the page's pad shows in the menus too.
+    if (web_pad_take_controllers())
     {
         input_window_open(&app->input_window);   // (no CONTROLLERS window yet: INPUT, as the touch pad's)
     }
