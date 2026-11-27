@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <SDL3/SDL.h>
+
 #include <SDL3/SDL_main.h>
 
 
@@ -669,11 +670,6 @@ static void update_settings_context(App* app)
 // a game in RECENT.
 constexpr int32_t MENU_ID_RECENT = 1000;
 
-// piccolo's menus (menus.h) as retroui's menu bar takes them: RECENT first
-// (the hamburger glyph: the games, then CLEAR ALL), then the menus in the
-// current language, with the items that show while a game runs (or not).
-// Built when the labels change, the pause and whether a game runs, never
-// per frame.
 static bool game_running(const App* app);   // (Game control, further down)
 static bool continue_card_active(const App* app);   // (The CONTINUE card, further down)
 static void continue_card_press(App* app, ContinueViewButton button);
@@ -683,6 +679,11 @@ static bool menu_item_listed(int32_t menu, int32_t item, bool running)
     return running || menus_item_shown(menu, item) != MenuShown::with_game;
 }
 
+// piccolo's menus (menus.h) as retroui's menu bar takes them: RECENT first
+// (the hamburger glyph: the games, then CLEAR ALL), then the menus in the
+// current language, with the items that show while a game runs (or not).
+// Built when the labels change, the pause and whether a game runs, never
+// per frame.
 static void build_menus(App* app)
 {
     app->menu_texts.clear();
@@ -1914,9 +1915,6 @@ static const NetDeviceInfo* net_device_info(App* app)
 
 static bool net_prepare(App* app);
 
-// TOOLS > SHARE: this piccolo's shared folders as they are now, and the
-// connection to another piccolo (started the first time, kept afterwards so
-// copies go on with the window closed).
 // SHARE's connection to other piccolos, started on first use (TOOLS > SHARE
 // and TOOLS > PAIR use the same one).
 static bool start_share_link(App* app)
@@ -2429,15 +2427,6 @@ static bool game_picture(const App* app, ViewportInput* picture)
     return true;
 }
 
-// Low latency: in Vsync timing the loop is paced by the display, so waiting
-// a few ms here (right after presenting) moves the next input read and core
-// frame closer to the next refresh. Only after waiting for present: without
-// it the loop blocks in acquire later, after the input read, and a delay here
-// only adds latency (the setting is greyed out then).
-// FRAME DELAY, or with AUTO FRAME DELAY the delay it is finding or found for
-// this game (frame_delay.h). AUTO watches this loop's missed refresh
-// (frame_timing) and needs a minute of uninterrupted play to lock: the menu,
-// a pause, fast forward or another window having focus start that minute over.
 // This game's section in frame_delay.cfg: "core/game" ("core" without content).
 static std::string frame_delay_section(const App* app)
 {
@@ -2515,6 +2504,15 @@ static void stream_frame_delay(App* app)
     }
 }
 
+// Low latency: in Vsync timing the loop is paced by the display, so waiting
+// a few ms here (right after presenting) moves the next input read and core
+// frame closer to the next refresh. Only after waiting for present: without
+// it the loop blocks in acquire later, after the input read, and a delay here
+// only adds latency (the setting is greyed out then).
+// FRAME DELAY, or with AUTO FRAME DELAY the delay it is finding or found for
+// this game (frame_delay.h). AUTO watches this loop's missed refresh
+// (frame_timing) and needs a minute of uninterrupted play to lock: the menu,
+// a pause, fast forward or another window having focus start that minute over.
 static void frame_delay(App* app)
 {
     if (stream_delay_overrides(app))
@@ -2618,8 +2616,6 @@ static void update_window(App* app)
         piccolo_window_apply(&app->window, app->shell.window, &app->settings, has_picture ? &picture : nullptr);
     }
 }
-
-// Keyboard as the game's joypad only while the game has the screen.
 
 static void refresh_audio_devices(App* app)
 {
@@ -3130,9 +3126,6 @@ static UiDerived app_derive(const App* app)
     return ui_derive(&app->ui, &facts);
 }
 
-// The game has the keyboard and the controllers (GAME mode): its keys go
-// to the core. Anything else up (QUICK MENU, a window widget, MAIN MENU)
-// stops the core's input; HUD widgets don't.
 // A controller layout by its shown name (touch_pad_style keeps the name),
 // or nullptr ("" or a layout that's gone: the RetroPad).
 static const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* name)
@@ -3147,6 +3140,9 @@ static const InputLayout* find_layout_by_name(const InputLayouts* layouts, const
     return nullptr;
 }
 
+// The game has the keyboard and the controllers (GAME mode): its keys go
+// to the core. Anything else up (QUICK MENU, a window widget, MAIN MENU)
+// stops the core's input; HUD widgets don't.
 static bool game_has_keyboard(const App* app)
 {
     return game_running(app) && app->ui.mode == UiMode::game;
@@ -3523,9 +3519,6 @@ static void update_cursors(App* app, const InputFrame* frame, bool ui_up)
     }
 }
 
-// Once per loop, after the events: what the controllers say (ports,
-// hotkeys), handed to the core session before it runs frames.
-
 // Is a connected gamepad (local or remote) on any port?
 static bool gamepad_on_a_port(const App* app)
 {
@@ -3593,6 +3586,8 @@ static void update_port_pings(App* app)
     ports_widget_set_pings(&app->ports_widget, &app->input, &app->input_net, known, ping_ms);
 }
 
+// Once per loop, after the events: what the controllers say (ports,
+// hotkeys), handed to the core session before it runs frames.
 static void app_update_input(App* app)
 {
     // The mode first (windows that opened or closed themselves, widgets,
@@ -3877,10 +3872,6 @@ static void app_handle_events(App* app)
 // Drawing
 // ---------------------------------------------------------------------------
 
-// Loads what each shader stage should hold when it changes: stage 0 = pass 0,
-// stage 1 = the preset setting, or piccolo's final scale for `filter` when
-// there's none (or it failed). Then pass 0's parameters from the settings,
-// only the ones that changed. A preset that fails isn't retried every frame.
 static bool shader_failed_before(const App* app, const std::string& path)
 {
     for (size_t i = 0; i < app->shader_failed.size(); i++)
@@ -3924,6 +3915,10 @@ static void load_shader_stage(App* app, uint32_t stage, const std::string& path)
     }
 }
 
+// Loads what each shader stage should hold when it changes: stage 0 = pass 0,
+// stage 1 = the preset setting, or piccolo's final scale for `filter` when
+// there's none (or it failed). Then pass 0's parameters from the settings,
+// only the ones that changed. A preset that fails isn't retried every frame.
 static void update_shader_stages(App* app, ViewportFilter filter)
 {
     // Vulkan's presets need librashader; OpenGL ES's are ours.
@@ -5855,11 +5850,11 @@ static void net_shutdown_all(App* app)
     }
 }
 
+static void net_update_locked(App* app);
+
 // Once per loop, before the input is read: follow the settings, then the
 // network's events. Paired devices are let in and their pads join the input
 // router (input_net); everyone else needs the pairing code.
-static void net_update_locked(App* app);
-
 static void net_update(App* app)
 {
     bool enabled = settings_get_bool(&app->settings, PICCOLO_NET_ENABLED);
@@ -6187,7 +6182,6 @@ static uint32_t menu_backdrop(const App* app)
 
 // The HUD widgets' state icons and notification cards (retroui's hud_view),
 // behind every window. The cards stand above the DVR's strip while it's open.
-
 static void hud_fill(App* app, UiView* view)
 {
     uint64_t now_ms = SDL_GetTicks();
@@ -6567,8 +6561,6 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     map_window_update(&app->map_window, &app->input, frame->map_now);
 }
 
-// Everything the frame shows, as plain data (ui.h), after the updates: no
-// GUI calls, nothing changes but what the states themselves fill in.
 // The phone's HOME and ☰ (mobile_home.h). HOME while no game runs; ☰ over
 // it when opened, or over a paused game whenever MAIN MENU has nothing open
 // (the pad's MENU: Andrés, 2026-11-25, the way back to the game must show).
@@ -6590,6 +6582,8 @@ static void phone_view(const App* app, bool main_menu, MobileHomeState* state)
     state->menu_count = static_cast<int32_t>(app->menus.size());
 }
 
+// Everything the frame shows, as plain data (ui.h), after the updates: no
+// GUI calls, nothing changes but what the states themselves fill in.
 static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 {
     onscreen_pad_state(&view->pad, &app->settings, &app->strings);
