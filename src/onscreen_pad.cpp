@@ -311,13 +311,7 @@ static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState*
     float width = touch_ui_width(ui);
     float height = touch_ui_height(ui);
     float scale = static_cast<float>(ui->scale);
-    // Behind the items, so a tap on one never reaches it (the later item wins).
     OnscreenPadMenuPress press = OnscreenPadMenuPress::none;
-    bool held = false;
-    if (touch_ui_area(ui, "##pad_menu_outside", 0.0f, 0.0f, width, height, &held, TouchNav::taps_only))
-    {
-        press = OnscreenPadMenuPress::close;
-    }
     float area_x = 0.0f;
     float area_y = 0.0f;
     float area_width = width;
@@ -363,6 +357,15 @@ static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState*
                       touch_ui_centered_text_y(ui, item_y, MENU_ITEM_HEIGHT, TouchText::big), labels[i],
                       retro_ui_color_with_alpha(palette->pad_center_text, item_held ? 1.0f : state->look.labels),
                       TouchText::big);
+    }
+    // The tap outside: submitted after the items. In ImGui the first item
+    // under the finger takes it (later ones overlapping it are not hovered),
+    // so with this one first every tap on an item closed the menu instead.
+    bool outside_held = false;
+    if (touch_ui_area(ui, "##pad_menu_outside", 0.0f, 0.0f, width, height, &outside_held, TouchNav::taps_only) &&
+        press == OnscreenPadMenuPress::none)
+    {
+        press = OnscreenPadMenuPress::close;
     }
     return press;
 }
