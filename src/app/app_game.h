@@ -16,6 +16,10 @@ void report_session(App* app, bool ok, bool announce);
 void toggle_user_pause(App* app);
 void update_pause(App* app);
 
+// A game ends
+void app_game_ending(App* app);
+void app_game_ended(App* app);
+
 // Starting a game
 bool start_game(App* app, const FilePickerChoice* choice);
 void app_open_file(void* data, const char* path);

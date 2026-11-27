@@ -60,16 +60,9 @@ static bool app_frame(App* app)
     if (app->pending_close_game)
     {
         app->pending_close_game = false;
-        shader_check_end_for_game(app);   // before the settings context changes
-        save_core_options(app);
-        save_state_on_exit(app);
+        app_game_ending(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
-        app->running_core_file[0] = '\0';
-        drop_undos(app);
-        remove_running_marker(app);   // a proper end
-        update_settings_context(app);
-        ui_game_stopped(&app->ui);
-        ui_follow_changes(app);
+        app_game_ended(app);
     }
     if (app->has_pending_start)
     {
@@ -212,13 +205,10 @@ static bool app_frame(App* app)
     }
     if (ran == CoreSessionFrame::shut_down)
     {
-        shader_check_end_for_game(app);   // before the settings context changes
-        app->running_core_file[0] = '\0';
+        // The core shut down on its own: a proper end (its state can't be saved any more).
+        app_game_ending(app);
         set_status(app, app->session.message);
-        ui_game_stopped(&app->ui);
-        ui_follow_changes(app);
-        update_settings_context(app);
-        remove_running_marker(app);   // the core shut down on its own: a proper end
+        app_game_ended(app);
     }
 
     if (!app->headless.on && app_shell_begin_frame(&app->shell))
@@ -296,21 +286,18 @@ static bool app_frame_callback(void* data)
 
 // --- Start and quit ---------------------------------------------------------
 
-int main(int argc, char** argv)
+// Everything piccolo needs before its loop: the link hand-over, the window,
+// the settings and the other files, shaders, controllers, sound. False when
+// piccolo can't go on (or handed its link to the copy already running:
+// link_handed_over); app_shutdown() then undoes what was made.
+static bool app_startup(App* app, int argc, char** argv)
 {
-
-    SDL_Log("piccolo %s, host-libretro %s", PICCOLO_VERSION, HOST_LIBRETRO_VERSION);
-    app_storage_init(bundled_files_folder_name());   // the browser: piccolo's folder on OPFS
-
-    // The session, catalog and file picker are large (paths, file lists): off the stack.
-    App* app = new App{};
-
     // A launch with a piccolo:// link hands it to the copy already running
     // and quits before any window; otherwise this copy takes the links.
     if (!app_links_start(&app->links, "piccolo", app_links_from_args(argc, argv, "piccolo")))
     {
-        delete app;
-        return 0;
+        app->link_handed_over = true;
+        return false;
     }
     app_links_register("piccolo", "piccolo");   // Windows: this program opens piccolo:// links (per user)
 
@@ -360,15 +347,12 @@ int main(int argc, char** argv)
     remap_widget_create(&app->remap);
     if (!pixel_font_init() || !core_session_create(&app->session))
     {
-        delete app;
-        return 1;
+        return false;
     }
+    app->shell_tried = true;
     if (!app_shell_create(&app->shell, &config))
     {
-        app_shell_destroy(&app->shell);
-        core_session_destroy(&app->session, &app->shell);
-        delete app;
-        return 1;
+        return false;
     }
     // A build from a branch other than main has the branch in its version ("0.3-osk"):
     // show it in the window title, so a test build says which branch opened it.
@@ -382,10 +366,7 @@ int main(int argc, char** argv)
     ui_toolkit_set_phone(app->phone_ui);
     if (app->pixel_font == nullptr)
     {
-        core_session_destroy(&app->session, &app->shell);
-        app_shell_destroy(&app->shell);
-        delete app;
-        return 1;
+        return false;
     }
 
     if (!settings_init(&app->settings, piccolo_settings_table(), piccolo_settings_count()))
@@ -570,45 +551,74 @@ int main(int argc, char** argv)
         }
     }
 
-    app->running = true;
-    app_loop_on_leave(app_save_on_leave, app);
-    app_loop_on_open(app_open_file, app);
-    app_loop_run(app_frame_callback, app);
+    app->started = true;
+    return true;
+}
 
-    headless_leave(&app->headless, app->shell.window);   // the tray icon goes, the window comes back for its size
-    piccolo_window_capture(&app->window, app->shell.window);
-    save_last_used(app);
-    save_settings(app);
-    save_learned_latency(app);
-    save_core_options(app);
-    core_updater_shutdown(&app->core_updater);   // cancels a download in progress
-    if (game_running(app))
+// The end of every run, however far app_startup() got: after a full start,
+// what piccolo writes at exit and everything it made, in order; after a
+// start that stopped early, only the session, the window and the links.
+static void app_shutdown(App* app)
+{
+    if (app->started)
     {
-        save_state_on_exit(app);
+        headless_leave(&app->headless, app->shell.window);   // the tray icon goes, the window comes back for its size
+        piccolo_window_capture(&app->window, app->shell.window);
+        app_game_ending(app);   // before the settings are saved: an unanswered slow preset is reverted
+        save_last_used(app);
+        save_settings(app);
+        save_learned_latency(app);
+        core_updater_shutdown(&app->core_updater);   // cancels a download in progress
+        core_session_destroy(&app->session, &app->shell);   // writes save RAM
+        dvr_widget_destroy(&app->dvr, &app->shell);
+        remove_running_marker(app);   // quit properly (a marker found at launch stays if no game ran)
+        game_mode_set(&app->game_mode, false);
+        if (app->audio_ready)
+        {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        }
+        screenshot_writer_destroy(&app->screenshot_writer);   // writes what's still waiting
+        quick_menu_destroy(&app->quick_menu, &app->shell);
+        continue_panel_destroy(&app->continue_panel, &app->shell);
+        guest_window_destroy(&app->guest_window, &app->shell);
+        video_output_destroy(&app->video, &app->shader_library, &app->shell);
+        shader_library_unload(&app->shader_library);
+        if (!app->input_config_path.empty())
+        {
+            save_input_config(app);
+        }
+        input_sdl_shutdown(&app->input_sdl);
+        onscreen_pad_shutdown(&app->onscreen_pad);
+        net_shutdown_all(app);
     }
-    core_session_destroy(&app->session, &app->shell);   // writes save RAM
-    dvr_widget_destroy(&app->dvr, &app->shell);
-    remove_running_marker(app);   // quit properly (a marker found at launch stays if no game ran)
-    game_mode_set(&app->game_mode, false);
-    if (app->audio_ready)
+    core_session_destroy(&app->session, &app->shell);   // (gone already after a full start: nothing happens)
+    if (app->shell_tried)
     {
-        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        app_shell_destroy(&app->shell);
     }
-    screenshot_writer_destroy(&app->screenshot_writer);   // writes what's still waiting
-    quick_menu_destroy(&app->quick_menu, &app->shell);
-    continue_panel_destroy(&app->continue_panel, &app->shell);
-    guest_window_destroy(&app->guest_window, &app->shell);
-    video_output_destroy(&app->video, &app->shader_library, &app->shell);
-    shader_library_unload(&app->shader_library);
-    if (!app->input_config_path.empty())
+    if (!app->link_handed_over)
     {
-        save_input_config(app);
+        app_links_stop(&app->links);
     }
-    input_sdl_shutdown(&app->input_sdl);
-    onscreen_pad_shutdown(&app->onscreen_pad);
-    net_shutdown_all(app);
-    app_shell_destroy(&app->shell);
-    app_links_stop(&app->links);
     delete app;
-    return 0;
+}
+
+int main(int argc, char** argv)
+{
+    SDL_Log("piccolo %s, host-libretro %s", PICCOLO_VERSION, HOST_LIBRETRO_VERSION);
+    app_storage_init(bundled_files_folder_name());   // the browser: piccolo's folder on OPFS
+
+    // The session, catalog and file picker are large (paths, file lists): off the stack.
+    App* app = new App{};
+    bool started = app_startup(app, argc, argv);
+    if (started)
+    {
+        app->running = true;
+        app_loop_on_leave(app_save_on_leave, app);
+        app_loop_on_open(app_open_file, app);
+        app_loop_run(app_frame_callback, app);
+    }
+    int result = started || app->link_handed_over ? 0 : 1;
+    app_shutdown(app);
+    return result;
 }

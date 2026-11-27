@@ -126,6 +126,10 @@ struct App
     AppShell shell = {};
     AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     bool     running = false;
+    // How far app_startup got (main.cpp), for app_shutdown.
+    bool     link_handed_over = false;   // the copy already running took this launch's link: nothing else was made
+    bool     shell_tried = false;        // app_shell_create was called (it may have failed half way)
+    bool     started = false;            // the whole startup ran
     PiccoloWindow window = {};   // Display settings applied to the window
     bool window_focused     = true;
     bool screensaver_allowed = false;   // what we last told SDL

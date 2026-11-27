@@ -87,6 +87,34 @@ void update_pause(App* app)
     }
 }
 
+// --- A game ends ---------------------------------------------------------------
+
+// The running game is about to stop (CLOSE GAME, another game taking its
+// place, QUIT), or the core just shut down by itself: what is kept of it.
+// Before the core stops, so its state can still be saved, and BEFORE
+// update_settings_context, so everything lands in this game's own layers.
+void app_game_ending(App* app)
+{
+    shader_check_end_for_game(app);
+    save_core_options(app);
+    if (game_running(app))
+    {
+        save_state_on_exit(app);
+    }
+}
+
+// The core has stopped and no other game follows (CLOSE GAME, the core shut
+// down by itself): nothing of the game stays, and MAIN MENU has the screen.
+void app_game_ended(App* app)
+{
+    app->running_core_file[0] = '\0';
+    drop_undos(app);
+    remove_running_marker(app);   // a proper end
+    update_settings_context(app);
+    ui_game_stopped(&app->ui);
+    ui_follow_changes(app);
+}
+
 // --- Starting a game --------------------------------------------------------
 
 // Files extracted from zip / 7z archives (content_cache.h) are kept up to
@@ -112,13 +140,8 @@ bool start_game(App* app, const FilePickerChoice* choice)
     bool resume = !app->resume_skip && !app->safe_start_confirmed && !after_crash;
     app->resume_skip = false;
     app->safe_start_confirmed = false;
-    shader_check_end_for_game(app);   // while the previous game's settings are current
-    if (game_running(app))
-    {
-        save_state_on_exit(app);   // the previous game, in its own settings' layer
-    }
-    remove_running_marker(app);   // the previous game, if any, ended properly
-    save_core_options(app);   // what was changed for the previous game
+    app_game_ending(app);   // the previous game, if any, while its settings are current
+    remove_running_marker(app);   // it ended properly
     save_learned_latency(app);   // what the previous game learned
     app->game_starts++;
     auto_frame_delay_reset(&app->auto_delay);   // each game finds its own
