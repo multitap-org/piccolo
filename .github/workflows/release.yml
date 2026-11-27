@@ -13,9 +13,12 @@
 #   android-arm64-v8a.apk  android-armeabi-v7a-legacy.apk
 #   web.zip
 # manifest.cfg: app, version, tag, then one [<target>] block per asset with
-# asset, size, sha256, and exe_sha256 where the program can check itself (the
-# program file inside: Windows and Linux; frontends-common net_build.h): the
-# releases server signs a record of it, a build's proof that it's official (the format publish-apps.sh reads).
+# asset, size, sha256, and exe_sha256, the hash of what the program checks
+# itself by (frontends-common net_build.h): the executable on Windows and
+# Linux, the native activity's lib/<abi>/libmain.so in the APKs, the zip's
+# wasm.sha256 (every core's piccolo.wasm and its hash) for the web. The
+# releases server signs a record of it, a build's proof that it's official
+# (the format publish-apps.sh reads).
 #
 # Refuses to release without the Android release key in the secrets (never a
 # debug APK in a release) or when the tag doesn't match PICCOLO_VERSION_BASE.
@@ -131,9 +134,25 @@ jobs:
             cp "$(one "piccolo-$arch.flatpak")" "release/piccolo-$version-linux-$arch.flatpak"
             flatpak_exe_hash "linux-$arch" "release/piccolo-$version-linux-$arch.flatpak" /files/lib/piccolo/piccolo
           done
+          # zip_exe_hash TARGET ZIP PATTERN: the same for the one file in a zip (an APK) matching PATTERN.
+          zip_exe_hash() {
+            dir=$(mktemp -d)
+            unzip -q "$2" "$3" -d "$dir" || { echo "no $3 in $2"; exit 1; }
+            found=$(find "$dir" -type f)
+            [ "$(echo "$found" | grep -c .)" = 1 ] || { echo "expected one $3 in $2, found: $found"; exit 1; }
+            exe_hash "$1" "$found"
+            rm -rf "$dir"
+          }
           cp "$(one piccolo.apk)" "release/piccolo-$version-android-arm64-v8a.apk"
           cp "$(one piccolo-legacy.apk)" "release/piccolo-$version-android-armeabi-v7a-legacy.apk"
+          zip_exe_hash android-arm64-v8a "release/piccolo-$version-android-arm64-v8a.apk" 'lib/arm64-v8a/libmain.so'
+          zip_exe_hash android-armeabi-v7a-legacy "release/piccolo-$version-android-armeabi-v7a-legacy.apk" 'lib/*/libmain.so'
           cp "$(one '*-web.zip')" "release/piccolo-$version-web.zip"
+          # The web build's list must name the wasm files it ships, as they are.
+          web=$(mktemp -d)
+          unzip -q "release/piccolo-$version-web.zip" -d "$web"
+          (cd "$web"/piccolo-*-web && sha256sum --quiet -c wasm.sha256) || { echo "wasm.sha256 doesn't match the web zip"; exit 1; }
+          exe_hash web "$(echo "$web"/piccolo-*-web/wasm.sha256)"
 
           manifest=release/manifest.cfg
           {

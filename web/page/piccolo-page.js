@@ -95,6 +95,9 @@ function piccolo_page_start() {
     skipped: ['cache', 'piccoletto'],
     sw: '../sw.js',
     sw_scope: '../',
+    // The release's list of every core's piccolo.wasm (web/package.sh): this
+    // build's proof that it's official (frontends-common net_build.h).
+    build_list: '../wasm.sha256',
     started: function () {
       piccolo_page_files();
       piccolo_files_start();

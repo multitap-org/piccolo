@@ -23,6 +23,7 @@
 #   index.html                 choose the emulator (it lists every core below)
 #   _site/v1/                  piccolo's websites' shared look (site.css, fonts, bar, footer)
 #   sameboy/ snes9x/           piccolo with that core linked in: index.html, piccolo.js/.wasm/.data
+#   wasm.sha256                every core's piccolo.wasm and its hash (the build proof's program)
 #   piccoletto/                piccoletto (PICCOLETTO=...): index.html, piccoletto-page.js,
 #                              manifest.webmanifest, icons, piccoletto.js/.wasm
 #   piccolo-page.js            the page's scripts, with piccolo-files.js (the FILES panel)
@@ -73,6 +74,11 @@ for core in $cores; do
     cp "$here/page/core.html" "$dist/$core/index.html"
     cp "$build/wasm/$core/piccolo.js" "$build/wasm/$core/piccolo.wasm" "$build/wasm/$core/piccolo.data" "$dist/$core/"
 done
+# Every core's piccolo.wasm with its SHA-256: a release's proof that it's
+# official hashes this list (release.yml's exe_sha256 for web), and a page
+# hands it over when its own piccolo.wasm is on it (frontends-common
+# net_build.h, web/multitap-page.js).
+(cd "$dist" && for core in $cores; do sha256sum "$core/piccolo.wasm"; done) > "$dist/wasm.sha256"
 
 # The shared look, of this day (or the committed copy without the network).
 site_copy="$build/site-assets"
