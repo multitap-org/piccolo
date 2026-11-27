@@ -38,7 +38,7 @@ def translated_catalog(path, english):
 
 if __name__ == "__main__":
     root = Path(__file__).resolve().parent.parent
-    english = english_catalog(root / "src" / "strings.txt")
+    english = english_catalog(root / "src" / "ui" / "strings.txt")
     catalogs = {"en": english}
     for translation in sorted((root / "lang").glob("*.po")):
         catalogs[translation.stem] = translated_catalog(translation, english)

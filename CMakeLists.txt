@@ -315,7 +315,8 @@ add_library(piccolo_logic STATIC
     "${PICCOLO_GENERATED}/piccolo_strings.cpp"
 )
 # src/'s folders: files include each other by name alone.
-set(PICCOLO_SOURCE_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}/src/app" "${CMAKE_CURRENT_SOURCE_DIR}/src/windows" "${CMAKE_CURRENT_SOURCE_DIR}/src/widgets" "${CMAKE_CURRENT_SOURCE_DIR}/src/net" "${CMAKE_CURRENT_SOURCE_DIR}/src/settings" "${CMAKE_CURRENT_SOURCE_DIR}/src/ui" "${CMAKE_CURRENT_SOURCE_DIR}/src/platform")
+# (src/ itself has app_icon.h and piccolo.rc.in: hosts-common's make_app_icon.py writes them there.)
+set(PICCOLO_SOURCE_FOLDERS "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/src/app" "${CMAKE_CURRENT_SOURCE_DIR}/src/windows" "${CMAKE_CURRENT_SOURCE_DIR}/src/widgets" "${CMAKE_CURRENT_SOURCE_DIR}/src/net" "${CMAKE_CURRENT_SOURCE_DIR}/src/settings" "${CMAKE_CURRENT_SOURCE_DIR}/src/ui" "${CMAKE_CURRENT_SOURCE_DIR}/src/platform")
 target_include_directories(piccolo_logic PUBLIC ${PICCOLO_SOURCE_FOLDERS} "${PICCOLO_GENERATED}")
 target_link_libraries(piccolo_logic PUBLIC frontend_settings libretro_api)
 multitap_set_project_flags(piccolo_logic)
@@ -435,7 +436,7 @@ endif()
 if(WIN32)
     enable_language(RC)
     set(PICCOLO_ICO "${CMAKE_CURRENT_SOURCE_DIR}/assets/windows/piccolo.ico")
-    configure_file(src/platform/piccolo.rc.in "${PICCOLO_GENERATED}/piccolo.rc" @ONLY)
+    configure_file(src/piccolo.rc.in "${PICCOLO_GENERATED}/piccolo.rc" @ONLY)
     target_sources(piccolo PRIVATE "${PICCOLO_GENERATED}/piccolo.rc")
     set_source_files_properties("${PICCOLO_GENERATED}/piccolo.rc" PROPERTIES OBJECT_DEPENDS "${PICCOLO_ICO}")
 endif()

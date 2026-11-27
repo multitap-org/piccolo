@@ -1,3 +1,14 @@
+// piccolo: a libretro frontend for playing games, with a retro-style UI
+// (retro_ui.h: the retro-style widgets with piccolo's own pixel font).
+//
+// The game fills the window. The menu bar (GAME / CONFIG / MISC) is shown
+// when nothing runs; while a game runs, Esc shows and hides it, and the game
+// pauses while it's shown (or while the LOAD GAME window is open).
+//
+// Running the core is frontend_libretro's core session, shared with the
+// host-libretro test frontend. Cores, saves, states and settings live in
+// piccolo's own folder (app_paths.h: ~/.local/share/piccolo on Linux).
+
 #include "app.h"
 #include "app_files.h"
 #include "app_game.h"
@@ -11,17 +22,6 @@
 #include "app_states.h"
 #include "app_ui.h"
 #include "app_ui_modes.h"
-
-// piccolo: a libretro frontend for playing games, with a retro-style UI
-// (retro_ui.h: the retro-style widgets with piccolo's own pixel font).
-//
-// The game fills the window. The menu bar (GAME / CONFIG / MISC) is shown
-// when nothing runs; while a game runs, Esc shows and hides it, and the game
-// pauses while it's shown (or while the LOAD GAME window is open).
-//
-// Running the core is frontend_libretro's core session, shared with the
-// host-libretro test frontend. Cores, saves, states and settings live in
-// piccolo's own folder (app_paths.h: ~/.local/share/piccolo on Linux).
 
 #include <SDL3/SDL_main.h>
 
