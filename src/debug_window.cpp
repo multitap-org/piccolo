@@ -184,6 +184,9 @@ static void draw_previews(const DebugWindowState* state, DebugWindowAction* acti
     preview_button(action, "MENU over a game", DebugPreview::phone_menu, true);
     preview_button(action, "DVR", DebugPreview::phone_dvr, true);
     preview_button(action, "DEVICES", DebugPreview::devices, true);
+    // The touch gamepad's pop-up (the pad itself shows only in a game).
+    retro_ui_text("TOUCH GAMEPAD");
+    preview_button(action, "BURGER MENU", DebugPreview::pad_menu, false);
 }
 
 // The knobs' sliders line up in a column after the widest label.

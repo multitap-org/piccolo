@@ -2805,6 +2805,7 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::pad_editor:
             onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
+            save_settings(app);                           // its FILL / BORDER / LABELS
             break;
         case UiWindow::none:
         case UiWindow::count:
@@ -6462,8 +6463,9 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     web_pad_set_vibrate(settings_get_bool(&app->settings, PICCOLO_TOUCH_PAD_VIBRATE));
     // The touch gamepad over the game, a GAME-mode device (it takes touches
     // only in GAME), or its EDIT LAYOUT (MAIN MENU's top window, drawn by
-    // the overlay); MENU opens the MAIN MENU, QUICK the QUICK MENU (as the
-    // web page's pad: without a keyboard they're the way to the menus).
+    // the overlay); its burger menu opens the MAIN MENU, the QUICK MENU, the
+    // GAME DVR, CONTROLLERS and EDIT LAYOUT (as the web page's pad: without a
+    // keyboard they're the way to the menus).
     // STYLE (per core / game): made again only when the setting changes.
     {
         const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
@@ -6472,11 +6474,12 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
             onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
         }
     }
-    // The page pad's MENU and QUICK (the browser, no keyboard needed): like
-    // the MAIN MENU hotkey; like the QUICK MENU hotkey in a game, back from
-    // anything else. Taken before drawing, as the hotkeys are (they came
-    // right after the touch gamepad's own MENU and QUICK when those were
-    // applied in the middle of drawing).
+    // The page pad's burger menu (the browser, no keyboard needed): MAIN MENU
+    // like the MAIN MENU hotkey; QUICK MENU like the QUICK MENU hotkey in a
+    // game, back from anything else; GAME DVR and CONTROLLERS as the touch
+    // pad's own. Taken before drawing, as the hotkeys are (they came right
+    // after the touch gamepad's own picks when those were applied in the
+    // middle of drawing).
     if (web_pad_take_main_menu())
     {
         if (app->ui.mode == UiMode::main_menu)
@@ -6502,6 +6505,14 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         {
             ui_do_back(app);
         }
+    }
+    if (web_pad_take_game_dvr() && game_has_keyboard(app))
+    {
+        open_game_dvr(app);
+    }
+    if (web_pad_take_controllers() && game_has_keyboard(app))
+    {
+        input_window_open(&app->input_window);   // (no CONTROLLERS window yet: INPUT, as the touch pad's)
     }
     // SETTINGS > NETWORK's hosts list (our client side): SHARE's connection
     // knows it, started for it.
@@ -6577,7 +6588,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
 // GUI calls, nothing changes but what the states themselves fill in.
 // The phone's HOME and ☰ (mobile_home.h). HOME while no game runs; ☰ over
 // it when opened, or over a paused game whenever MAIN MENU has nothing open
-// (the pad's MENU: Andrés, 2026-11-25, the way back to the game must show).
+// (the pad's burger menu's MAIN MENU: Andrés, 2026-11-25, the way back to the game must show).
 static void phone_view(const App* app, bool main_menu, MobileHomeState* state)
 {
     bool running = game_running(app);
@@ -6599,6 +6610,13 @@ static void phone_view(const App* app, bool main_menu, MobileHomeState* state)
 static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
 {
     onscreen_pad_state(&view->pad, &app->settings, &app->strings);
+    // Where the picture is (prepare_game_picture, a moment ago): the pad
+    // draws its empty space around it.
+    view->pad.picture.shown = app->input.view_width > 0.0f;
+    view->pad.picture.x = app->input.view_x;
+    view->pad.picture.y = app->input.view_y;
+    view->pad.picture.width = app->input.view_width;
+    view->pad.picture.height = app->input.view_height;
     // (EDIT LAYOUT has the whole screen: no menu bar meanwhile.)
     bool main_menu = app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
     // The phone has HOME and ☰ instead of the bar.
@@ -6724,7 +6742,8 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
         debug_window_state(app, &view->debug);
     }
     debug_preview_state(&view->preview, &app->debug_previews, &app->strings, PICCOLO_VERSION, app->menus.data(),
-                        static_cast<int32_t>(app->menus.size()), app->phone_ui && view->screen_height > view->screen_width);
+                        static_cast<int32_t>(app->menus.size()), app->phone_ui && view->screen_height > view->screen_width,
+                        &view->pad);
     view->fps_shown = app->fps_from_env || settings_get_bool(&app->settings, PICCOLO_SHOW_FPS);
     if (view->fps_shown)
     {
@@ -6801,15 +6820,36 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     FilePickerMode picker_mode = app->picker.mode;
     bool shader_picker_drawn = app->shader_picker.open;
 
-    onscreen_pad_apply(&app->onscreen_pad, &actions->pad);
+    onscreen_pad_apply(&app->onscreen_pad, &actions->pad, &app->settings);
+    if (actions->pad.edit_done)
+    {
+        save_settings(app);   // EDIT LAYOUT's FILL / BORDER / LABELS / BACKGROUND
+    }
+    if (actions->pad.edit_layout)
+    {
+        onscreen_pad_edit(&app->onscreen_pad);   // the burger menu's EDIT LAYOUT
+    }
     continue_card_press(app, actions->continue_pressed);
-    if (actions->pad.menu && game_has_keyboard(app))
+    // The burger menu's other picks (the pad shows in GAME mode, with a
+    // game, or in EDIT LAYOUT: there they have no use).
+    if (actions->pad.main_menu && game_has_keyboard(app))
     {
         app_enter_main_menu(app);
     }
-    if (actions->pad.quick && game_has_keyboard(app))
+    if (actions->pad.quick_menu && game_has_keyboard(app))
     {
         app_open_quick_menu(app);
+    }
+    if (actions->pad.game_dvr && game_has_keyboard(app))
+    {
+        open_game_dvr(app);
+    }
+    if (actions->pad.controllers && game_has_keyboard(app))
+    {
+        // CONTROLLERS: there is no window of that name yet; INPUT (where the
+        // controllers are set up) opens in its place, a MAIN MENU window
+        // like any opened by its module (ui_sync_windows enters MAIN MENU).
+        input_window_open(&app->input_window);
     }
 
     if (view->menu_shown)
@@ -7155,6 +7195,12 @@ static bool app_frame(App* app)
     RetroUiPalette palette = {};
     piccolo_settings_palette(&app->settings, &palette);   // the Interface settings, live
     ui_toolkit_set_palette(&palette);
+    {
+        // The browser's page wears the theme too (a no-op elsewhere).
+        PadLook pad_look = onscreen_pad_look(&app->settings);
+        const float look[4] = {pad_look.fill, pad_look.border, pad_look.labels, pad_look.background};
+        web_page_set_theme(&palette, look);
+    }
     // While a game runs, black around its picture (the menu's backdrop covers
     // it in BACKGROUND at its transparency). Without one, the same color that
     // makes over black: BACKGROUND at 100 - TRANSPARENCY over black, so the

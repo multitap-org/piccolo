@@ -1582,6 +1582,22 @@ msgctxt "theme_black"
 msgid "BLACK"
 msgstr "NEGRO"
 
+msgctxt "theme_gray8"
+msgid "8-BIT GRAY"
+msgstr "8-BIT GRIS"
+
+msgctxt "theme_red8"
+msgid "8-BIT RED"
+msgstr "8-BIT ROJO"
+
+msgctxt "theme_gray16a"
+msgid "16-BIT GRAY A"
+msgstr "16-BIT GRIS A"
+
+msgctxt "theme_gray16b"
+msgid "16-BIT GRAY B"
+msgstr "16-BIT GRIS B"
+
 msgctxt "section_colors"
 msgid "COLORS"
 msgstr "COLORES"
@@ -1885,6 +1901,214 @@ msgstr "BORDE DEL CURSOR"
 msgctxt "setting_ui_color_cursor_edge_help"
 msgid "The cursor's top and right edge: with the same color as CURSOR, a flat cursor."
 msgstr "El borde de arriba y derecho del cursor: con el mismo color que CURSOR, un cursor plano."
+
+msgctxt "setting_ui_color_pad_background"
+msgid "PAD BACKGROUND"
+msgstr "FONDO DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_background_help"
+msgid "The empty space around the game while the touch gamepad shows (PAD BACKGROUND OPACITY: how solid)."
+msgstr "El espacio vacío alrededor del juego mientras se ve el control táctil (OPACIDAD DEL FONDO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_dpad"
+msgid "PAD D-PAD"
+msgstr "CONTROL D-PAD"
+
+msgctxt "setting_ui_color_pad_dpad_help"
+msgid "The touch gamepad's d-pad (PAD FILL OPACITY: how solid)."
+msgstr "Color de la cruceta del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_dpad_held"
+msgid "PAD D-PAD HELD"
+msgstr "CONTROL D-PAD PRESIONADO"
+
+msgctxt "setting_ui_color_pad_dpad_held_help"
+msgid "The touch gamepad's d-pad while a finger holds them."
+msgstr "Color de la cruceta del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_dpad_text"
+msgid "PAD D-PAD TEXT"
+msgstr "TEXTO D-PAD DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_dpad_text_help"
+msgid "The labels of the touch gamepad's d-pad (PAD LABEL OPACITY)."
+msgstr "Color de los textos de la cruceta del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_a"
+msgid "PAD A"
+msgstr "CONTROL A"
+
+msgctxt "setting_ui_color_pad_a_help"
+msgid "The touch gamepad's A button (PAD FILL OPACITY: how solid)."
+msgstr "Color de el botón A del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_a_held"
+msgid "PAD A HELD"
+msgstr "CONTROL A PRESIONADO"
+
+msgctxt "setting_ui_color_pad_a_held_help"
+msgid "The touch gamepad's A button while a finger holds them."
+msgstr "Color de el botón A del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_a_text"
+msgid "PAD A TEXT"
+msgstr "TEXTO A DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_a_text_help"
+msgid "The labels of the touch gamepad's A button (PAD LABEL OPACITY)."
+msgstr "Color de los textos de el botón A del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_b"
+msgid "PAD B"
+msgstr "CONTROL B"
+
+msgctxt "setting_ui_color_pad_b_help"
+msgid "The touch gamepad's B button (PAD FILL OPACITY: how solid)."
+msgstr "Color de el botón B del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_b_held"
+msgid "PAD B HELD"
+msgstr "CONTROL B PRESIONADO"
+
+msgctxt "setting_ui_color_pad_b_held_help"
+msgid "The touch gamepad's B button while a finger holds them."
+msgstr "Color de el botón B del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_b_text"
+msgid "PAD B TEXT"
+msgstr "TEXTO B DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_b_text_help"
+msgid "The labels of the touch gamepad's B button (PAD LABEL OPACITY)."
+msgstr "Color de los textos de el botón B del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_x"
+msgid "PAD X"
+msgstr "CONTROL X"
+
+msgctxt "setting_ui_color_pad_x_help"
+msgid "The touch gamepad's X button (PAD FILL OPACITY: how solid)."
+msgstr "Color de el botón X del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_x_held"
+msgid "PAD X HELD"
+msgstr "CONTROL X PRESIONADO"
+
+msgctxt "setting_ui_color_pad_x_held_help"
+msgid "The touch gamepad's X button while a finger holds them."
+msgstr "Color de el botón X del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_x_text"
+msgid "PAD X TEXT"
+msgstr "TEXTO X DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_x_text_help"
+msgid "The labels of the touch gamepad's X button (PAD LABEL OPACITY)."
+msgstr "Color de los textos de el botón X del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_y"
+msgid "PAD Y"
+msgstr "CONTROL Y"
+
+msgctxt "setting_ui_color_pad_y_help"
+msgid "The touch gamepad's Y button (PAD FILL OPACITY: how solid)."
+msgstr "Color de el botón Y del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_y_held"
+msgid "PAD Y HELD"
+msgstr "CONTROL Y PRESIONADO"
+
+msgctxt "setting_ui_color_pad_y_held_help"
+msgid "The touch gamepad's Y button while a finger holds them."
+msgstr "Color de el botón Y del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_y_text"
+msgid "PAD Y TEXT"
+msgstr "TEXTO Y DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_y_text_help"
+msgid "The labels of the touch gamepad's Y button (PAD LABEL OPACITY)."
+msgstr "Color de los textos de el botón Y del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_shoulder"
+msgid "PAD SHOULDER"
+msgstr "CONTROL HOMBRO"
+
+msgctxt "setting_ui_color_pad_shoulder_help"
+msgid "The touch gamepad's shoulder buttons (L, R, L2, R2) (PAD FILL OPACITY: how solid)."
+msgstr "Color de los botones de hombro (L, R, L2, R2) del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_shoulder_held"
+msgid "PAD SHOULDER HELD"
+msgstr "CONTROL HOMBRO PRESIONADO"
+
+msgctxt "setting_ui_color_pad_shoulder_held_help"
+msgid "The touch gamepad's shoulder buttons (L, R, L2, R2) while a finger holds them."
+msgstr "Color de los botones de hombro (L, R, L2, R2) del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_shoulder_text"
+msgid "PAD SHOULDER TEXT"
+msgstr "TEXTO HOMBRO DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_shoulder_text_help"
+msgid "The labels of the touch gamepad's shoulder buttons (L, R, L2, R2) (PAD LABEL OPACITY)."
+msgstr "Color de los textos de los botones de hombro (L, R, L2, R2) del control táctil (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_stick"
+msgid "PAD STICK"
+msgstr "CONTROL STICK"
+
+msgctxt "setting_ui_color_pad_stick_help"
+msgid "The touch gamepad's sticks (PAD FILL OPACITY: how solid)."
+msgstr "Color de los sticks del control táctil (OPACIDAD DEL RELLENO DEL CONTROL: qué tan sólido)."
+
+msgctxt "setting_ui_color_pad_stick_held"
+msgid "PAD STICK HELD"
+msgstr "CONTROL STICK PRESIONADO"
+
+msgctxt "setting_ui_color_pad_stick_held_help"
+msgid "The touch gamepad's sticks while a finger holds them."
+msgstr "Color de los sticks del control táctil mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_stick_nub"
+msgid "PAD STICK MIDDLE"
+msgstr "CENTRO DEL STICK DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_stick_nub_help"
+msgid "The middle of the touch gamepad's sticks, the part that follows the finger (PAD LABEL OPACITY)."
+msgstr "El centro de los sticks del control táctil, el que sigue al dedo (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_center"
+msgid "PAD CENTER"
+msgstr "CONTROL CENTRO"
+
+msgctxt "setting_ui_color_pad_center_help"
+msgid "The touch gamepad's SELECT, START and menu buttons (PAD FILL OPACITY: how solid)."
+msgstr "Color de los botones SELECT, START y de menú del control táctil (OPACIDAD DEL RELLENO DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_center_held"
+msgid "PAD CENTER HELD"
+msgstr "CONTROL CENTRO PRESIONADO"
+
+msgctxt "setting_ui_color_pad_center_held_help"
+msgid "SELECT, START and the menu button while a finger holds them."
+msgstr "SELECT, START y el botón de menú mientras un dedo los presiona."
+
+msgctxt "setting_ui_color_pad_center_text"
+msgid "PAD CENTER TEXT"
+msgstr "TEXTO CENTRO DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_center_text_help"
+msgid "The labels of SELECT, START and the menu button (PAD LABEL OPACITY)."
+msgstr "Los textos de SELECT, START y el botón de menú (OPACIDAD DE LOS TEXTOS DEL CONTROL)."
+
+msgctxt "setting_ui_color_pad_border"
+msgid "PAD EDGE"
+msgstr "BORDE DEL CONTROL"
+
+msgctxt "setting_ui_color_pad_border_help"
+msgid "The outlines around the touch gamepad's buttons (PAD BORDER OPACITY: how solid)."
+msgstr "Los bordes de los botones del control táctil (OPACIDAD DEL BORDE DEL CONTROL: qué tan sólidos)."
 
 msgctxt "input_title"
 msgid "INPUT"
@@ -3681,12 +3905,36 @@ msgid "The touch gamepad over the game. AUTO: on a touch screen, hidden while a 
 msgstr "El control táctil sobre el juego. AUTO: en una pantalla táctil, oculto mientras juega un control real (toca la pantalla para que vuelva). Se une a un puerto con su START, como cualquier control."
 
 msgctxt "setting_touch_pad_opacity"
-msgid "OPACITY"
-msgstr "OPACIDAD"
+msgid "FILL OPACITY"
+msgstr "OPACIDAD DEL RELLENO"
 
 msgctxt "setting_touch_pad_opacity_help"
-msgid "How see-through the touch gamepad is over the game (a layout's own opacity from EDIT LAYOUT wins)."
-msgstr "Cuánto se ve el juego a través del control táctil (la opacidad propia de un layout, de EDITAR LAYOUT, tiene prioridad)."
+msgid "How solid the touch gamepad's buttons are, in percent (0: only their outlines and labels). The same upright and sideways; also EDIT LAYOUT's FILL."
+msgstr "Qué tan sólidos son los botones del control táctil, en porcentaje (0: solo sus bordes y textos). Igual en vertical y en horizontal; también es FILL en EDIT LAYOUT."
+
+msgctxt "setting_touch_pad_border_opacity"
+msgid "BORDER OPACITY"
+msgstr "OPACIDAD DEL BORDE"
+
+msgctxt "setting_touch_pad_border_opacity_help"
+msgid "How solid the outlines around the touch gamepad's buttons (and the sticks' middles) are, in percent. Also EDIT LAYOUT's BORDER."
+msgstr "Qué tan sólidos son los bordes de los botones del control táctil (y el centro de los sticks), en porcentaje. También es BORDER en EDIT LAYOUT."
+
+msgctxt "setting_touch_pad_label_opacity"
+msgid "LABEL OPACITY"
+msgstr "OPACIDAD DE LOS TEXTOS"
+
+msgctxt "setting_touch_pad_label_opacity_help"
+msgid "How solid the touch gamepad's labels are, in percent. Also EDIT LAYOUT's LABELS."
+msgstr "Qué tan sólidos son los textos del control táctil, en porcentaje. También es LABELS en EDIT LAYOUT."
+
+msgctxt "setting_touch_pad_background_opacity"
+msgid "BACKGROUND OPACITY"
+msgstr "OPACIDAD DEL FONDO"
+
+msgctxt "setting_touch_pad_background_opacity_help"
+msgid "How solid the theme's PAD BACKGROUND is over the empty space around the game while the touch gamepad shows, in percent. Also EDIT LAYOUT's BACKGROUND. Until you change this, FILL, BORDER, LABEL and BACKGROUND OPACITY follow the theme."
+msgstr "Qué tan sólido es el FONDO DEL CONTROL del tema sobre el espacio vacío alrededor del juego mientras se ve el control táctil, en porcentaje. También es BACKGROUND en EDIT LAYOUT. Mientras no lo cambies, las opacidades del relleno, el borde, los textos y el fondo siguen al tema."
 
 msgctxt "setting_touch_pad_vibrate"
 msgid "VIBRATE ON PRESS"
@@ -3708,10 +3956,6 @@ msgctxt "input_touch_pad_edit_help"
 msgid "Move and resize the touch gamepad's buttons (drag a group, pinch or SIZE, RESET, DONE). Upright and sideways have their own layouts."
 msgstr "Mueve y cambia el tamaño de los botones del control táctil (arrastra un grupo, pellizca o SIZE, RESET, DONE). Vertical y horizontal tienen su propio layout."
 
-msgctxt "touch_pad_menu"
-msgid "HOME"
-msgstr "INICIO"
-
 msgctxt "setting_touch_pad_style"
 msgid "STYLE"
 msgstr "ESTILO"
@@ -3728,9 +3972,9 @@ msgctxt "touch_pad_style_missing"
 msgid "(GONE)"
 msgstr "(NO ESTÁ)"
 
-msgctxt "touch_pad_quick"
-msgid "..."
-msgstr "..."
+msgctxt "touch_pad_controllers"
+msgid "CONTROLLERS"
+msgstr "CONTROLES"
 
 msgctxt "setting_ui_background_transparency"
 msgid "BACKGROUND TRANSPARENCY"
@@ -3739,6 +3983,38 @@ msgstr "TRANSPARENCIA DEL FONDO"
 msgctxt "setting_ui_background_transparency_help"
 msgid "While the menu or a window is open, the theme's BACKGROUND color covers what's behind them (the game too), so the text reads well over any picture. This much of the game still shows through (100: not covered). Saved with the theme."
 msgstr "Mientras el menú o una ventana están abiertos, el color de FONDO del tema cubre lo que hay detrás (también el juego), para que el texto se lea bien sobre cualquier imagen. Esto es lo que se sigue viendo del juego (100: sin cubrir). Se guarda con el tema."
+
+msgctxt "setting_ui_pad_fill"
+msgid "PAD FILL OPACITY"
+msgstr "OPACIDAD DEL RELLENO DEL CONTROL"
+
+msgctxt "setting_ui_pad_fill_help"
+msgid "How solid the touch gamepad's buttons are with this theme, in percent, until you set your own (INPUT > ON-SCREEN GAMEPAD). Saved with the theme."
+msgstr "Qué tan sólidos son los botones del control táctil con este tema, en porcentaje, hasta que pongas los tuyos (CONTROLES > CONTROL EN PANTALLA). Se guarda con el tema."
+
+msgctxt "setting_ui_pad_border"
+msgid "PAD BORDER OPACITY"
+msgstr "OPACIDAD DEL BORDE DEL CONTROL"
+
+msgctxt "setting_ui_pad_border_help"
+msgid "How solid the outlines of the touch gamepad's buttons are with this theme, in percent, until you set your own. Saved with the theme."
+msgstr "Qué tan sólidos son los bordes de los botones del control táctil con este tema, en porcentaje, hasta que pongas los tuyos. Se guarda con el tema."
+
+msgctxt "setting_ui_pad_labels"
+msgid "PAD LABEL OPACITY"
+msgstr "OPACIDAD DE LOS TEXTOS DEL CONTROL"
+
+msgctxt "setting_ui_pad_labels_help"
+msgid "How solid the touch gamepad's labels are with this theme, in percent, until you set your own. Saved with the theme."
+msgstr "Qué tan sólidos son los textos del control táctil con este tema, en porcentaje, hasta que pongas los tuyos. Se guarda con el tema."
+
+msgctxt "setting_ui_pad_background"
+msgid "PAD BACKGROUND OPACITY"
+msgstr "OPACIDAD DEL FONDO DEL CONTROL"
+
+msgctxt "setting_ui_pad_background_help"
+msgid "How solid PAD BACKGROUND is over the empty space around the game with this theme, in percent, until you set your own. Saved with the theme."
+msgstr "Qué tan sólido es el FONDO DEL CONTROL sobre el espacio vacío alrededor del juego con este tema, en porcentaje, hasta que pongas el tuyo. Se guarda con el tema."
 
 msgctxt "quick_menu_pause"
 msgid "PAUSE"
@@ -4464,6 +4740,22 @@ msgstr "Mando"
 msgctxt "web_pad_title"
 msgid "Buttons on the screen, beside or under the game"
 msgstr "Botones en pantalla, al lado o debajo del juego"
+
+msgctxt "web_pad_main_menu"
+msgid "Main menu"
+msgstr "Menú principal"
+
+msgctxt "web_pad_quick_menu"
+msgid "Quick menu"
+msgstr "Menú rápido"
+
+msgctxt "web_pad_game_dvr"
+msgid "Game DVR"
+msgstr "DVR del juego"
+
+msgctxt "web_pad_controllers"
+msgid "Controllers"
+msgstr "Controles"
 
 msgctxt "web_fullscreen"
 msgid "Full screen"
