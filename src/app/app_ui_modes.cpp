@@ -1,5 +1,6 @@
 #include "app_ui_modes.h"
 
+#include "app_files.h"
 #include "app_game.h"
 #include "app_input.h"
 #include "app_shaders.h"
@@ -104,6 +105,7 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::pad_editor:
             onscreen_pad_edit_end(&app->onscreen_pad);   // EDIT LAYOUT: DONE
+            save_settings(app);                           // its FILL / BORDER / LABELS
             break;
         case UiWindow::none:
         case UiWindow::count:

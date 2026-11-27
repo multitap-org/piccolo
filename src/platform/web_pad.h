@@ -12,8 +12,9 @@
 // The page calls the exported piccolo_web_pad_show(on) when it shows or hides
 // the pad (it answers 0 until main() attached the router: the page retries)
 // and piccolo_web_pad_state(buttons) with the RetroPad buttons held
-// (RETRO_DEVICE_ID_JOYPAD bits) plus its QUICK and MENU buttons' bits, on
-// the main thread between frames. While it shows, the on-screen pad drawn in
+// (RETRO_DEVICE_ID_JOYPAD bits) plus the bits of its burger menu's picks
+// (QUICK MENU, MAIN MENU, GAME DVR, CONTROLLERS), on the main thread between
+// frames. While it shows, the on-screen pad drawn in
 // the canvas stays off.
 //
 // The other way, piccolo tells the page whether a game is being played (GAME
@@ -27,9 +28,11 @@
 
 struct InputSystem;
 
-// The page's QUICK and MENU buttons, above the RetroPad's 16 buttons (never sent to a core).
-constexpr int32_t WEB_PAD_QUICK_MENU_BIT = 16;
-constexpr int32_t WEB_PAD_MAIN_MENU_BIT  = 17;
+// The page's burger menu's picks, above the RetroPad's 16 buttons (never sent to a core).
+constexpr int32_t WEB_PAD_QUICK_MENU_BIT  = 16;
+constexpr int32_t WEB_PAD_MAIN_MENU_BIT   = 17;
+constexpr int32_t WEB_PAD_GAME_DVR_BIT    = 18;
+constexpr int32_t WEB_PAD_CONTROLLERS_BIT = 19;
 
 // Once the router exists: where the device goes.
 void web_pad_attach(InputSystem* input);
@@ -37,9 +40,12 @@ void web_pad_attach(InputSystem* input);
 // The page shows its pad (the in-canvas one stays off then).
 bool web_pad_active();
 
-// QUICK / MENU was pressed on the page's pad since the last call.
+// The burger menu's QUICK MENU / MAIN MENU / GAME DVR / CONTROLLERS was
+// picked on the page's pad since the last call.
 bool web_pad_take_quick_menu();
 bool web_pad_take_main_menu();
+bool web_pad_take_game_dvr();
+bool web_pad_take_controllers();
 
 // What the page shows around the game: `playing` = a game in GAME mode,
 // `aspect` = the shown picture's width / height (0: none). Only a change
@@ -49,6 +55,14 @@ void web_pad_tell_page(bool playing, double aspect);
 // SETTINGS' touch pad VIBRATE: the page's pad buzzes on a press only with it
 // on, as piccolo's own touch pad does. Only a change reaches the page.
 void web_pad_set_vibrate(bool on);
+
+// The page wears piccolo's theme: its colors, the pad's colors and the pad's
+// opacities `look` (fill, border, labels, background: 0..1; the user's own
+// once set, else the theme's), through piccolo_page_theme(json) in
+// web/page/piccolo-page.js. BLUE with its own levels tells the page "null"
+// (its own look). Called every frame; only a change reaches the page.
+struct RetroUiPalette;
+void web_page_set_theme(const RetroUiPalette* palette, const float look[4]);
 
 // Keep the browser page's text in the same language as piccolo.
 void web_page_set_language(const char* code);

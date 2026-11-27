@@ -117,6 +117,12 @@ static bool app_frame(App* app)
     RetroUiPalette palette = {};
     piccolo_settings_palette(&app->settings, &palette);   // the Interface settings, live
     ui_toolkit_set_palette(&palette);
+    {
+        // The browser's page wears the theme too (a no-op elsewhere).
+        PadLook pad_look = onscreen_pad_look(&app->settings);
+        const float look[4] = {pad_look.fill, pad_look.border, pad_look.labels, pad_look.background};
+        web_page_set_theme(&palette, look);
+    }
     // While a game runs, black around its picture (the menu's backdrop covers
     // it in BACKGROUND at its transparency). Without one, the same color that
     // makes over black: BACKGROUND at 100 - TRANSPARENCY over black, so the

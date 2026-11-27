@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "retro_ui_font.h"
+#include "snow_view.h"
 
 // The state icons the window can force on (StateIcon order: pause, rewind,
 // play, fast forward).
@@ -50,6 +51,7 @@ enum class DebugPreview
     phone_dvr,                 // the DVR's phone panel (dvr_view_draw_phone): a kept lane, no pictures
     devices,                   // DEVICES (ports_view's board): fake controllers on four ports; rows upright on a phone
     settings_error,            // the red SETTINGS COULD NOT BE READ dialog (settings_error_window.h)
+    pad_menu,                  // the touch gamepad's burger menu (onscreen_pad.h), over the screen
 };
 
 // MENU > DEBUG > SNOW: the menu snow (an easter egg with no setting) forced
@@ -102,7 +104,8 @@ struct DebugWindowState
     // EASTER EGGS
     DebugSnow snow = DebugSnow::automatic;
     bool snow_in_season = false;      // today is in the snow's season (local date)
-    bool snow_falling = false;        // the snow shows now (the empty background or MAIN MENU)
+    bool snow_falling = false;        // the snow shows now (MAIN MENU or a widget)
+    SnowParams snow_params = {};      // its knobs (snow_view.h), memory only
 };
 
 enum class DebugWindowPress
@@ -129,6 +132,7 @@ enum class DebugWindowPress
     effect_snap,          // the REWIND screen effect (SNAP), as after PLAY FROM HERE
     effect_shutter,       // the SCREENSHOT screen effect (SHUTTER), without a screenshot
     sleigh_now,           // the December 25 sleigh crosses now (the snow must be falling)
+    snow_restart,         // the snow starts again from the sky
     continue_resume,      // the CONTINUE card, fake: RESUME
     continue_no_states,   // ... START, the core can't save states
     continue_newer_save,  // ... START / RESUME, the save file is newer
@@ -144,8 +148,9 @@ struct DebugWindowAction
     bool pair_request_card = false;                    // its checkbox after this frame
     DebugPreview preview = DebugPreview::none;         // a preview to show
     DebugSnow snow = DebugSnow::automatic;             // SNOW after this frame
+    SnowParams snow_params = {};                       // the knobs after this frame
 };
 
 // Draws the window (inside the retro theme's push / pop, done here).
-// action->icons_forced, pair_request_card and snow start as the state's.
+// action->icons_forced, pair_request_card, snow and snow_params start as the state's.
 void debug_window_draw(const DebugWindowState* state, RetroUiFont* pixel_font, int32_t scale, DebugWindowAction* action);

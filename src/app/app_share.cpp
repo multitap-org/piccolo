@@ -49,19 +49,14 @@ const NetDeviceInfo* net_device_info(App* app)
     info->kind = NetAppKind::piccolo;
     info->offers = net_caps_ui_kind_offers(NetAppKind::piccolo);
     info->uses = net_caps_ui_kind_uses(NetAppKind::piccolo);
-    if (!app->net_proof_tried && !app->paths.settings.empty())
+    NetBuildIdentity build;
+    // (In the browser the page may still be hashing the program: asked again next time.)
+    if (!app->net_proof_tried && !app->paths.settings.empty() && net_build_find_program("piccolo", &build))
     {
         app->net_proof_tried = true;
-        const char* base = SDL_GetBasePath();
-        NetBuildIdentity build;
         build.app = "piccolo";
         build.version = PICCOLO_VERSION;
         build.target = build_target();   // as the release names its assets
-#if defined(_WIN32)
-        build.exe_path = std::string(base != nullptr ? base : "") + "piccolo.exe";
-#else
-        build.exe_path = std::string(base != nullptr ? base : "") + "piccolo";
-#endif
         if (!net_build_proof_load(&build, app->paths.settings.c_str(), false, info))
         {
             net_build_proof_fetch_later(&build, app->paths.settings.c_str());

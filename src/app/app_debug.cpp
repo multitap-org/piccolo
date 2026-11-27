@@ -62,6 +62,7 @@ void debug_window_state(App* app, DebugWindowState* state)
     state->snow = app->snow_debug;
     state->snow_in_season = app->snow_in_season;
     state->snow_falling = app->snow_was_shown;
+    state->snow_params = app->snow.params;
 }
 
 // What was pressed in the debug window.
@@ -76,6 +77,7 @@ void debug_window_apply(App* app, const DebugWindowAction* action)
         app->state_icons.debug_show[i] = action->icons_forced[i];
     }
     app->snow_debug = action->snow;
+    snow_view_set_params(&app->snow, &action->snow_params);
 
     uint64_t now_ms = SDL_GetTicks();
     debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
@@ -180,6 +182,9 @@ void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::sleigh_now:
         snow_view_sleigh_now(&app->snow);
+        break;
+    case DebugWindowPress::snow_restart:
+        snow_view_restart(&app->snow);
         break;
     case DebugWindowPress::continue_resume:
         continue_panel_preview(&app->continue_panel, ContinuePreview::resume);

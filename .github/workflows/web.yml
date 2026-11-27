@@ -5,7 +5,8 @@
 # headers its threads need, checks those headers from a running container,
 # and publishes it to GHCR (Andrés, 2026-11-20) on pushes to main and on tags,
 # never from pull requests:
-#   ghcr.io/multitap-org/piccolo-web:main      every push to main
+#   ghcr.io/multitap-org/piccolo-web:main      every push to main: the latest release at /,
+#                                              main's build at /dev/ (web/channels.sh)
 #   ghcr.io/multitap-org/piccolo-web:<tag>     a tag (v0.4.0 -> 0.4.0), plus :latest
 #   docker run --rm -p 8080:80 ghcr.io/multitap-org/piccolo-web   -> http://localhost:8080/
 name: Web
@@ -95,12 +96,31 @@ jobs:
           web/package.sh
           ls -la web/build/dist
 
+      # Not a tag: the site is the latest release (its web.zip, from the GitHub
+      # Release) with this build under dev/, and the start pages show
+      # RELEASE | DEV (web/channels.sh). Before the first release this build
+      # is the whole site. A tag's image is that release alone.
+      - name: Release and dev in one site
+        if: github.ref_type != 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dist=$(find web/build/dist -mindepth 1 -maxdepth 1 -type d -name 'piccolo-*-web' | head -n 1)
+          mkdir release-zip
+          if gh release download --repo "${{ github.repository }}" --pattern 'piccolo-*-web.zip' --dir release-zip; then
+            web/channels.sh "$dist" web/build/site release-zip/piccolo-*-web.zip
+          else
+            echo "no release with a web.zip yet: the dev build alone"
+            web/channels.sh "$dist" web/build/site
+          fi
+
       # The image is built from the unzipped folder: the same files as the zip.
       # Then a container serves it and the headers are checked: COOP/COEP on
       # the page, application/wasm on the wasm.
       - name: Docker image
         run: |
           dist=$(find web/build/dist -mindepth 1 -maxdepth 1 -type d -name 'piccolo-*-web' | head -n 1)
+          if [ -d web/build/site ]; then dist=web/build/site; fi
           # The source label links the package to this repository on GitHub.
           docker build -t piccolo-web -f web/docker/Dockerfile --build-context config=web/docker \
             --label org.opencontainers.image.source="https://github.com/${{ github.repository }}" \
@@ -118,6 +138,15 @@ jobs:
           curl -fsSI http://localhost:8080/play/sameboy/piccolo.wasm > /dev/null
           curl -fsSI http://localhost:8080/play/piccoletto/ > /dev/null
           curl -sI http://localhost:8080/play/sameboy | tee play-redirect.txt
+          # Both builds (web/channels.sh): channels.json, and dev/ when there is a release.
+          if [ -f "$dist/channels.json" ]; then
+            curl -fsS http://localhost:8080/play/channels.json
+          fi
+          if [ -d "$dist/dev" ]; then
+            curl -fsSI http://localhost:8080/play/dev/sameboy/ | tee dev-headers.txt
+            curl -fsSI http://localhost:8080/play/dev/sameboy/piccolo.wasm > /dev/null
+            grep -qi '^cross-origin-embedder-policy: require-corp' dev-headers.txt
+          fi
           docker stop piccolo-web
           grep -qi '^cross-origin-opener-policy: same-origin' page-headers.txt
           grep -qi '^cross-origin-embedder-policy: require-corp' page-headers.txt

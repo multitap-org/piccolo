@@ -7,12 +7,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>piccolo: @CORE_NAME@</title>
+<meta name="theme-color" content="#2A4068">   <!-- site.css's --band; piccolo_page_theme sets the theme's bar color -->
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon-32.png">
 <link rel="stylesheet" href="../_site/v1/site.css">
 <style>
   /* The look is piccolo's websites' (_site/v1/site.css: tokens, fonts), but
      no sites bar: the game owns the screen. A thin strip on top instead. */
+  /* No drop shadows anywhere on the page (Andrés, 2026-11-27). */
+  h1, h2 { text-shadow: none; }
   html, body { height: 100%; overflow: hidden; }
   body { font-size: 13px; line-height: 1.4; }
   button { font: inherit; }
@@ -26,7 +29,7 @@
   #strip .channel { padding: 1px 6px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 11px; letter-spacing: 0.08em; }
   #strip .space { flex: 1; }
   #strip button { min-height: 26px; padding: 2px 10px; background: var(--bg); color: var(--text); border: 2px solid var(--edge);
-                  box-shadow: 2px 2px 0 var(--shadow); font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+                  font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
   #strip button:hover, #strip button.active { border-color: var(--accent); }
   #strip button.active { background: var(--accent); color: var(--on-accent); }
   #strip button[hidden] { display: none; }
@@ -36,7 +39,9 @@
   /* The canvas fills its stage; SDL takes the window's size from the canvas's
      CSS size (multitap-page.js sends a resize event when the stage changes),
      and piccolo places and scales the picture inside it. */
-  #stage { position: relative; flex: 1; min-width: 0; background: #000; display: flex; align-items: center; justify-content: center; }
+  /* (The empty space around the picture: the theme's pad background at its
+     opacity over black, --stage, set by piccolo_page_theme; black without.) */
+  #stage { position: relative; flex: 1; min-width: 0; background: var(--stage, #000); display: flex; align-items: center; justify-content: center; }
   canvas { display: block; width: 100%; height: 100%; outline: none; flex: none; }
   /* While a game is played (piccolo says so: multitap_page_game), the strip
      steps aside; the menu (MENU, Esc) brings it back. */
@@ -103,16 +108,19 @@
   /* The touch gamepad (frontends-common's multitap-pad.js), when shown (body.has-pad): beside
      the picture, or under it on an upright screen; FILES goes over the game. */
   .pad { display: none; }
-  body.has-pad #main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr);
-                       grid-template-areas: "padl stage padr"; }
+  body.has-pad #main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto;
+                       grid-template-areas: "padl stage padr" "padm padm padm"; }
   body.has-pad #stage { grid-area: stage; }
   body.has-pad #pad-left { grid-area: padl; }
   body.has-pad #pad-right { grid-area: padr; }
-  /* SELECT / START: in the halves sideways, a row of their own upright. */
-  body.has-pad #pad-meta, .pad-button.meta.upright { display: none; }
   body.has-pad .pad { display: flex; flex-direction: column; align-items: center; justify-content: space-around; gap: 3vmin;
-                      padding: 3vmin; background: var(--band); touch-action: none; user-select: none; -webkit-user-select: none;
+                      padding: 3vmin; background: color-mix(in srgb, var(--pad-background, var(--band)) var(--pad-bg-opacity, 100%), #000); touch-action: none; user-select: none; -webkit-user-select: none;
                       -webkit-touch-callout: none; --unit: min(15vh, 9vw, 72px); }
+  /* START and the menu button under the d-pad, SELECT under the buttons
+     (multitap-pad.js, option burger): the middle row is left empty. */
+  body.has-pad #pad-meta { display: flex; grid-area: padm; flex-direction: row; justify-content: center; gap: 3vmin; padding: 1.5vmin 3vmin; }
+  body.has-pad #pad-meta:empty { display: none; }
+  .pad-row { display: flex; align-items: center; gap: 3vmin; }
   body.has-pad #files { position: fixed; inset: 38px 0 0 auto; width: min(100%, 360px); height: auto; z-index: 4;
                         border-top: 0; border-left: 2px solid var(--shadow); }
   @media (orientation: portrait) {
@@ -124,22 +132,18 @@
     body.has-pad.has-picture #main { grid-template-rows: min(calc(100vw / var(--picture-aspect)), 62%) minmax(0, 1fr) auto; }
     /* (Two halves of 2.6 units: all of it fits 100vw.) */
     body.has-pad .pad { --unit: min(13vw, 72px); padding: 4vw 3vw; border-top: 2px solid var(--shadow); }
-    body.has-pad #pad-meta { display: flex; grid-area: padm; flex-direction: row; justify-content: center; gap: 5vw;
-                             padding: 2vw 3vw 7vw; border-top: 0; }
-    body.has-pad .pad-button.meta.sideways { display: none; }
-    body.has-pad .pad-button.meta.upright { display: flex; }
+    body.has-pad #pad-meta { gap: 5vw; padding: 2vw 3vw 7vw; border-top: 0; }
   }
   .pad-button { display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text);
-                border: 2px solid var(--edge); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700; letter-spacing: 0.06em; }
-  .pad-button.held, .dpad span.held { background: var(--accent); color: var(--on-accent); border-color: var(--accent);
-                                      box-shadow: 1px 1px 0 var(--shadow); }
+                border: 2px solid var(--edge); font-weight: 700; letter-spacing: 0.06em; }
+  .pad-button.held, .dpad span.held { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .pad-button.round { width: var(--unit); height: var(--unit); border-radius: 50%; font-size: calc(var(--unit) * 0.38); }
   .pad-button.shoulder { width: calc(var(--unit) * 2.4); height: calc(var(--unit) * 0.7); border-radius: 10px 10px 4px 4px;
                          font-size: calc(var(--unit) * 0.3); }
   .pad-button.meta { width: calc(var(--unit) * 1.6); height: calc(var(--unit) * 0.5); border-radius: 999px; font-size: 10px; }
   .dpad { position: relative; width: calc(var(--unit) * 2.6); height: calc(var(--unit) * 2.6); }
   .dpad span { position: absolute; width: calc(var(--unit) * 0.9); height: calc(var(--unit) * 0.9); background: var(--bg);
-               border: 2px solid var(--edge); box-shadow: 3px 3px 0 var(--shadow); }
+               border: 2px solid var(--edge); }
   .dpad .up { left: calc(var(--unit) * 0.85); top: 0; }
   .dpad .down { left: calc(var(--unit) * 0.85); bottom: 0; }
   .dpad .left { left: 0; top: calc(var(--unit) * 0.85); }
@@ -155,6 +159,39 @@
   .face.two { width: calc(var(--unit) * 2.15); }
   .face.two .b { left: 0; bottom: calc(var(--unit) * 0.35); }
   .face.two .a { right: 0; top: calc(var(--unit) * 0.35); }
+  .pad-button.burger { width: calc(var(--unit) * 0.9); font-size: 16px; }
+
+  /* The pad's theme (piccolo_page_theme in piccolo-page.js sets --pad-*; with
+     none set, the fallbacks are the site tokens above: BLUE looks as it
+     always did). Per part: --c its face, --t its label, --h its face held,
+     --ht its label held. --fill / --line / --ink are the opacities of face,
+     border and label (the theme's levels; held parts are always opaque). */
+  .pad-button, .dpad span { --fill: var(--pad-fill, 100%); --line: var(--pad-border-opacity, 100%); --ink: var(--pad-labels, 100%);
+                            --b: var(--pad-border, var(--edge)); }
+  .dpad span { --c: var(--pad-dpad, var(--bg)); --h: var(--pad-dpad-held, var(--accent)); }
+  .pad-button.shoulder { --c: var(--pad-shoulder, var(--bg)); --t: var(--pad-shoulder-text, var(--text));
+                         --h: var(--pad-shoulder-held, var(--accent)); --ht: var(--pad-shoulder-text, var(--on-accent)); }
+  .pad-button.meta { --c: var(--pad-center, var(--bg)); --t: var(--pad-center-text, var(--text));
+                     --h: var(--pad-center-held, var(--accent)); --ht: var(--pad-center-text, var(--on-accent)); }
+  .pad-button.a { --c: var(--pad-a, var(--bg)); --t: var(--pad-a-text, var(--text)); --h: var(--pad-a-held, var(--accent)); --ht: var(--pad-a-text, var(--on-accent)); }
+  .pad-button.b { --c: var(--pad-b, var(--bg)); --t: var(--pad-b-text, var(--text)); --h: var(--pad-b-held, var(--accent)); --ht: var(--pad-b-text, var(--on-accent)); }
+  .pad-button.x { --c: var(--pad-x, var(--bg)); --t: var(--pad-x-text, var(--text)); --h: var(--pad-x-held, var(--accent)); --ht: var(--pad-x-text, var(--on-accent)); }
+  .pad-button.y { --c: var(--pad-y, var(--bg)); --t: var(--pad-y-text, var(--text)); --h: var(--pad-y-held, var(--accent)); --ht: var(--pad-y-text, var(--on-accent)); }
+  .pad-button, .dpad span { background: color-mix(in srgb, var(--c) var(--fill), transparent);
+                            border-color: color-mix(in srgb, var(--b) var(--line), transparent); }
+  .pad-button { color: color-mix(in srgb, var(--t) var(--ink), transparent); }
+  .pad-button.held, .dpad span.held { background: var(--h); border-color: var(--h); }
+  .pad-button.held { color: var(--ht); }
+
+  /* The menu button's menu (multitap-pad.js, option burger): over the picture, in the center colors. */
+  #pad-menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; display: flex;
+              flex-direction: column; gap: 6px; width: min(260px, 80%); }
+  #pad-menu[hidden] { display: none; }
+  #pad-menu button { min-height: 40px; background: var(--pad-center, var(--bg)); color: var(--pad-center-text, var(--text));
+                     border: 2px solid var(--pad-border, var(--edge)); font-weight: 700;
+                     letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+  #pad-menu button:hover, #pad-menu button:focus-visible { background: var(--pad-center-held, var(--accent));
+                                                          color: var(--pad-center-text, var(--on-accent)); outline: none; }
 </style>
 </head>
 <body data-channel="@CHANNEL@" data-pad="@PAD@" data-drop-hint="">
@@ -172,6 +209,7 @@
     <div class="pad" id="pad-left"></div>
     <div id="stage">
       <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+      <div id="pad-menu" hidden></div>
     </div>
     <div class="pad" id="pad-right"></div>
     <div class="pad" id="pad-meta"></div>
@@ -199,10 +237,16 @@
 <script src="../multitap-page.js"></script>
 <script src="../piccolo-files.js"></script>
 <script src="../piccolo-page.js"></script>
+<script>piccolo_page_theme_apply_stored();</script>   <!-- the theme from the last visit, before the module and the pad -->
 <script src="../multitap-pad.js"></script>
 <script>
   multitap_pad_start({ root: '#main', kind: document.body.dataset.pad === 'snes' ? 'snes' : 'gb', state: 'piccolo_web_pad_state',
-                       show: 'piccolo_web_pad_show', toggle: 'pad-toggle', storage_key: 'piccolo-pad-shown', menu_button: true,
+                       show: 'piccolo_web_pad_show', toggle: 'pad-toggle', storage_key: 'piccolo-pad-shown', burger: true,
+                       menu: { container: 'pad-menu', items: [
+                         [function () { return piccolo_web_text('web_pad_main_menu'); }, 17],
+                         [function () { return piccolo_web_text('web_pad_quick_menu'); }, 16],
+                         [function () { return piccolo_web_text('web_pad_game_dvr'); }, 18],
+                         [function () { return piccolo_web_text('web_pad_controllers'); }, 19] ] },
                        on_shown: piccolo_page_pad_shown, observe: ['main', 'pad-left', 'pad-right', 'pad-meta'] });
 </script>
 <script>piccolo_page_start();</script>

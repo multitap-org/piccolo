@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The legacy APK (build-apk.sh --legacy: Android 5+, armv7, OpenGL ES 2):
+<!-- The legacy APK (build-apk.sh with legacy on: Android 5+, armv7, OpenGL ES 2):
      an overlay over android/res with its own name and banner (LEGACY tag,
      assets/branding/piccolo-banner-tv-legacy.svg). Package
      site.multitap.piccolo.legacy, folder /sdcard/piccolo-legacy: it installs

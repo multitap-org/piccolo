@@ -371,8 +371,9 @@ void hud_fill(App* app, UiView* view)
 }
 
 // The menu snow: in season (December 24 to 28, local date) or forced
-// from MENU > DEBUG, only while MAIN MENU's bar is up (the empty background,
-// the menu over a game); never in GAME or a widget. Shown again after a
+// from MENU > DEBUG, whenever the menu or a widget is up (the empty
+// background, the menu over a game, QUICK MENU, DEVICES, the DVR...); never
+// in GAME or EDIT LAYOUT (Andrés, 2026-11-26). Shown again after a
 // while away, it starts from the sky. The sleigh crosses on December 25.
 constexpr uint64_t SNOW_DATE_CHECK_MS = 60 * 1000;
 
@@ -399,7 +400,7 @@ void snow_fill(App* app, UiView* view)
     {
         wanted = false;
     }
-    bool shown = wanted && view->menu_shown;
+    bool shown = wanted && (view->menu_shown || app->ui.mode == UiMode::widget);
     if (shown && !app->snow_was_shown)
     {
         if (!app->snow_started)

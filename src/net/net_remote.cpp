@@ -57,6 +57,10 @@ static void build_layout(std::vector<LayoutRow>* rows)
     {
         add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), piccolo_settings_ui_color_key(i));
     }
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), PICCOLO_UI_PAD_FILL);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), PICCOLO_UI_PAD_BORDER);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), PICCOLO_UI_PAD_LABELS);
+    add_row(rows, Str::tab_interface, none, text_id(Str::section_colors), PICCOLO_UI_PAD_BACKGROUND);
     add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECTS);
     add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_REWIND);
     add_row(rows, Str::tab_interface, none, text_id(Str::section_effects), PICCOLO_SCREEN_EFFECT_SCREENSHOT);
