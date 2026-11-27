@@ -6,6 +6,14 @@
 #   vX.Y.Z          stable channel
 #   vX.Y.Z-beta.N   prerelease, beta channel
 #
+# Every push to main is a snapshot (Andrés, 2026-11-27): version
+# <base>-snapshot.<date>.<commit> (tools/snapshot-suffix.sh), and the same
+# files replace those of one rolling prerelease, tag `snapshot`, with a
+# snapshot.cfg instead of manifest.cfg (same format, tag=snapshot, plus
+# commit). publish-apps.sh signs each one with the snapshot key, serves it as
+# latest and keeps the last one of each day. A manual run on another branch
+# builds the same way and publishes nothing.
+#
 # It builds through the usual workflows (workflow_call), so a release is
 # exactly what CI builds on main. Assets, piccolo-<version>-<target>.<ext>:
 #   windows-x86_64.zip  windows-arm64.zip
@@ -21,39 +29,69 @@
 # (the format publish-apps.sh reads).
 #
 # Refuses to release without the Android release key in the secrets (never a
-# debug APK in a release) or when the tag doesn't match PICCOLO_VERSION_BASE.
+# debug APK in a release) or when the tag doesn't match PICCOLO_VERSION_BASE;
+# a snapshot without the key is built but not published.
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
+
+# One at a time per branch or tag; a newer push waits for the one running
+# (a snapshot that was built gets published).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   check:
-    name: Check the tag
+    name: Check the version
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
       - name: Version and release key
+        id: version
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
         run: |
-          tag="${{ github.ref_name }}"
-          version="${tag#v}"
-          if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$'; then
-            echo "tag $tag is not vX.Y.Z or vX.Y.Z-beta.N"
-            exit 1
-          fi
           base=$(sed -n 's/^set(PICCOLO_VERSION_BASE \([^)]*\))$/\1/p' CMakeLists.txt)
-          case "$version" in
-            "$base"|"$base".*|"$base"-*) ;;
-            *) echo "tag $tag doesn't match PICCOLO_VERSION_BASE $base in CMakeLists.txt"; exit 1 ;;
-          esac
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASS" ]; then
-            echo "no Android release key in the secrets: a release never ships a debug APK"
-            exit 1
+          if [ "${{ github.ref_type }}" = tag ]; then
+            tag="${{ github.ref_name }}"
+            version="${tag#v}"
+            if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$'; then
+              echo "tag $tag is not vX.Y.Z or vX.Y.Z-beta.N"
+              exit 1
+            fi
+            case "$version" in
+              "$base"|"$base".*|"$base"-*) ;;
+              *) echo "tag $tag doesn't match PICCOLO_VERSION_BASE $base in CMakeLists.txt"; exit 1 ;;
+            esac
+            if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASS" ]; then
+              echo "no Android release key in the secrets: a release never ships a debug APK"
+              exit 1
+            fi
+            publish=true
+          else
+            # The same suffix the build jobs write (their "Snapshot version" step).
+            version="$base-$(tools/snapshot-suffix.sh)"
+            publish=false
+            if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
+              publish=true
+              if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASS" ]; then
+                echo "no Android release key in the secrets: this snapshot is built, not published"
+                publish=false
+              fi
+            fi
           fi
+          echo "version $version, publish $publish"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
   android:
     needs: check
@@ -71,13 +109,14 @@ jobs:
   web:
     needs: check
     uses: ./.github/workflows/web.yml
+    secrets: inherit   # main's run redeploys play/ (PORTAINER_WEBHOOK)
     permissions:
       contents: read
-      packages: write   # web.yml pushes the image's :<version> and :latest tags
+      packages: write   # web.yml pushes the image's :main, or a tag's :<version> and :latest
 
   release:
     name: GitHub Release
-    needs: [android, flatpak, windows, web]
+    needs: [check, android, flatpak, windows, web]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -95,8 +134,7 @@ jobs:
 
       - name: Release files
         run: |
-          tag="${{ github.ref_name }}"
-          version="${tag#v}"
+          version="${{ needs.check.outputs.version }}"
           mkdir release
           find artifacts -type f | sort
 
@@ -154,13 +192,24 @@ jobs:
           (cd "$web"/piccolo-*-web && sha256sum --quiet -c wasm.sha256) || { echo "wasm.sha256 doesn't match the web zip"; exit 1; }
           exe_hash web "$(echo "$web"/piccolo-*-web/wasm.sha256)"
 
-          manifest=release/manifest.cfg
-          {
-            echo "# piccolo $tag: the release's files (release.yml)"
-            echo "app=piccolo"
-            echo "version=$version"
-            echo "tag=$tag"
-          } > "$manifest"
+          if [ "${{ github.ref_type }}" = tag ]; then
+            manifest=release/manifest.cfg
+            {
+              echo "# piccolo ${{ github.ref_name }}: the release's files (release.yml)"
+              echo "app=piccolo"
+              echo "version=$version"
+              echo "tag=${{ github.ref_name }}"
+            } > "$manifest"
+          else
+            manifest=release/snapshot.cfg
+            {
+              echo "# piccolo snapshot $version: main's build (release.yml)"
+              echo "app=piccolo"
+              echo "version=$version"
+              echo "tag=snapshot"
+              echo "commit=${{ github.sha }}"
+            } > "$manifest"
+          fi
           for file in release/piccolo-*; do
             asset="${file#release/}"
             target="${asset#piccolo-$version-}"
@@ -180,6 +229,7 @@ jobs:
           cat "$manifest"
 
       - name: Create the release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -194,8 +244,34 @@ jobs:
       # get-piccolo.app/play/ shows the latest release beside main's build
       # (web.yml, web/channels.sh): a Web run on main takes this release's
       # web.zip and redeploys. Not for a beta: it isn't the latest release.
+      # The rolling `snapshot` prerelease: the tag moves to this commit, the
+      # new files go up first, snapshot.cfg (what publish-apps.sh reads) next,
+      # and the previous snapshot's files go last. Never marked latest.
+      - name: Replace the snapshot
+        if: github.ref_type == 'branch' && needs.check.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh api "repos/$REPO/git/refs/tags/snapshot" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/tags/snapshot" -f sha="${{ github.sha }}" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/$REPO/git/refs" -f ref=refs/tags/snapshot -f sha="${{ github.sha }}" > /dev/null
+          fi
+          notes="main's latest build, ${{ needs.check.outputs.version }} (${{ github.sha }}). Replaced by every push to main; releases.get-piccolo.app signs and keeps them."
+          if ! gh release view snapshot --repo "$REPO" > /dev/null 2>&1; then
+            gh release create snapshot --repo "$REPO" --title "piccolo snapshot" --notes "$notes" --prerelease --latest=false
+          fi
+          old=$(gh release view snapshot --repo "$REPO" --json assets --jq '.assets[].name')
+          gh release upload snapshot --repo "$REPO" --clobber $(ls release/piccolo-*)
+          gh release upload snapshot --repo "$REPO" --clobber release/snapshot.cfg
+          gh release edit snapshot --repo "$REPO" --title "piccolo snapshot" --notes "$notes" --prerelease --latest=false
+          for name in $old; do
+            [ -f "release/$name" ] || gh release delete-asset snapshot "$name" --repo "$REPO" --yes
+          done
+
       - name: Rebuild play/ with this release
-        if: ${{ !contains(github.ref_name, '-beta.') }}
+        if: ${{ github.ref_type == 'tag' && !contains(github.ref_name, '-beta.') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run web.yml --repo "${{ github.repository }}" --ref main

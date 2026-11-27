@@ -19,3 +19,6 @@ imgui.ini
 # docs/ holds working notes that stay local; only the build guide is committed
 docs/*
 !docs/compilation.md
+
+# The version suffix CI writes for snapshots (tools/snapshot-suffix.sh)
+.multitap-version-suffix
