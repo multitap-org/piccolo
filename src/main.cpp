@@ -3950,6 +3950,7 @@ static void debug_window_state(App* app, DebugWindowState* state)
     state->snow = app->snow_debug;
     state->snow_in_season = app->snow_in_season;
     state->snow_falling = app->snow_was_shown;
+    state->snow_params = app->snow.params;
 }
 
 // What was pressed in the debug window.
@@ -3964,6 +3965,7 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         app->state_icons.debug_show[i] = action->icons_forced[i];
     }
     app->snow_debug = action->snow;
+    snow_view_set_params(&app->snow, &action->snow_params);
 
     uint64_t now_ms = SDL_GetTicks();
     debug_preview_request_card(&app->debug_previews, action->pair_request_card, now_ms);
@@ -4045,6 +4047,9 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::sleigh_now:
         snow_view_sleigh_now(&app->snow);
+        break;
+    case DebugWindowPress::snow_restart:
+        snow_view_restart(&app->snow);
         break;
     }
     if (dvr_card < 3)
@@ -5474,8 +5479,9 @@ static void hud_fill(App* app, UiView* view)
 }
 
 // The menu snow: in season (December 24 to 28, local date) or forced
-// from MENU > DEBUG, only while MAIN MENU's bar is up (the empty background,
-// the menu over a game); never in GAME or a widget. Shown again after a
+// from MENU > DEBUG, whenever the menu or a widget is up (the empty
+// background, the menu over a game, QUICK MENU, DEVICES, the DVR...); never
+// in GAME or EDIT LAYOUT (Andrés, 2026-11-26). Shown again after a
 // while away, it starts from the sky. The sleigh crosses on December 25.
 constexpr uint64_t SNOW_DATE_CHECK_MS = 60 * 1000;
 
@@ -5502,7 +5508,7 @@ static void snow_fill(App* app, UiView* view)
     {
         wanted = false;
     }
-    bool shown = wanted && view->menu_shown;
+    bool shown = wanted && (view->menu_shown || app->ui.mode == UiMode::widget);
     if (shown && !app->snow_was_shown)
     {
         if (!app->snow_started)
