@@ -52,6 +52,7 @@ void headless_enter(Headless* headless, SDL_Window* window, uint32_t peer, const
     headless->on = true;
     headless->peer = peer;
     headless->back_asked = false;
+    headless->seen_minimized = false;
     headless->tray = create_tray(headless, icon, tooltip, show, play_here);
     headless->minimized = headless->tray == nullptr;
     if (headless->minimized)
@@ -63,6 +64,23 @@ void headless_enter(Headless* headless, SDL_Window* window, uint32_t peer, const
     {
         SDL_HideWindow(window);
     }
+}
+
+bool headless_window_restored(Headless* headless, SDL_Window* window)
+{
+    if (!headless->on || !headless->minimized)
+    {
+        return false;
+    }
+    // Some window systems minimize later: "not minimized" only means the user
+    // came back once the window has been seen minimized.
+    bool minimized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
+    if (minimized)
+    {
+        headless->seen_minimized = true;
+        return false;
+    }
+    return headless->seen_minimized;
 }
 
 void headless_leave(Headless* headless, SDL_Window* window)
@@ -88,4 +106,5 @@ void headless_leave(Headless* headless, SDL_Window* window)
     headless->on = false;
     headless->minimized = false;
     headless->back_asked = false;
+    headless->seen_minimized = false;
 }

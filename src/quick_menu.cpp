@@ -60,6 +60,13 @@ void quick_menu_state(QuickMenuState* state, const QuickMenu* menu, const Locali
     state->game_name = game_name;
     state->user_paused = user_paused;
     state->undo_load = undo_load;
+    if (!menu->open)
+    {
+        // Nothing reads the labels of a closed menu (the draw returns first):
+        // the clock and the formatting wait for the frame it opens. The
+        // pointers above stay valid in case it opens before this frame's draw.
+        return;
+    }
     // Each slot's label: its number, and when it was saved (the time if
     // today, the day otherwise: a slot is narrow).
     SDL_Time now = 0;

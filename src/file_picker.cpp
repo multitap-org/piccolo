@@ -25,13 +25,25 @@
 
 // Paths.
 
+// archive_split_path (the text: ".zip#" / ".7z#") and the archive part is a
+// real file: a folder that happens to be named "pack.zip#old" is a folder.
+static bool split_archive_path(const char* path, std::string* archive, std::string* folder)
+{
+    if (!archive_split_path(path, archive, folder))
+    {
+        return false;
+    }
+    SDL_PathInfo info = {};
+    return SDL_GetPathInfo(archive->c_str(), &info) && info.type == SDL_PATHTYPE_FILE;
+}
+
 // "a.7z#" (an archive's top folder) takes names right after the '#'.
 static bool join_path(const char* directory, const char* name, char* out, size_t out_size)
 {
     size_t length = std::strlen(directory);
     std::string archive;
     std::string folder;
-    bool archive_top = archive_split_path(directory, &archive, &folder) && folder.empty();
+    bool archive_top = split_archive_path(directory, &archive, &folder) && folder.empty();
     bool has_separator = archive_top || (length > 0 && (directory[length - 1] == '/' || directory[length - 1] == '\\'));
     int written = std::snprintf(out, out_size, "%s%s%s", directory, has_separator ? "" : "/", name);
     return written > 0 && static_cast<size_t>(written) < out_size;
@@ -50,7 +62,7 @@ static void go_to_parent(char* directory)
 {
     std::string archive;
     std::string folder;
-    if (archive_split_path(directory, &archive, &folder))
+    if (split_archive_path(directory, &archive, &folder))
     {
         // Either way the result is shorter than `directory`: copied in place.
         if (!folder.empty())
@@ -142,6 +154,12 @@ static void add_file(FilePicker* picker, const char* name)
 // Archives list folders once per file inside them ("d/a", "d/b"): added once.
 static void add_folder_once(FilePicker* picker, const char* name)
 {
+    // The entries of one folder come together: the last folder added is
+    // nearly always the match, so the full search below is the fallback.
+    if (!picker->folders.empty() && picker->folders.back() == name)
+    {
+        return;
+    }
     for (size_t i = 0; i < picker->folders.size(); i++)
     {
         if (picker->folders[i] == name)
@@ -181,6 +199,10 @@ static void list_archive(FilePicker* picker, const LibretroCoreInfo* core, const
         std::string rest = entry->name.substr(prefix.size());
         size_t slash = rest.find('/');
         std::string first = slash == std::string::npos ? rest : rest.substr(0, slash);
+        if (first.empty())
+        {
+            continue;   // a name starting with '/': no folder to list it in
+        }
         if (content_archive_hidden_name(first.c_str()))
         {
             continue;
@@ -290,7 +312,7 @@ static void list_folder(FilePicker* picker, const CoreCatalog* catalog)
     const LibretroCoreInfo* core = selected_core(picker, catalog);
     std::string archive;
     std::string folder;
-    if (archive_split_path(picker->directory, &archive, &folder))
+    if (split_archive_path(picker->directory, &archive, &folder))
     {
         list_archive(picker, core, &archive, &folder);
         sort_names(&picker->folders);
@@ -363,7 +385,19 @@ static const char* folder_preview(const FilePicker* picker, const Localization* 
         std::snprintf(home_path, sizeof(home_path), "%s", home);
         host_fs_forward_slashes(home_path);
         std::string home_folder = home_path;
-        if (folder_holds(&home_folder, picker->directory) && home_folder.size() + 1 >= std::strlen(picker->directory))
+        // Both without trailing separators: SDL_GetUserFolder ends the home
+        // with one, so a bare length check took a one-character subfolder for it.
+        size_t home_length = home_folder.size();
+        while (home_length > 1 && is_separator(home_folder[home_length - 1]))
+        {
+            home_length--;
+        }
+        size_t directory_length = std::strlen(picker->directory);
+        while (directory_length > 1 && is_separator(picker->directory[directory_length - 1]))
+        {
+            directory_length--;
+        }
+        if (folder_holds(&home_folder, picker->directory) && directory_length == home_length)
         {
             return piccolo_text(strings, Str::picker_home);   // the home folder itself (with or without its trailing '/')
         }
@@ -378,8 +412,8 @@ static bool selected_archive(const FilePicker* picker)
     std::string archive;
     std::string folder;
     return picker->mode == FilePickerMode::game && picker->selected_file >= 0 &&
-           !archive_split_path(picker->directory, &archive, &folder) &&
-           archive_format(picker->files[static_cast<size_t>(picker->selected_file)].c_str()) != ArchiveFormat::none;
+           archive_format(picker->files[static_cast<size_t>(picker->selected_file)].c_str()) != ArchiveFormat::none &&
+           !split_archive_path(picker->directory, &archive, &folder);
 }
 
 // Every frame before the state: the folder's contents again when the
@@ -439,6 +473,10 @@ void file_picker_state(FilePickerState* state, const FilePicker* picker, const C
 {
     state->strings = strings;
     state->catalog = catalog;
+    if (!picker->open)
+    {
+        return;   // nothing draws a closed picker: no work (and no stat) per frame
+    }
     const LibretroCoreInfo* core = selected_core(picker, catalog);
     state->no_game = core != nullptr && core->supports_no_game;
     std::snprintf(state->core_preview, sizeof(state->core_preview), "%s %s",
@@ -853,8 +891,8 @@ void file_picker_open(FilePicker* picker, const CoreCatalog* catalog, const char
     SDL_PathInfo info = {};
     std::string archive;
     std::string folder;
-    bool in_archive = directory != nullptr && archive_split_path(directory, &archive, &folder);
-    bool usable = in_archive ? SDL_GetPathInfo(archive.c_str(), &info) && info.type == SDL_PATHTYPE_FILE
+    bool in_archive = directory != nullptr && split_archive_path(directory, &archive, &folder);
+    bool usable = in_archive ? true
                              : directory != nullptr && directory[0] != '\0' && SDL_GetPathInfo(directory, &info) &&
                                    info.type == SDL_PATHTYPE_DIRECTORY;
     if (usable)

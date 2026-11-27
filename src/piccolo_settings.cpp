@@ -106,6 +106,8 @@ static const SettingEnumValue LANGUAGE_VALUES[] = {
     {"es", text_id(Str::value_language_spanish)},
 };
 constexpr uint32_t LANGUAGE_COUNT = sizeof(LANGUAGE_VALUES) / sizeof(LANGUAGE_VALUES[0]);
+// "auto" comes first, then one value per language: piccolo_settings_language() returns choice - 1.
+static_assert(LANGUAGE_COUNT == PICCOLO_LANGUAGE_COUNT + 1, "auto, then one value per language");
 
 static const SettingEnumValue OSK_VALUES[] = {
     {"auto", text_id(Str::value_osk_auto)},
@@ -143,6 +145,8 @@ static const SettingEnumValue WINDOW_ASPECT_VALUES[] = {
     {"4:3"},
 };
 static const double WINDOW_ASPECTS[] = {16.0 / 9.0, 16.0 / 10.0, 4.0 / 3.0};
+static_assert(sizeof(WINDOW_ASPECTS) / sizeof(WINDOW_ASPECTS[0]) == sizeof(WINDOW_ASPECT_VALUES) / sizeof(WINDOW_ASPECT_VALUES[0]),
+              "one ratio per window aspect value");
 
 static const SettingEnumValue WINDOW_HEIGHT_VALUES[] = {
     {"720"},
@@ -152,6 +156,8 @@ static const SettingEnumValue WINDOW_HEIGHT_VALUES[] = {
     {"1440"},
 };
 static const uint32_t WINDOW_HEIGHTS[] = {720, 900, 1080, 1200, 1440};
+static_assert(sizeof(WINDOW_HEIGHTS) / sizeof(WINDOW_HEIGHTS[0]) == sizeof(WINDOW_HEIGHT_VALUES) / sizeof(WINDOW_HEIGHT_VALUES[0]),
+              "one height per window height value");
 
 constexpr uint32_t FULLSCREEN_TYPE_COUNT = sizeof(FULLSCREEN_TYPE_VALUES) / sizeof(FULLSCREEN_TYPE_VALUES[0]);
 constexpr uint32_t WINDOW_MODE_COUNT = sizeof(WINDOW_MODE_VALUES) / sizeof(WINDOW_MODE_VALUES[0]);
@@ -174,6 +180,7 @@ static const SettingEnumValue LATENCY_VALUES[] = {
 constexpr uint32_t AUTO_LATENCY_START_MS = PICCOLO_BROWSER ? 100 : RATE_CONTROL_AUTO_START_MS;
 static const uint32_t LATENCIES[] = {AUTO_LATENCY_START_MS, 40, 50, 60, 80, 100, 120, 160, 200};
 constexpr uint32_t LATENCY_COUNT = sizeof(LATENCY_VALUES) / sizeof(LATENCY_VALUES[0]);
+static_assert(sizeof(LATENCIES) / sizeof(LATENCIES[0]) == LATENCY_COUNT, "one latency per value (\"auto\" is entry 0 in both)");
 
 static const SettingEnumValue QUALITY_VALUES[] = {
     {"fastest", text_id(Str::value_quality_fastest)},
@@ -182,6 +189,7 @@ static const SettingEnumValue QUALITY_VALUES[] = {
 };
 static const AudioQuality QUALITIES[] = {AudioQuality::fastest, AudioQuality::medium, AudioQuality::best};
 constexpr uint32_t QUALITY_COUNT = sizeof(QUALITY_VALUES) / sizeof(QUALITY_VALUES[0]);
+static_assert(sizeof(QUALITIES) / sizeof(QUALITIES[0]) == QUALITY_COUNT, "one quality per value");
 
 constexpr uint32_t ASPECT_COUNT = sizeof(ASPECT_VALUES) / sizeof(ASPECT_VALUES[0]);
 constexpr uint32_t SCALING_COUNT = sizeof(SCALING_VALUES) / sizeof(SCALING_VALUES[0]);
@@ -341,37 +349,37 @@ static const SettingDescriptor SETTINGS[] = {
      .help = text_id(Str::setting_image_color_profile_help)},
     {.key = PICCOLO_IMAGE_PROFILE_STRENGTH, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 1.0, .step_real = 0.05, .label = text_id(Str::setting_image_profile_strength),
-     .help = text_id(Str::setting_image_profile_strength_help)},
+     .help = text_id(Str::setting_image_profile_strength_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_BRIGHTNESS, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -1.0, .max_real = 1.0, .step_real = 0.01, .label = text_id(Str::setting_image_brightness),
-     .help = text_id(Str::setting_image_brightness_help)},
+     .help = text_id(Str::setting_image_brightness_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_CONTRAST, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_contrast),
-     .help = text_id(Str::setting_image_contrast_help)},
+     .help = text_id(Str::setting_image_contrast_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_SATURATION, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_saturation),
-     .help = text_id(Str::setting_image_saturation_help)},
+     .help = text_id(Str::setting_image_saturation_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_HUE, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -180.0, .max_real = 180.0, .step_real = 1.0, .label = text_id(Str::setting_image_hue),
-     .help = text_id(Str::setting_image_hue_help)},
+     .help = text_id(Str::setting_image_hue_help), .real_format = "%.0f"},
     {.key = PICCOLO_IMAGE_GAMMA, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.5, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gamma),
-     .help = text_id(Str::setting_image_gamma_help)},
+     .help = text_id(Str::setting_image_gamma_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_BLACK_LEVEL, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -0.5, .max_real = 0.5, .step_real = 0.01, .label = text_id(Str::setting_image_black_level),
-     .help = text_id(Str::setting_image_black_level_help)},
+     .help = text_id(Str::setting_image_black_level_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_TEMPERATURE, .type = SettingType::real, .default_value = "0", .overridable = true,
      .min_real = -1.0, .max_real = 1.0, .step_real = 0.01, .label = text_id(Str::setting_image_temperature),
-     .help = text_id(Str::setting_image_temperature_help)},
+     .help = text_id(Str::setting_image_temperature_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_RED, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_red),
-     .help = text_id(Str::setting_image_gain_red_help)},
+     .help = text_id(Str::setting_image_gain_red_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_GREEN, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_green),
-     .help = text_id(Str::setting_image_gain_green_help)},
+     .help = text_id(Str::setting_image_gain_green_help), .real_format = "%.2f"},
     {.key = PICCOLO_IMAGE_GAIN_BLUE, .type = SettingType::real, .default_value = "1", .overridable = true,
      .min_real = 0.0, .max_real = 2.0, .step_real = 0.01, .label = text_id(Str::setting_image_gain_blue),
-     .help = text_id(Str::setting_image_gain_blue_help)},
+     .help = text_id(Str::setting_image_gain_blue_help), .real_format = "%.2f"},
 
     {.key = PICCOLO_VIDEO_POSITION, .type = SettingType::enumeration, .default_value = "center", .overridable = true,
      .values = POSITION_VALUES, .value_count = POSITION_COUNT, .label = text_id(Str::setting_position),
@@ -575,6 +583,8 @@ static const ColorProfile COLOR_PROFILES[] = {
     {2.2f, 2.4f, true, 1.0f, {{1.5071f, -0.3724f, -0.0832f}, {-0.0275f, 0.935f, 0.067f}, {-0.0272f, -0.0401f, 1.1679f}}},   // ntsc-colors
 };
 static_assert(sizeof(COLOR_PROFILES) / sizeof(COLOR_PROFILES[0]) == COLOR_PROFILE_COUNT, "one profile per value");
+static_assert(sizeof(PICCOLO_INPUT_PORT_DEVICES) / sizeof(PICCOLO_INPUT_PORT_DEVICES[0]) == INPUT_PORT_COUNT,
+              "one device setting per input port");
 
 const char* const PICCOLO_PROFILE_PARAM_NAMES[PICCOLO_PROFILE_PARAM_COUNT] = {
     "PROFILE_GAMMA_IN", "PROFILE_GAMMA_OUT", "PROFILE_CURVE", "PROFILE_STRENGTH",
@@ -641,6 +651,11 @@ void piccolo_settings_viewport(const Settings* settings, ViewportInput* input)
         ViewportAnchor::left,        ViewportAnchor::center, ViewportAnchor::right,
         ViewportAnchor::bottom_left, ViewportAnchor::bottom, ViewportAnchor::bottom_right,
     };
+    static_assert(sizeof(ASPECTS) / sizeof(ASPECTS[0]) == ASPECT_COUNT && sizeof(FIXED) / sizeof(FIXED[0]) == ASPECT_COUNT,
+                  "an aspect mode and a ratio per aspect value");
+    static_assert(sizeof(SCALINGS) / sizeof(SCALINGS[0]) == SCALING_COUNT, "one scaling per value");
+    static_assert(sizeof(FILTERS) / sizeof(FILTERS[0]) == FILTER_COUNT, "one filter per value");
+    static_assert(sizeof(ANCHORS) / sizeof(ANCHORS[0]) == POSITION_COUNT, "one anchor per position value");
 
     uint32_t aspect = settings_get_enum(settings, PICCOLO_VIDEO_ASPECT);
     input->aspect = ASPECTS[aspect];
@@ -707,6 +722,35 @@ bool piccolo_settings_remove_game_folder(Settings* settings, uint32_t index)
     }
     settings_reset(settings, SettingLayer::global, PICCOLO_PATH_GAMES[PICCOLO_GAME_FOLDER_MAX - 1]);
     return true;
+}
+
+void piccolo_settings_compact_game_folders(Settings* settings)
+{
+    uint32_t next = 0;   // the first slot not yet filled
+    bool moved = false;
+    for (uint32_t i = 0; i < PICCOLO_GAME_FOLDER_MAX; i++)
+    {
+        const char* text = settings_get_layer(settings, SettingLayer::global, PICCOLO_PATH_GAMES[i]);
+        if (text == nullptr || text[0] == '\0')
+        {
+            continue;
+        }
+        if (i != next)
+        {
+            std::string folder = text;   // the set below may move the text it points into
+            settings_set(settings, SettingLayer::global, PICCOLO_PATH_GAMES[next], folder.c_str());
+            moved = true;
+        }
+        next++;
+    }
+    if (!moved)
+    {
+        return;   // already compact: nothing written, nothing dirty
+    }
+    for (uint32_t i = next; i < PICCOLO_GAME_FOLDER_MAX; i++)
+    {
+        settings_reset(settings, SettingLayer::global, PICCOLO_PATH_GAMES[i]);
+    }
 }
 
 double piccolo_settings_window_aspect(const Settings* settings)

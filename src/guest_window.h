@@ -72,7 +72,8 @@ struct GuestWindow
     NetGuestLink link;
     std::string core_path;                       // the game the session belongs to (a hard reset
     std::string content_path;                    // starts the same ones again: the session stays)
-    std::vector<uint8_t> png;                    // the card's picture, taken when the window opened
+    GuestCardFrame frame;                        // the frame for the card's picture (a copy, taken when the window
+                                                 // opened or a refresh is due; handed to the upload thread when sent)
     GuestCardUpload card;
     uint64_t next_refresh_ms = 0;                // a live link takes the picture again then (GUEST_CARD_REFRESH_MS)
     // CREATE LINK / REFRESH LINK: the link shows only once it's ready (Andrés): its room
@@ -127,7 +128,7 @@ struct GuestWindowAction
     uint8_t  kick_key[NET_KEY_SIZE] = {};
 };
 
-// Opens the window (the caller has filled `title` and `png` for the running game).
+// Opens the window (the caller has filled `title` and `frame` for the running game).
 void guest_window_open(GuestWindow* window);
 
 // Under the network lock (`access` nullptr: the network is off). `game`: a

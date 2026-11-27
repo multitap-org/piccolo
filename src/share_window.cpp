@@ -550,20 +550,15 @@ static Str refusal_text(NetClientRefusal refusal)
     }
 }
 
-// The other side while no piccolo is connected with OWNER access: the
-// piccolos on this network, the code (only the first time) and CONNECT; or,
-// connected at a lower level, what to ask for there.
-// A piccolo on the LAN we paired with (by name: the list doesn't carry keys).
+// The other side while no piccolo is connected with FILE TRANSFER (SHARE)
+// granted: the piccolos on this network, the code (only the first time) and
+// CONNECT; or, connected without it, what to ask for there.
+// A piccolo on the LAN we paired with: the link says so by key (an older one
+// that sends no key id is never "paired" here: PAIR stays offered, and a
+// device that does know us just welcomes the pairing).
 static bool found_is_paired(const NetShareLinkStatus* link, int32_t index)
 {
-    for (size_t i = 0; i < link->paired.size(); i++)
-    {
-        if (link->paired[i] == link->found[static_cast<size_t>(index)].name)
-        {
-            return true;
-        }
-    }
-    return false;
+    return link->found[static_cast<size_t>(index)].paired;
 }
 
 static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, const PaneLayout* layout,
@@ -585,7 +580,7 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
     }
     else if (link->state == NetShareLinkState::ready)
     {
-        // Connected, but not at OWNER: the other piccolo decides that.
+        // Connected, but FILE TRANSFER is not granted: the other piccolo decides that.
         retro_ui_text_wrapped(link->host_name.c_str());
         retro_ui_dim_text_wrapped_at(piccolo_text(strings, Str::share_needs_owner), 0.0f);
         if (retro_ui_button(piccolo_text(strings, Str::share_disconnect)))
@@ -647,8 +642,9 @@ static void draw_connect(ShareWindow* window, const NetShareLinkStatus* link, co
                 }
             }
         }
-        // Not paired yet and not on this network: our code, typed on the other
-        // piccolo in TOOLS > INVITE, which waits for us on the beacon.
+        // Not paired yet and not on this network: PAIR opens ENTER A CODE here,
+        // for the code the other piccolo shows in TOOLS > PAIR > GENERATE
+        // PAIRING CODE, which waits for us on the beacon.
         retro_ui_spacing();
         retro_ui_push_id("invite");
         if (retro_ui_list_item(0, piccolo_text(strings, Str::share_pair_internet), window->invite_selected, nullptr))

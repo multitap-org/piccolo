@@ -148,6 +148,42 @@ int main(int argc, char** argv)
         }
     }
 
+    // The game folders: "+" only opens CHOOSE FOLDER, so a slot holds a
+    // folder only once a non-empty value is set; an empty one is no folder.
+    std::vector<std::string> folders;
+    fresh(&settings);
+    piccolo_settings_game_folders(&settings, &folders);
+    check(folders.empty(), "game folders: none set at first");
+    check(settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[0]) == nullptr,
+          "game folders: nothing adds a slot on its own");
+    settings_set(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[0], "");
+    piccolo_settings_game_folders(&settings, &folders);
+    check(folders.empty(), "game folders: an empty value is no folder");
+    settings_set(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[0], "/games/a");
+    piccolo_settings_game_folders(&settings, &folders);
+    check(folders.size() == 1 && folders[0] == "/games/a", "game folders: a set value is a folder");
+
+    // A file edited by hand with gaps: the folders move up, in order.
+    fresh(&settings);
+    settings_set(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[1], "/games/b");
+    settings_set(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[4], "/games/c");
+    settings_set(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[PICCOLO_GAME_FOLDER_MAX - 1], "/games/d");
+    piccolo_settings_compact_game_folders(&settings);
+    check(settings.dirty, "game folders with gaps: compacting writes");
+    const char* slot0 = settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[0]);
+    const char* slot1 = settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[1]);
+    const char* slot2 = settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[2]);
+    check(slot0 != nullptr && std::strcmp(slot0, "/games/b") == 0 && slot1 != nullptr &&
+              std::strcmp(slot1, "/games/c") == 0 && slot2 != nullptr && std::strcmp(slot2, "/games/d") == 0,
+          "... the folders are in the first slots, in order");
+    check(settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[3]) == nullptr &&
+              settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[4]) == nullptr &&
+              settings_get_layer(&settings, SettingLayer::global, PICCOLO_PATH_GAMES[PICCOLO_GAME_FOLDER_MAX - 1]) == nullptr,
+          "... and the slots they left are empty");
+    settings.dirty = false;
+    piccolo_settings_compact_game_folders(&settings);
+    check(!settings.dirty, "an already compact list is not marked dirty");
+
     if (g_failures == 0)
     {
         std::printf("theme settings: all checks passed\n");

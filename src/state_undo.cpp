@@ -46,7 +46,9 @@ bool state_undo_keep(const char* state_path)
     std::string undo = state + ".undo";
     std::string picture = state + ".png";
     std::string picture_undo = picture + ".undo";
-    bool ok = host_fs_exists(state.c_str()) ? host_fs_rename(state.c_str(), undo.c_str()) : write_empty(&undo);
+    bool had_state = host_fs_exists(state.c_str());
+    bool ok = had_state ? host_fs_rename(state.c_str(), undo.c_str()) : write_empty(&undo);
+    bool kept_state = ok;   // the undo file is now the slot's old state (or its empty marker)
     if (ok)
     {
         ok = host_fs_exists(picture.c_str()) ? host_fs_rename(picture.c_str(), picture_undo.c_str())
@@ -55,8 +57,23 @@ bool state_undo_keep(const char* state_path)
     if (!ok)
     {
         host_log(LogLevel::warning, "Undo save state: could not keep %s; no undo for this save", state_path);
-        host_fs_remove_file(undo.c_str());
-        host_fs_remove_file(picture_undo.c_str());
+        host_fs_remove_file(picture_undo.c_str());   // an older picture's leftover: its state is going
+        if (kept_state && had_state)
+        {
+            // The ".undo" is now the only copy of the old state, and the save
+            // that follows may fail too: put it back instead of deleting it.
+            // If that fails as well, leave it where it is rather than lose it.
+            if (!host_fs_rename(undo.c_str(), state.c_str()))
+            {
+                host_log(LogLevel::error, "Undo save state: could not put %s back", state_path);
+            }
+        }
+        else
+        {
+            // Either an empty marker or an older undo that was never replaced:
+            // nothing of the slot's current state to lose.
+            host_fs_remove_file(undo.c_str());
+        }
     }
     return ok;
 }

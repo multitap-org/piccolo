@@ -44,6 +44,7 @@ static void reset_device(PairWindow* window)
     window->given = 0;
     window->ticks = 0;
     window->device = -1;
+    std::memset(window->device_key, 0, sizeof(window->device_key));
     window->newly_paired = false;
     window->seen_connecting = false;
     window->device_since_ms = 0;
@@ -178,6 +179,7 @@ void pair_window_update(PairWindow* window, const NetShareLinkStatus* link, bool
         window->host_uses = link->host_uses;
         window->given = link->caps;
         window->device = link->device;
+        std::memcpy(window->device_key, link->host_key, NET_KEY_SIZE);
         window->ticks = default_ticks(link->host_uses, link->host_signed);
         if (!link->newly_paired && link->device >= 0 && static_cast<size_t>(link->device) < link->paired_devices.size())
         {
@@ -229,18 +231,6 @@ static void add_button(PairButtons* row, const char* id, const char* label, Pair
     button->help = help;
     row->presses[row->count] = press;
     row->count++;
-}
-
-static bool is_paired(const NetShareLinkStatus* link, const std::string* name)
-{
-    for (size_t i = 0; i < link->paired.size(); i++)
-    {
-        if (link->paired[i] == *name)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 // "<PREFIX> <NAME>", cut to the panel's width with "..." (all of it in the tooltip).
@@ -309,8 +299,9 @@ static void draw_device(PairWindow* window, const PairWindowState* state, PairBu
                 continue;
             }
             const std::string* name = &found->name;
-            const char* note = is_paired(link, name) ? piccolo_text(strings, Str::pair_paired)
-                                                     : net_caps_ui_kind(strings, found->kind);
+            // By key (the library's answer), never by name: every install is called PICCOLO.
+            const char* note = found->paired ? piccolo_text(strings, Str::pair_paired)
+                                             : net_caps_ui_kind(strings, found->kind);
             bool selected = !window->enter_selected && window->selected == static_cast<int32_t>(i);
             if (retro_ui_list_item(row, name->c_str(), selected, note))
             {
@@ -380,6 +371,7 @@ static void draw_device(PairWindow* window, const PairWindowState* state, PairBu
             window->ask.cap = asked;
             window->ask.name = window->host_name;
             window->ask.target = ASK_DEVICE;
+            std::memcpy(window->ask.key, window->device_key, NET_KEY_SIZE);
         }
     }
     draw_granted_there(strings, window->host_name.c_str(), window->given, true);
@@ -426,6 +418,7 @@ static void draw_code(PairWindow* window, const PairWindowState* state, PairButt
                 window->ask.cap = asked;
                 window->ask.name = request->name;
                 window->ask.target = ASK_REQUEST;
+                window->ask_peer = request->peer;
             }
         }
         add_button(buttons, "cancel", piccolo_text(strings, Str::pair_cancel), PairWindowPress::cancel, true, nullptr);
@@ -598,6 +591,23 @@ void pair_window_draw(PairWindow* window, const PairWindowState* state, RetroUiF
     retro_ui_window_end();
     // The red question, over the window (FILE TRANSFER / SETTINGS for an
     // unsigned build): ticked only on GRANT ANYWAY.
+    // It belongs to the request it was asked about: if that one is gone (or
+    // another device sits on its peer now) it is dropped, never ticked on
+    // someone else.
+    if (window->ask.cap != 0 && window->ask.target == ASK_REQUEST &&
+        (!window->request.active || window->request.peer != window->ask_peer ||
+         window->ask.name != window->request.name))
+    {
+        window->ask.cap = 0;
+    }
+    // The same for the device just paired: asked about one key, dropped if
+    // the screen shows another (or none) now.
+    if (window->ask.cap != 0 && window->ask.target == ASK_DEVICE &&
+        (window->phase != PairDevicePhase::done ||
+         std::memcmp(window->ask.key, window->device_key, NET_KEY_SIZE) != 0))
+    {
+        window->ask.cap = 0;
+    }
     uint32_t target = window->ask.target;
     NetCaps granted = net_caps_ui_unsigned(&window->ask, strings);
     if (granted != 0 && target == ASK_REQUEST && window->request.active)
@@ -718,8 +728,25 @@ void pair_window_apply_device(PairWindow* window, const PairWindowAction* action
         // (told to it at once; Andrés, 2026-11-25: one pairing, both ways).
         if (started && window->device >= 0)
         {
-            net_share_link_set_grants(link, static_cast<uint32_t>(window->device), window->ticks);
-            SDL_Log("Pair: \"%s\" may use here: %s", window->host_name.c_str(), net_caps_name(window->ticks).c_str());
+            // By key, in the status as it is now: the list may have changed
+            // since this device connected, and its index with it.
+            int32_t index = -1;
+            for (size_t i = 0; status != nullptr && i < status->paired_devices.size(); i++)
+            {
+                if (std::memcmp(status->paired_devices[i].key, window->device_key, NET_KEY_SIZE) == 0)
+                {
+                    index = static_cast<int32_t>(i);
+                }
+            }
+            if (index >= 0)
+            {
+                net_share_link_set_grants(link, static_cast<uint32_t>(index), window->ticks);
+                SDL_Log("Pair: \"%s\" may use here: %s", window->host_name.c_str(), net_caps_name(window->ticks).c_str());
+            }
+            else
+            {
+                SDL_Log("Pair: \"%s\" is no longer in the list, its ticks are not applied", window->host_name.c_str());
+            }
         }
         close_device(window, link, started, share_open);
         window->open = false;

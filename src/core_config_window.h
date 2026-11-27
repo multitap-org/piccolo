@@ -194,7 +194,8 @@ enum class CoreConfigRequest
     choose_shader,   // open the shader picker for shader_scope
 };
 
-// Opens on the tab it was last closed on (the remap view and any SET closed).
+// Opens on the tab it was last closed on (the remap view closed; a SET still waiting is cancelled
+// by the next core_config_window_apply).
 void core_config_window_open(CoreConfigWindow* config);
 
 // Opens on CONTROLS (a controller went away: rearrange the ports).

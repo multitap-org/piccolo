@@ -91,6 +91,27 @@ bool guest_card_png(const void* pixels, uint32_t width, uint32_t height, uint32_
     return ok;
 }
 
+bool guest_card_frame_copy(GuestCardFrame* frame, const void* pixels, uint32_t width, uint32_t height, uint32_t pitch,
+                           GuestCardPixels format)
+{
+    frame->pixels.clear();
+    frame->width = 0;
+    frame->height = 0;
+    frame->pitch = 0;
+    if (pixels == nullptr || width == 0 || height == 0 || width > NET_GUEST_CARD_MAX_WIDTH ||
+        height > NET_GUEST_CARD_MAX_HEIGHT)
+    {
+        return false;
+    }
+    const uint8_t* bytes = static_cast<const uint8_t*>(pixels);
+    frame->pixels.assign(bytes, bytes + static_cast<size_t>(pitch) * height);
+    frame->width = width;
+    frame->height = height;
+    frame->pitch = pitch;
+    frame->format = format;
+    return true;
+}
+
 std::string guest_card_url(const char* beacon, const NetGuestLink* link)
 {
     return std::string("https://") + beacon + "/join/" + link->room + "/card";
@@ -120,6 +141,24 @@ static int upload_thread(void* user)
 {
     GuestCardUpload* upload = static_cast<GuestCardUpload*>(user);
     bool sent = false;
+    // The scaling and the PNG, here and not on the main thread under the
+    // network lock. A frame that can't be made into a PNG goes without one.
+    std::vector<uint8_t> png;
+    if (!upload->frame.pixels.empty() &&
+        !guest_card_png(upload->frame.pixels.data(), upload->frame.width, upload->frame.height, upload->frame.pitch,
+                        upload->frame.format, &png))
+    {
+        host_log(LogLevel::warning, "Guest link: no picture for the card");
+    }
+    NetGuestLink link;   // only the card key is used by the body
+    std::memcpy(link.card_key, upload->card_key, sizeof(link.card_key));
+    if (!net_guest_card_body(&link, upload->title, png.data(), png.size(), &upload->body))
+    {
+        std::snprintf(upload->error, sizeof(upload->error), "the card's body is out of bounds");
+        host_log(LogLevel::warning, "Guest link: the card wasn't sent: %s", upload->error);
+        SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::failed));
+        return 0;
+    }
 #if defined(PICCOLO_GUEST_CARD)
     for (uint32_t attempt = 0; attempt < GUEST_CARD_TRIES && !sent; attempt++)
     {
@@ -163,17 +202,33 @@ void guest_card_finish(GuestCardUpload* upload)
 }
 
 bool guest_card_send(GuestCardUpload* upload, const char* beacon, const NetGuestLink* link, const char* title,
-                     const std::vector<uint8_t>* png)
+                     GuestCardFrame* frame)
 {
     guest_card_finish(upload);
     upload->status = 0;
     upload->error[0] = '\0';
     upload->url = guest_card_url(beacon, link);
-    if (!net_guest_card_body(link, title, png->data(), png->size(), &upload->body))
+    size_t title_size = std::strlen(title);
+    if (title_size == 0 || title_size > NET_GUEST_MAX_TITLE)
     {
         SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::failed));
         return false;
     }
+    std::memcpy(upload->title, title, title_size + 1);
+    std::memcpy(upload->card_key, link->card_key, sizeof(upload->card_key));
+    // The hand-off: the thread (not started yet, the last one joined above)
+    // gets the frame's buffer, the caller gets the old one back to reuse. From
+    // SDL_CreateThread until the state leaves `sending` only the thread
+    // touches `upload->frame`.
+    upload->frame.pixels.swap(frame->pixels);
+    upload->frame.width = frame->width;
+    upload->frame.height = frame->height;
+    upload->frame.pitch = frame->pitch;
+    upload->frame.format = frame->format;
+    frame->pixels.clear();
+    frame->width = 0;
+    frame->height = 0;
+    frame->pitch = 0;
     SDL_SetAtomicInt(&upload->state, static_cast<int>(GuestCardState::sending));
     upload->thread = SDL_CreateThread(upload_thread, "guest card", upload);
     if (upload->thread == nullptr)

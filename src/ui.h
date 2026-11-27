@@ -39,6 +39,7 @@
 #include "retro_ui.h"
 #include "retro_ui_font.h"
 #include "safe_start_window.h"
+#include "settings_error_window.h"
 #include "settings_window.h"
 #include "shader_check_view.h"
 #include "share_window.h"
@@ -116,6 +117,8 @@ struct UiView
     MapWindowState          map = {};
     bool                    safe_start_shown = false;
     SafeStartWindowState    safe_start = {};
+    bool                    settings_error_shown = false;   // piccolo.cfg could not be read, not answered yet
+    SettingsErrorWindowState settings_error = {};
     bool                    shader_check_shown = false;
     ShaderCheckText         shader_check_text;
     std::string             shader_check_preset;   // the preset's file name, no folder or extension
@@ -184,6 +187,7 @@ struct UiActions
     InputWindowAction        input = {};
     MapWindowAction          map = {};
     SafeStartWindowAction    safe_start = {};
+    SettingsErrorWindowAction settings_error = {};
     ShaderCheckChoice        shader_check = ShaderCheckChoice::none;
     TextInputWindowAction    text_input = {};
     DebugWindowAction        debug = {};

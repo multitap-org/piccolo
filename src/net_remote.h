@@ -24,12 +24,17 @@
 #include "net_pairing.h"   // NetCaps
 #include "net_settings.h"
 #include "net_trust.h"
+#include "piccolo_text.h"   // PICCOLO_LANGUAGE_COUNT
 #include "settings.h"
 
 struct NetRemote
 {
     Localization                  strings;            // in the language last asked for
     uint32_t                      strings_language = 0;   // piccolo_language_code() index loaded in `strings`
+    // Each language parsed once, on first use: devices of different languages
+    // alternate without reading a .po again. A changed .po is read after a restart.
+    Localization                  loaded[PICCOLO_LANGUAGE_COUNT];
+    bool                          language_loaded[PICCOLO_LANGUAGE_COUNT] = {};
     std::vector<NetSetting>       settings;           // described at each first page
     std::vector<NetSettingValues> sent;               // what devices were last told, per offered key
     uint32_t                      sent_revision = 0;  // Settings::revision when `sent` was last compared

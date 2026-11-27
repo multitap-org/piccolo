@@ -56,6 +56,36 @@ static void set_window_pixels(SDL_Window* window, uint32_t width, uint32_t heigh
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Window: %ux%u pixels", width, height);
 }
 
+// How much of the saved rectangle must lie on a display to put the window
+// there: less and it could not be grabbed (a monitor unplugged since).
+static constexpr int32_t RESTORE_MIN_VISIBLE = 64;
+
+// The usable bounds of the display the saved rectangle belongs to, and whether
+// at least RESTORE_MIN_VISIBLE pixels each way of it are inside them.
+static bool saved_rect_on_display(const PiccoloWindow* state, SDL_Rect* usable)
+{
+    SDL_Rect saved = {state->saved_x, state->saved_y, state->saved_width, state->saved_height};
+    if (saved.w < RESTORE_MIN_VISIBLE)
+    {
+        saved.w = RESTORE_MIN_VISIBLE;   // no size saved (not FIXED): its corner is what counts
+    }
+    if (saved.h < RESTORE_MIN_VISIBLE)
+    {
+        saved.h = RESTORE_MIN_VISIBLE;
+    }
+    SDL_DisplayID display = SDL_GetDisplayForRect(&saved);
+    if (display == 0 || !SDL_GetDisplayUsableBounds(display, usable))
+    {
+        return false;
+    }
+    SDL_Rect common = {};
+    if (!SDL_GetRectIntersection(&saved, usable, &common))
+    {
+        return false;
+    }
+    return common.w >= RESTORE_MIN_VISIBLE && common.h >= RESTORE_MIN_VISIBLE;
+}
+
 void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Settings* settings)
 {
     if (state->phone_window || !state->has_saved || !settings_get_bool(settings, PICCOLO_WINDOW_REMEMBER))
@@ -63,15 +93,44 @@ void piccolo_window_restore(PiccoloWindow* state, SDL_Window* window, const Sett
         return;   // the first piccolo_window_apply() sets the mode's size
     }
     uint32_t mode = settings_get_enum(settings, PICCOLO_WINDOW_MODE);
+    // A display that is gone (or a resolution that shrank) must not leave the
+    // window off screen: then the system places it and the size is clamped.
+    SDL_Rect usable = {};
+    bool on_display = saved_rect_on_display(state, &usable);
     if (mode == PICCOLO_WINDOW_FIXED && state->saved_width > 0 && state->saved_height > 0)
     {
-        SDL_SetWindowSize(window, state->saved_width, state->saved_height);
+        int32_t width = state->saved_width;
+        int32_t height = state->saved_height;
+        if (on_display)
+        {
+            if (width > usable.w)
+            {
+                width = usable.w;
+            }
+            if (height > usable.h)
+            {
+                height = usable.h;
+            }
+        }
+        else
+        {
+            SDL_Rect primary = {};
+            if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &primary))
+            {
+                width = width < primary.w ? width : primary.w;
+                height = height < primary.h ? height : primary.h;
+            }
+        }
+        SDL_SetWindowSize(window, width, height);
         // Counts as applied: the remembered size wins over the preset.
         state->fixed_aspect = piccolo_settings_window_aspect(settings);
         state->fixed_height = piccolo_settings_window_height(settings);
     }
     // Ignored where the desktop places windows itself (Wayland).
-    SDL_SetWindowPosition(window, state->saved_x, state->saved_y);
+    if (on_display)
+    {
+        SDL_SetWindowPosition(window, state->saved_x, state->saved_y);
+    }
     state->mode = mode;
     state->applied = true;
 }

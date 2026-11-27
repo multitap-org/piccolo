@@ -30,6 +30,7 @@
 #include "net_share_link.h"
 #include "pair_window.h"
 #include "quick_menu.h"
+#include "settings_error_window.h"
 
 #include "retro_ui_font.h"
 
@@ -71,6 +72,7 @@ struct DebugPreviewView
     MobileHomeState  phone = {};
     DvrViewText      dvr_text = {};
     PortsWidgetState devices = {};
+    SettingsErrorWindowState settings_error = {};
 };
 
 // What was pressed in it (UiActions): only closing it counts.
@@ -83,6 +85,7 @@ struct DebugPreviewActions
     MobileHomeAction  phone = {};
     DvrViewInput      dvr = {};
     PortsWidgetAction devices = {};
+    SettingsErrorWindowAction settings_error = {};
 };
 
 // Shows `which` (another one shown ends), from its first step's fake state.
@@ -92,8 +95,10 @@ bool debug_preview_shown(const DebugPreviews* previews);
 // A phone screen is shown: it covers the whole screen, so the debug window
 // (and the phone's own HOME) step aside until it ends.
 bool debug_preview_covers_screen(const DebugPreviews* previews);
-// Before the view, every frame: the real window open ends its preview.
-void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open);
+// Before the view, every frame: the real window open ends its preview
+// (`devices_open`: the ports widget's DEVICES board; `dvr_open`: the DVR).
+void debug_preview_update(DebugPreviews* previews, bool pair_open, bool about_open, bool guest_open, bool quick_open,
+                          bool settings_error_open, bool devices_open, bool dvr_open);
 // `version`: ABOUT's (PICCOLO_VERSION). `menus`: the menu bar's, for the
 // phone's ☰ (the real items; only the games and the paused game are fake).
 // `phone_upright`: the phone UI held upright (DEVICES' rows).

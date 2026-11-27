@@ -152,6 +152,10 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     {
         safe_start_window_draw(&view->safe_start, pixel_font, scale, &actions->safe_start);
     }
+    if (view->settings_error_shown)
+    {
+        settings_error_window_draw(&view->settings_error, pixel_font, scale, &actions->settings_error);
+    }
     if (view->shader_check_shown)
     {
         actions->shader_check = shader_check_view_draw_window(pixel_font, scale, &view->shader_check_text,

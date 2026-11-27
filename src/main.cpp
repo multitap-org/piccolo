@@ -46,6 +46,7 @@
 #include "continue_view.h"
 #include "touch_ui.h"
 #include "safe_start_window.h"
+#include "settings_error_window.h"
 #include "shader_check.h"
 #include "shader_check_view.h"
 #include "text_input_window.h"
@@ -111,13 +112,31 @@
 constexpr uint64_t PICCOLO_CONTENT_CACHE_MAX_BYTES = 4ull * 1024ull * 1024ull * 1024ull;
 
 
+// Gamepads drive the menus and dialogs as the keyboard does: their
+// interface actions become the toolkit's move and activate keys; BACK
+// closes an open list or popup, otherwise the topmost window (as Escape).
+struct UiKey
+{
+    InputAction action;
+    UiNavKey    key;
+};
+
+static const UiKey UI_KEYS[] = {
+    {InputAction::ui_up, UiNavKey::up},
+    {InputAction::ui_down, UiNavKey::down},
+    {InputAction::ui_left, UiNavKey::left},
+    {InputAction::ui_right, UiNavKey::right},
+    {InputAction::ui_accept, UiNavKey::accept},
+};
+constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
+
 struct App
 {
     AppShell shell = {};
     AppLinks links;               // piccolo:// links (app_links.h): from the arguments, later launches, drops
     InputSystem input = {};       // controllers, ports, hotkeys (input_bindings.h)
     InputSdl    input_sdl = {};   // the keyboard and gamepads, from SDL
-    bool        ui_keys_down[5] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
+    bool        ui_keys_down[UI_KEY_COUNT] = {};   // gamepad interface actions given to the toolkit as keys (drive_ui_with_gamepads)
     bool        ui_back_down = false;
     uint64_t    ui_back_since_ms = 0;      // BACK / SELECT held since (0 = not held)
     bool        ui_back_done = false;      // this hold already closed a window
@@ -189,10 +208,11 @@ struct App
     NetService net_service;              // the listener on its own thread (net_service.h); its NetAccess:
                                          // net_service.access, used between net_service_lock / _unlock
     InputNet   input_net = {};           // paired devices' pads, in the input router
-    NetGames   net_games = {};           // games from devices with FULL access (net_games.h)
+    NetGames   net_games = {};           // games from devices with SETTINGS (net_games.h)
     bool       net_load_waiting = false; // a load_request is in pending_start: answered once it ran
     uint32_t   net_load_peer = NET_NO_PEER;
     uint32_t   net_load_id = 0;
+    bool       net_load_refused = false; // SAFE START was closed (maybe under the lock): the main loop answers the load
     NetRemote  net_remote = {};          // settings and actions from devices (net_remote.h)
     bool       net_remote_ready = false;
     // PAUSE WHEN CONTROLLERS DISCONNECT: what played last, and the pause it set.
@@ -225,6 +245,8 @@ struct App
     Headless   headless;                      // GO HEADLESS: a streaming device has the game (headless.h)
     char       net_peer_language[NET_MAX_PEERS][8] = {};   // what each device asked for ("" = English)
     bool       net_fast_forward[NET_MAX_PEERS] = {};   // FAST FORWARD held, per peer
+    char       net_guest_name[NET_MAX_PEERS][NET_GUEST_MAX_NAME + 1] = {};   // each guest's name: `closed` comes after
+                                                                              // the peer was reset, with no name
     NetRemoteGame net_actions_sent;      // what the action lists last said (sent again when it changes)
     uint64_t   net_controllers_sent[NET_MAX_PEERS] = {};   // a summary of the controllers each device was last sent
     bool       net_devices_wanted[NET_MAX_PEERS] = {};     // asked for `devices` once: gets it again on changes
@@ -294,6 +316,17 @@ struct App
     // Settings (piccolo_settings.h) in <settings>/piccolo.cfg, and their window.
     Settings       settings = {};
     std::string    settings_path;
+    // piccolo.cfg exists but settings_load could not read it (review 2026-11-26, H3): the settings
+    // are the defaults, and nothing is saved all run so the user's file is not replaced.
+    bool           settings_unreadable = false;
+    bool           settings_error_open = false;   // its dialog (settings_error_window.h), until OK
+    // The same for the other files read at start (a missing file is fine: only "there but not
+    // readable" counts). Each one's writers return while its flag is set.
+    bool           core_options_unreadable = false;   // core_options.cfg
+    bool           input_config_unreadable = false;   // input.cfg
+    bool           recent_unreadable = false;         // recent.cfg
+    bool           last_used_unreadable = false;      // last_used.cfg
+    char           settings_error_files[128] = {};    // "piccolo.cfg, input.cfg": for the dialog, built once at start
     SettingsWindow settings_window = {};
     const char*    choose_folder_key = nullptr;   // the folder setting CHOOSE FOLDER sets
     bool           settings_window_was_open = false;
@@ -387,11 +420,11 @@ struct App
     CoreUpdater        core_updater;
     CoresWindow        cores_window;
     PairWindow         pair_window;      // TOOLS > PAIR (our code, to be let into another piccolo)
-    ShareWindow        share_window;     // TOOLS > SHARE (files with another piccolo at OWNER level)
+    ShareWindow        share_window;     // TOOLS > SHARE (files with another piccolo granting FILE TRANSFER)
     NetShareFolders    share_folders;    // this piccolo's shared folders: game folders, saves, states
     NetShareLink       share_link;       // SHARE's connection to another piccolo, as its client
     NetShareLinkStatus share_status;     // read once per loop while SHARE is open
-    bool               share_connected = false;   // last loop: connected with OWNER access
+    bool               share_connected = false;   // last loop: connected with FILE TRANSFER (SHARE) granted
     std::vector<NetShareClientDone> share_done;
     uint32_t           share_rate_id = 0;    // the copy the rate is measured for
     uint64_t           share_rate_done = 0;
@@ -423,6 +456,9 @@ struct App
     bool window_focused     = true;
     bool screensaver_allowed = false;   // what we last told SDL
     char last_core[LIBRETRO_PATH_MAX]      = {};
+    // The running core's file name ("snes9x_libretro.so", "" = no game): set once when a game
+    // starts, cleared when it ends. TOOLS > CORES never replaces or removes it.
+    char running_core_file[LIBRETRO_PATH_MAX]            = {};
     char last_folder[LIBRETRO_PATH_MAX]    = {};
 };
 
@@ -437,7 +473,8 @@ static std::string last_used_file(const App* app)
 
 static void save_last_used(const App* app)
 {
-    if (app->paths.settings.empty())
+    // last_used.cfg was there but unreadable at start: what is saved now would replace it.
+    if (app->last_used_unreadable || app->paths.settings.empty())
     {
         return;
     }
@@ -464,8 +501,13 @@ static void save_last_used(const App* app)
 static void load_last_used(App* app)
 {
     SettingsFile file = {};
-    if (app->paths.settings.empty() || !settings_file_load(&file, last_used_file(app).c_str()))
+    if (app->paths.settings.empty())
     {
+        return;
+    }
+    if (!settings_file_load(&file, last_used_file(app).c_str()))
+    {
+        app->last_used_unreadable = true;   // a missing file loads fine: this is "there, not readable"
         return;
     }
     const char* core = settings_file_get(&file, "", "core");
@@ -535,8 +577,66 @@ static void apply_folders(App* app)
     }
 }
 
+static void save_input_config(App* app)
+{
+    // Every write of input.cfg comes through here (shutdown too, which saves even when nothing
+    // changed): a file that was there but unreadable at start left no controller profiles, and
+    // saving would replace the user's.
+    if (app->input_config_unreadable || app->input_config_path.empty())
+    {
+        return;
+    }
+    input_config_save(&app->input, app->input_config_path.c_str());
+}
+
+// Adds one file name to the list the dialog shows ("piccolo.cfg, input.cfg").
+static void settings_error_files_add(App* app, const char* name)
+{
+    size_t used = std::strlen(app->settings_error_files);
+    std::snprintf(app->settings_error_files + used, sizeof(app->settings_error_files) - used, "%s%s",
+                  used > 0 ? ", " : "", name);
+}
+
+// Once at start, after every file was read: which ones are there but could not be read, and
+// the dialog that says so (no per-frame work: the window only draws this text).
+static void build_settings_error_files(App* app)
+{
+    app->settings_error_files[0] = '\0';
+    if (app->settings_unreadable)
+    {
+        settings_error_files_add(app, "piccolo.cfg");
+    }
+    if (app->core_options_unreadable)
+    {
+        settings_error_files_add(app, "core_options.cfg");
+    }
+    if (app->input_config_unreadable)
+    {
+        settings_error_files_add(app, "input.cfg");
+    }
+    if (app->recent_unreadable)
+    {
+        settings_error_files_add(app, "recent.cfg");
+    }
+    if (app->last_used_unreadable)
+    {
+        settings_error_files_add(app, "last_used.cfg");
+    }
+    if (app->settings_error_files[0] != '\0')
+    {
+        app->settings_error_open = true;
+    }
+}
+
 static void save_settings(App* app)
 {
+    // Every write of piccolo.cfg comes through here. A file that exists but could not be read
+    // left the settings at their defaults: saving them would replace the user's file (the
+    // rename succeeds even when the old file was unreadable).
+    if (app->settings_unreadable)
+    {
+        return;
+    }
     if (app->settings.dirty && !app->settings_path.empty())
     {
         piccolo_settings_save(&app->settings, app->settings_path.c_str());
@@ -710,7 +810,8 @@ static void refresh_recent_labels(App* app)
 static void remember_recent(App* app, const char* core_path, const char* content_path)
 {
     recent_games_add(&app->recent, core_path, content_path);
-    if (!app->recent_path.empty())
+    // recent.cfg unreadable at start: the list is empty, saving it would replace the user's.
+    if (!app->recent_path.empty() && !app->recent_unreadable)
     {
         recent_games_save(&app->recent, app->recent_path.c_str());
     }
@@ -772,18 +873,18 @@ static void drop_undos(App* app)
 // HERE) doesn't: it has its own lane.
 static bool load_state_keeping_undo(App* app)
 {
-    size_t size = 0;
     bool kept = false;
     if (game_running(app))
     {
-        size = libretro_host_state_size(app->session.host);
-        kept = size > 0 && libretro_host_serialize(app->session.host, &app->undo_load_spare);
+        // (0 = no savestates.) What the core really wrote is the vector's size, not the size asked.
+        kept = libretro_host_state_size(app->session.host) > 0 &&
+               libretro_host_serialize(app->session.host, &app->undo_load_spare);
     }
     bool loaded = core_session_load_state(&app->session);
     if (loaded && kept)
     {
+        app->undo_load_size = app->undo_load_spare.size();
         app->undo_load.swap(app->undo_load_spare);
-        app->undo_load_size = size;
     }
     return loaded;
 }
@@ -798,16 +899,15 @@ static bool undo_load_state(App* app)
         return false;
     }
     LibretroHost* host = app->session.host;
-    size_t size = libretro_host_state_size(host);
-    bool kept = size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    bool kept = libretro_host_state_size(host) > 0 && libretro_host_serialize(host, &app->undo_load_spare);
     // A load as the player's (the rewind history jumps here, as for a slot).
     if (!libretro_host_load_state_memory(host, app->undo_load.data(), app->undo_load_size))
     {
         return false;
     }
     audio_output_clear(&app->session.audio);   // what was queued belongs to the time before
+    app->undo_load_size = kept ? app->undo_load_spare.size() : 0;   // what the core wrote, not the size asked
     app->undo_load.swap(app->undo_load_spare);
-    app->undo_load_size = kept ? size : 0;
     return true;
 }
 
@@ -944,10 +1044,10 @@ static void save_state_on_exit(App* app)
         {
             record.saved = ContinueSaved::no_states;
         }
-        else if (host_fs_write_file(path, state.data(), size))
+        else if (host_fs_write_file(path, state.data(), state.size()))   // what the host filled, not the size asked before
         {
             record.saved = ContinueSaved::state;
-            SDL_Log("Save state on exit: %s (%zu bytes)", path, size);
+            SDL_Log("Save state on exit: %s (%zu bytes)", path, state.size());
         }
         else
         {
@@ -1011,8 +1111,7 @@ static void resume_state_on_start(App* app)
         return;
     }
     LibretroHost* host = app->session.host;
-    size_t start_size = libretro_host_state_size(host);
-    bool kept = start_size > 0 && libretro_host_serialize(host, &app->undo_load_spare);
+    bool kept = libretro_host_state_size(host) > 0 && libretro_host_serialize(host, &app->undo_load_spare);
     bool loaded = size > 0 && libretro_host_load_state_memory(host, data, size);
     delete[] data;
     if (!loaded)
@@ -1023,8 +1122,8 @@ static void resume_state_on_start(App* app)
     audio_output_clear(&app->session.audio);
     if (kept)
     {
+        app->undo_load_size = app->undo_load_spare.size();   // what the core wrote, not the size asked
         app->undo_load.swap(app->undo_load_spare);
-        app->undo_load_size = start_size;
     }
     set_status(app, piccolo_text(&app->strings, Str::status_resumed));
 }
@@ -1124,13 +1223,16 @@ static std::string guest_beacon_host(const App* app)
     return name;
 }
 
-// The frame shown now, for the card (PNG) and the window's preview. A core
-// without a frame in memory (none yet): no picture, the card goes up
-// without one (the beacon shows white noise).
+// The frame shown now, for the card and the window's preview. Under the
+// network lock it only copies the frame (guest_card_frame_copy): the PNG is
+// made by the upload thread (guest_card_send). The preview's conversion
+// stays here: no PNG, a plain pixel conversion. A core without a frame in
+// memory (none yet): no picture, the card goes up without one (the beacon
+// shows white noise).
 static void guest_capture(App* app)
 {
     GuestWindow* window = &app->guest_window;
-    window->png.clear();
+    window->frame.pixels.clear();
     window->has_preview = false;   // until a new picture is uploaded: NO SCREENSHOT AVAILABLE
     if (!game_running(app) || app->session.host == nullptr)
     {
@@ -1147,7 +1249,7 @@ static void guest_capture(App* app)
         format = GuestCardPixels::xrgb1555;
     }
     uint32_t pitch = video->width * video->bytes_per_pixel;
-    if (!guest_card_png(video->pixels, video->width, video->height, pitch, format, &window->png))
+    if (!guest_card_frame_copy(&window->frame, video->pixels, video->width, video->height, pitch, format))
     {
         SDL_Log("Guest link: no picture for the card");
         return;
@@ -1275,7 +1377,13 @@ static void guest_update_locked(App* app)
         if (!window->prepare_sent && ready && state != GuestCardState::sending)
         {
             std::string beacon = guest_beacon_host(app);
-            guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+            // The frame taken when the window opened was handed to the last
+            // send (a REFRESH LINK sends again): take it again then.
+            if (window->frame.pixels.empty())
+            {
+                guest_capture(app);
+            }
+            guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->frame);
             window->prepare_sent = true;
             window->next_refresh_ms = now + GUEST_CARD_REFRESH_MS;
         }
@@ -1295,7 +1403,7 @@ static void guest_update_locked(App* app)
         window->next_refresh_ms = SDL_GetTicks() + GUEST_CARD_REFRESH_MS;
         guest_capture(app);
         std::string beacon = guest_beacon_host(app);
-        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->png);
+        guest_card_send(&window->card, beacon.c_str(), &window->link, window->title, &window->frame);
     }
     guest_window_tell_ports(window, &app->net_service.access, &app->input_net, &app->input);
 }
@@ -1406,6 +1514,7 @@ static void toggle_user_pause(App* app)
 // (UI modes, further down.)
 static UiDerived app_derive(const App* app);
 static void ui_follow_changes(App* app);
+static void shader_check_end_for_game(App* app);
 
 // The game pauses for the causes ui_derive() finds (ui_mode.h), and its
 // queued audio is dropped so resuming doesn't play stale sound.
@@ -1502,7 +1611,9 @@ static void save_learned_latency(App* app)
 
 static void save_core_options(App* app)
 {
-    if (app->option_store.dirty && !app->option_store_path.empty())
+    // The options store only: core_options.cfg unreadable at start left it empty, and saving it
+    // would replace the user's file. The cache below is rebuilt by the cores and stays free.
+    if (app->option_store.dirty && !app->option_store_path.empty() && !app->core_options_unreadable)
     {
         core_options_store_save(&app->option_store, app->option_store_path.c_str());
     }
@@ -1599,6 +1710,7 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     bool resume = !app->resume_skip && !app->safe_start_confirmed && !after_crash;
     app->resume_skip = false;
     app->safe_start_confirmed = false;
+    shader_check_end_for_game(app);   // while the previous game's settings are current
     if (game_running(app))
     {
         save_state_on_exit(app);   // the previous game, in its own settings' layer
@@ -1636,6 +1748,10 @@ static bool start_game(App* app, const FilePickerChoice* choice)
     if (!started)
     {
         remove_running_marker(app);   // failed cleanly: not a crash
+        if (!game_running(app))
+        {
+            app->running_core_file[0] = '\0';   // the failed start replaced the previous game
+        }
     }
     if (started)
     {
@@ -1644,6 +1760,16 @@ static bool start_game(App* app, const FilePickerChoice* choice)
         ui_game_started(&app->ui);   // straight into the game, everything closed
         ui_follow_changes(app);
         std::snprintf(app->last_core, sizeof(app->last_core), "%s", choice->core_path);
+        // The part after the last '/' or '\\' (a core path may be either on Windows).
+        const char* core_file = choice->core_path;
+        for (const char* c = choice->core_path; *c != '\0'; c++)
+        {
+            if (*c == '/' || *c == '\\')
+            {
+                core_file = c + 1;
+            }
+        }
+        std::snprintf(app->running_core_file, sizeof(app->running_core_file), "%s", core_file);
         if (choice->content_path[0] != '\0')
         {
             // The folder of the file, for the next LOAD GAME.
@@ -1702,18 +1828,6 @@ static void core_options_state(App* app, CoreOptionsUiState* state)
                           game_running(app) ? app->core_name : "", folder, app->game_name);
 }
 
-// The running core's file name ("snes9x_libretro.so"), "" when no game runs:
-// the core downloader never replaces or removes it.
-static std::string running_core_file(const App* app)
-{
-    if (!game_running(app))
-    {
-        return std::string();
-    }
-    const char* slash = std::strrchr(app->last_core, '/');
-    return slash != nullptr ? std::string(slash + 1) : std::string(app->last_core);
-}
-
 // TOOLS > CORES: the downloader is set up again on every open (unless it's
 // busy), so a changed CORE SERVER or cores folder applies.
 static void open_cores_window(App* app)
@@ -1752,7 +1866,8 @@ static void share_folder_paths(const App* app, NetShareFolderPaths* paths)
     paths->screenshots = folder_setting(app, PICCOLO_PATH_SCREENSHOTS, app->paths.screenshots);
     paths->config = app->paths.settings;
     paths->config_refused = {"piccolo.cfg",        "recent.cfg",      "last_used.cfg",   "imgui.ini",   "continue.cfg",
-                             "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig"};
+                             "audio_latency.cfg",  "build_proof.cfg", "build_proof.cfg.sig", "running.cfg",
+                             "frame_delay.cfg"};
     // The default screenshots folder is made by the first screenshot; made
     // here too, so SCREENSHOTS is offered (and can receive) before that, like
     // SAVES and STATES. A folder of the user's that isn't there (a drive not
@@ -2026,6 +2141,10 @@ static void app_open_widget(App* app, UiWidget widget);
 // QUICK SAVE / QUICK LOAD: the quick slot, whatever slot is selected.
 static bool quick_save(App* app)
 {
+    if (!game_running(app))
+    {
+        return false;   // report_session would show the session's last message
+    }
     uint32_t selected = app->session.state_slot;
     app->session.state_slot = QUICK_SLOT;
     bool saved = save_state_with_thumbnail(app);
@@ -2036,6 +2155,10 @@ static bool quick_save(App* app)
 
 static bool quick_load(App* app)
 {
+    if (!game_running(app))
+    {
+        return false;
+    }
     uint32_t selected = app->session.state_slot;
     app->session.state_slot = QUICK_SLOT;
     bool loaded = load_state_keeping_undo(app);
@@ -2079,6 +2202,10 @@ static bool hard_reset(App* app)
 // worked too (a hotkey's or a device's; the menus show it themselves).
 static void save_state_from(App* app, bool announce)
 {
+    if (!game_running(app))
+    {
+        return;   // nothing to save; the session's last message is not about this
+    }
     bool saved = save_state_with_thumbnail(app);
     if (saved)
     {
@@ -2089,6 +2216,10 @@ static void save_state_from(App* app, bool announce)
 
 static void load_state_from(App* app, bool announce)
 {
+    if (!game_running(app))
+    {
+        return;   // as save_state_from
+    }
     bool loaded = load_state_keeping_undo(app);
     if (loaded)
     {
@@ -2187,7 +2318,7 @@ static void handle_menu_action(App* app, MenuAction action)
             break;
         case MenuAction::clear_recents:
             app->recent.games.clear();
-            if (!app->recent_path.empty())
+            if (!app->recent_path.empty() && !app->recent_unreadable)   // see remember_recent
             {
                 recent_games_save(&app->recent, app->recent_path.c_str());
             }
@@ -2544,6 +2675,18 @@ static void shader_check_answer(App* app, ShaderCheckChoice choice)
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Shader preset too slow: reverted");
 }
 
+// The running game ends or is replaced: the question can't outlive it. This
+// must come BEFORE update_settings_context switches the core and game layers,
+// or the revert would write the old preset into the new game's settings
+// (widget_left's own revert then finds the check stopped and does nothing).
+static void shader_check_end_for_game(App* app)
+{
+    if (shader_check_asking(app))
+    {
+        shader_check_answer(app, ShaderCheckChoice::revert);
+    }
+}
+
 // Once per loop that ran core frames: times the loop for the check. The
 // target is a display refresh in Vsync timing (each loop presents one), a
 // core frame in Exact. Fast forward is fast on purpose: not a sample.
@@ -2563,24 +2706,6 @@ static void measure_shader_check(App* app)
                     1e9 / app->shader_check.measured_ns, hz);
     }
 }
-
-// Gamepads drive the menus and dialogs as the keyboard does: their
-// interface actions become the toolkit's move and activate keys; BACK
-// closes an open list or popup, otherwise the topmost window (as Escape).
-struct UiKey
-{
-    InputAction action;
-    UiNavKey    key;
-};
-
-static const UiKey UI_KEYS[] = {
-    {InputAction::ui_up, UiNavKey::up},
-    {InputAction::ui_down, UiNavKey::down},
-    {InputAction::ui_left, UiNavKey::left},
-    {InputAction::ui_right, UiNavKey::right},
-    {InputAction::ui_accept, UiNavKey::accept},
-};
-constexpr size_t UI_KEY_COUNT = sizeof(UI_KEYS) / sizeof(UI_KEYS[0]);
 
 // ---------------------------------------------------------------------------
 // UI modes (ui_mode.h): what has the screen and the input
@@ -2668,10 +2793,9 @@ static void window_close(App* app, UiWindow window)
             break;
         case UiWindow::safe_start:
             app->safe_start_open = false;   // no answer: the game doesn't start
-            if (app->net_load_waiting && !app->has_pending_start)
-            {
-                net_answer_load(app, NetContentStatus::failed);
-            }
+            // This can run with the network lock held, and answering takes it:
+            // the main loop answers (net_answer_load_refused).
+            app->net_load_refused = true;
             break;
         case UiWindow::debug:
             app->show_debug_window = false;
@@ -3343,7 +3467,7 @@ static void offer_mapping(App* app, const InputFrame* frame)
     }
     if (map->profiles_dirty && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());
+        save_input_config(app);
         map->profiles_dirty = false;
     }
 }
@@ -3505,7 +3629,7 @@ static void app_update_input(App* app)
     update_cursors(app, &frame, ui_up);
     if (frame.profiles_changed && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());   // a turbo's speed, by taps (in the game)
+        save_input_config(app);   // a turbo's speed, by taps (in the game)
     }
     // Joins and disconnects: the ports' tabs show them (no status line); logged.
     char message[300] = {};
@@ -3553,7 +3677,7 @@ static void app_update_input(App* app)
                                                   SDL_GetTicks());
     if (remap.save && !app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());   // a RetroPad remembered as decided
+        save_input_config(app);   // a RetroPad remembered as decided
     }
     if (remap.open_remap)
     {
@@ -3614,7 +3738,6 @@ static void handle_links(App* app)
     std::string link;
     while (app_links_next(&app->links, &link))
     {
-        SDL_Log("Link: %s", link.c_str());
         SDL_RaiseWindow(app->shell.window);
         // A guest link (piccolo://join/...): guests play in piccoletto; piccolo
         // has no player of its own yet (it may get one), so it only says so
@@ -3627,7 +3750,30 @@ static void handle_links(App* app)
             set_status(app, piccolo_text(&app->strings, Str::status_guest_link));
             continue;
         }
-        std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " + link;
+        // A join link that didn't parse may still hold a token: only its
+        // scheme and host are shown or logged. Any other link is logged cut at
+        // the query / fragment and at a sane length.
+        std::string shown = link;
+        bool join_link = link.compare(0, 14, "piccolo://join") == 0;
+        if (join_link)
+        {
+            shown = link.substr(0, 14);   // "piccolo://join"
+        }
+        else
+        {
+            size_t cut = shown.find_first_of("?#");
+            if (cut != std::string::npos)
+            {
+                shown.resize(cut);
+            }
+            if (shown.size() > 200)
+            {
+                shown.resize(200);
+            }
+        }
+        SDL_Log("Link: %s", shown.c_str());
+        std::string text = std::string(piccolo_text(&app->strings, Str::status_link_unknown)) + " " +
+                           (join_link ? shown : link);
         set_status(app, text.c_str());
     }
 }
@@ -3865,7 +4011,6 @@ struct AppUiFrame
     uint64_t    dvr_now = 0;
     uint64_t    input_now = 0;
     uint64_t    map_now = 0;
-    std::string running_file;            // running_core_file (TOOLS > CORES never touches it)
     bool        hosts_known = false;     // SETTINGS > NETWORK listed SHARE's hosts (its FORGET goes there)
     bool        input_was_open = false;  // INPUT was open before drawing (closing it saves)
 };
@@ -4099,6 +4244,13 @@ static void shader_picker_apply(App* app, const FilePickerAction* action)
 // NETWORK tab (read under the network lock).
 static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
 {
+    // Only the drawing reads this state, and settings_window_draw returns first while both
+    // windows are closed: nothing to build, and no network lock taken for the NETWORK tab.
+    // (The tab showing is only known after drawing, so the lock stays for "window open".)
+    if (!app->settings_window.open && !app->settings_window.image_open)
+    {
+        return;
+    }
     const CoreSession* session = &app->session;
     ImageWindowSource image = {};
     if (game_running(app) && session->texture.has_content && session->texture.ui_texture != 0)
@@ -4271,6 +4423,14 @@ static void settings_view(App* app, UiView* view, const AppUiFrame* frame)
 // changes the NetAccess, pairing, levels, FORGET).
 static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowAction* action)
 {
+    // Closed and not just closed: the window gave no action, so there is nothing to apply (nor a
+    // lock to take). The step that saves on closing below needs this frame's open or last
+    // frame's open, so it still runs on the frame it closes.
+    bool open = app->settings_window.open || app->settings_window.image_open;
+    if (!open && !app->settings_window_was_open)
+    {
+        return;
+    }
     bool network_locked = app->net_running;
     if (network_locked)
     {
@@ -4345,7 +4505,6 @@ static void settings_apply(App* app, const AppUiFrame* frame, SettingsWindowActi
     }
 
     // Closed (by its button or Esc): apply the folders and save.
-    bool open = app->settings_window.open || app->settings_window.image_open;
     if (app->settings_window_was_open && !open)
     {
         apply_folders(app);
@@ -4367,7 +4526,7 @@ static void save_after_options_windows(App* app)
         save_settings(app);   // a port's DEVICE (CONTROLS)
         if (app->core_config.input_dirty && !app->input_config_path.empty())
         {
-            input_config_save(&app->input, app->input_config_path.c_str());   // a remap (CONTROLS)
+            save_input_config(app);   // a remap (CONTROLS)
             app->core_config.input_dirty = false;
         }
     }
@@ -4416,11 +4575,13 @@ static void debug_window_state(App* app, DebugWindowState* state)
         state->icons_forced[i] = app->state_icons.debug_show[i];
     }
     state->devices_available = app->ports_widget.port_count > 0;
-    state->text_box_allowed = state->game_running && !text_input_pending(app);
+    // Any request of the core's (TEXT or KEYS) is left alone: the debug box would overwrite it.
+    state->text_box_allowed = state->game_running && app->session.host->text_input.mode == RETRO_EXT_TEXT_INPUT_OFF;
     state->keep_revert_allowed = state->game_running && !shader_check_asking(app);
     state->pair_request_card = app->debug_previews.request_card;
     state->pair_open = app->pair_window.open;
     state->about_open = app->about_window.open;
+    state->settings_error_open = app->settings_error_open;
     state->guest_open = app->guest_window.open;
     state->snow = app->snow_debug;
     state->snow_in_season = app->snow_in_season;
@@ -4494,6 +4655,8 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::text_box:
     {
+        // Offered only while the core has no request of its own (debug_window_state),
+        // so this never replaces one.
         LibretroTextInput* request = &app->session.host->text_input;
         request->mode = RETRO_EXT_TEXT_INPUT_TEXT;
         request->type = RETRO_EXT_TEXT_INPUT_TYPE_TEXT;
@@ -4577,7 +4740,9 @@ static void net_send_game_state(App* app, uint32_t peer)
                                         app->net_sent_content.c_str());
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
     {
-        if ((peer == NET_NO_PEER || peer == i) && app->net_service.access.peers[i].state == NetAccessPeerState::authorized)
+        // A guest hears what runs too (net_access_send lets game_state through to it).
+        NetAccessPeerState state = app->net_service.access.peers[i].state;
+        if ((peer == NET_NO_PEER || peer == i) && (state == NetAccessPeerState::authorized || state == NetAccessPeerState::guest))
         {
             net_access_send(&app->net_service.access, i, NetChannel::control, app->net_games.reply.data(), size);
         }
@@ -4948,7 +5113,7 @@ static void net_move_device(App* app, uint32_t controller, uint32_t device_id, i
     SDL_Log("Network: %s moved %s to port %d", device, input_controller_label(&app->input, controller).c_str(), port + 1);
 }
 
-// Every loop: settings that changed (from anywhere) go to the FULL devices,
+// Every loop: settings that changed (from anywhere) go to the devices with SETTINGS,
 // and the action lists again when what they show changed.
 static void net_follow_remote(App* app)
 {
@@ -4992,6 +5157,12 @@ static void net_follow_remote(App* app)
             }
             net_service_set_stream(&app->net_service, i, 0);   // remote play needs STREAM
             app->stream_tuning_set[i] = false;
+        }
+        if ((net_peer_caps(app, i) & NET_CAP_GAMEPAD) == 0)
+        {
+            // Pads are GAMEPAD: a device that lost it (net_send_actions above
+            // already took the new caps as seen) has its pads unplugged.
+            input_net_peer_gone(&app->input_net, &app->input, i);
         }
     }
     for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
@@ -5167,8 +5338,8 @@ static void net_remote_message(App* app, const NetAccessEvent* event, const char
         net_change_port_device(app, event->peer, pad, device_id, device);
         return;
     }
-    // devices / device_port: FULL (net_access let them through only then);
-    // devices_watch, the same list read only, at any level (the ports' tabs).
+    // devices / device_port: SETTINGS (net_access let them through only then);
+    // devices_watch, the same list read only, at any capability (the ports' tabs).
     if (net_settings_read_devices_request(event->data, event->size, &id) ||
         net_settings_read_devices_watch(event->data, event->size, &id))
     {
@@ -5210,15 +5381,15 @@ static void net_speed_request(App* app, const NetAccessEvent* event)
 }
 
 // speed_result: one step of a device's speed test, as it measured it.
-static void net_speed_result(App* app, const NetAccessEvent* event)
+// `device_now`: the device's index in the list as it is now (net_trust_find), -1 when it is gone.
+static void net_speed_result(App* app, const NetAccessEvent* event, int32_t device_now)
 {
     NetSpeedResult result;
-    if (event->device < 0 || static_cast<size_t>(event->device) >= app->net_service.access.trust.devices.size() ||
-        !net_speed_read_result(event->data, event->size, &result))
+    if (device_now < 0 || !net_speed_read_result(event->data, event->size, &result))
     {
         return;
     }
-    const uint8_t* key = app->net_service.access.trust.devices[static_cast<size_t>(event->device)].key;
+    const uint8_t* key = app->net_service.access.trust.devices[static_cast<size_t>(device_now)].key;
     NetSpeedSummary* summary = nullptr;
     for (size_t i = 0; i < app->net_speed_results.size() && summary == nullptr; i++)
     {
@@ -5492,6 +5663,16 @@ static void net_answer_load(App* app, NetContentStatus status)
     net_service_unlock(&app->net_service);
 }
 
+// A load_request whose start was refused (SAFE START closed without starting):
+// answered failed, unless another start is on its way. Outside the lock.
+static void net_answer_load_refused(App* app)
+{
+    if (app->net_load_waiting && !app->has_pending_start)
+    {
+        net_answer_load(app, NetContentStatus::failed);   // not started after all
+    }
+}
+
 // A control message from a paired device (net_games.h). Folders and cores
 // are read when asked, never every frame.
 static void net_games_message(App* app, const NetAccessEvent* event, const char* device)
@@ -5608,6 +5789,36 @@ static void net_start(App* app)
     app->net_share_set = false;        // and its shared folders
 }
 
+// What a peer slot keeps in App: gone with the device (`closed`, net_stop), and
+// cleared again when a new one takes the slot (a lost `closed` leaves it behind).
+// Only plain state: what needs the lock or the network stays with the caller.
+static void net_peer_forget(App* app, uint32_t peer)
+{
+    if (peer >= NET_MAX_PEERS)
+    {
+        return;
+    }
+    if (app->net_speed_sender.peer == peer)
+    {
+        app->net_speed_sender.active = false;   // its test ends with it
+        app->net_speed_reporting = false;
+    }
+    if (app->net_speed_receiver.peer == peer)
+    {
+        app->net_speed_receiver.active = false;
+    }
+    app->stream_tuning_set[peer] = false;   // what it asked for
+    app->net_fast_forward[peer] = false;    // a dropped device doesn't keep it held
+    app->net_peer_language[peer][0] = '\0';
+    app->net_devices_wanted[peer] = false;
+    app->net_guest_name[peer][0] = '\0';
+    if (app->net_load_waiting && app->net_load_peer == peer)
+    {
+        app->net_load_waiting = false;   // the game still starts; nobody to tell
+    }
+    input_net_peer_gone(&app->input_net, &app->input, peer);
+}
+
 static void net_stop(App* app)
 {
     if (app->net_running)
@@ -5617,8 +5828,12 @@ static void net_stop(App* app)
         net_service_unlock(&app->net_service);
         for (uint32_t peer = 0; peer < NET_MAX_PEERS; peer++)
         {
-            input_net_peer_gone(&app->input_net, &app->input, peer);   // their pads are unplugged
+            net_peer_forget(app, peer);   // their pads are unplugged, their state dropped
         }
+        // net_update stops looking at these once the network is off.
+        app->net_streaming = false;
+        app->session.capture_audio = false;
+        app->stream_tuning_on = false;
         net_service_stop(&app->net_service);
         app->net_running = false;
         // A pairing request (it pauses the game) or our code's wait can't be
@@ -5670,15 +5885,16 @@ static void net_update(App* app)
     }
     // INTERNET and BEACON SERVER: the service resolves the name on its own
     // thread. Only when they change (an empty name is off too).
-    std::string beacon = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
+    // Compared as text: a std::string is built only when the name changed (not every frame).
+    const char* beacon = PICCOLO_BROWSER || settings_get_bool(&app->settings, PICCOLO_NET_INTERNET)
                              ? settings_get_text(&app->settings, PICCOLO_NET_BEACON)
                              : "";
-    if (beacon != app->net_beacon_applied)
+    if (std::strcmp(beacon, app->net_beacon_applied.c_str()) != 0)
     {
         app->net_beacon_applied = beacon;
-        net_service_set_beacon(&app->net_service, beacon.c_str());
+        net_service_set_beacon(&app->net_service, beacon);
     }
-    // The shared folders OWNER devices reach (piccolo-share): looked at
+    // The shared folders the devices with FILE TRANSFER reach (piccolo-share): looked at
     // again only when a setting changed, handed over only when they did.
     bool share_check = !app->net_share_set || app->settings.revision != app->net_share_revision;
     NetShareFolderPaths share_paths;
@@ -5711,7 +5927,9 @@ static void net_update_locked(App* app)
 {
     guest_update_locked(app);
     // GO HEADLESS ends from the tray, or when no game runs any more.
-    if (app->headless.on && (app->headless.back_asked || !game_running(app)))
+    // (Without a tray the taskbar restoring the window asks as well.)
+    if (app->headless.on &&
+        (app->headless.back_asked || !game_running(app) || headless_window_restored(&app->headless, app->shell.window)))
     {
         headless_back(app, false);
         headless_tell(app);
@@ -5729,17 +5947,27 @@ static void net_update_locked(App* app)
     {
         char address[64];
         net_address_to_text(event.address, address, sizeof(address));
-        const char* device = event.device >= 0 && static_cast<size_t>(event.device) < app->net_service.access.trust.devices.size()
-                                 ? app->net_service.access.trust.devices[static_cast<size_t>(event.device)].name.c_str()
+        // The device as the list is now, by its key: event.device was an index when the event was
+        // made on the network thread, and the list may have shrunk since (an unpair, FORGET).
+        int32_t device_now = event.device >= 0 ? net_trust_find(&app->net_service.access.trust, event.key) : -1;
+        const char* device = device_now >= 0
+                                 ? app->net_service.access.trust.devices[static_cast<size_t>(device_now)].name.c_str()
                                  : "?";
         const NetAccessPeer* guest = event.guest ? net_access_guest(&app->net_service.access, event.peer) : nullptr;
         if (guest != nullptr)
         {
             device = guest->guest_name;
         }
+        else if (event.guest && event.peer < NET_MAX_PEERS && app->net_guest_name[event.peer][0] != '\0')
+        {
+            device = app->net_guest_name[event.peer];   // already reset: the name kept at guest_joined
+        }
         switch (event.type)
         {
         case NetAccessEventType::authorized:
+            // First: a lost `closed` must not leave the previous device's state to this one.
+            net_peer_forget(app, event.peer);
+            net_service_set_stream(&app->net_service, event.peer, 0);
             SDL_Log("Network: \"%s\" connected from %s", device, address);
             net_send_game_state(app, event.peer);   // what runs, from the start
             net_send_actions(app, event.peer, 0);
@@ -5747,6 +5975,8 @@ static void net_update_locked(App* app)
             break;
         case NetAccessEventType::paired:
         {
+            net_peer_forget(app, event.peer);   // as at `authorized`: this slot's new device
+            net_service_set_stream(&app->net_service, event.peer, 0);
             // PAIRED WITH: the window says it when it's open; a card only
             // when it's closed (the player went back to the game meanwhile).
             if (!app->pair_window.open)
@@ -5774,39 +6004,16 @@ static void net_update_locked(App* app)
                 headless_back(app, true);   // the device that had the game left
                 headless_tell(app);
             }
-            if (event.peer < NET_MAX_PEERS && app->net_speed_sender.peer == event.peer)
-            {
-                app->net_speed_sender.active = false;   // its test ends with it
-                app->net_speed_reporting = false;
-            }
-            if (event.peer < NET_MAX_PEERS && app->net_speed_receiver.peer == event.peer)
-            {
-                app->net_speed_receiver.active = false;
-            }
             net_service_set_stream(&app->net_service, event.peer, 0);   // its stream ends with it
-            if (event.peer < NET_MAX_PEERS)
-            {
-                app->stream_tuning_set[event.peer] = false;   // and what it asked for
-            }
-            if (event.peer < NET_MAX_PEERS)
-            {
-                app->net_fast_forward[event.peer] = false;   // a dropped device doesn't keep it held
-                app->net_peer_language[event.peer][0] = '\0';
-                app->net_devices_wanted[event.peer] = false;
-            }
-            if (app->net_load_waiting && app->net_load_peer == event.peer)
-            {
-                app->net_load_waiting = false;   // the game still starts; nobody to tell
-            }
             SDL_Log("Network: \"%s\" disconnected", device);
             if (event.guest)
             {
                 char status[128];
                 std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_left),
-                              guest != nullptr ? guest->guest_name : event.info.name);
+                              std::strcmp(device, "?") != 0 ? device : event.info.name);
                 set_status(app, status);
             }
-            input_net_peer_gone(&app->input_net, &app->input, event.peer);
+            net_peer_forget(app, event.peer);
             break;
         case NetAccessEventType::pairing_failed:
             // PAIRING FAILED is the pairing window's own notice (in it, or its card in the game).
@@ -5832,6 +6039,15 @@ static void net_update_locked(App* app)
         case NetAccessEventType::guest_joined:
         {
             // A guest from the link: what runs at once (it starts the stream itself).
+            // First: a lost `closed` must not leave the previous device's state to this guest.
+            net_peer_forget(app, event.peer);
+            net_service_set_stream(&app->net_service, event.peer, 0);
+            if (event.peer < NET_MAX_PEERS)
+            {
+                // "%.*s": a hello's name may be longer than a guest's; cut, not a warning.
+                std::snprintf(app->net_guest_name[event.peer], sizeof(app->net_guest_name[event.peer]), "%.*s",
+                              static_cast<int>(NET_GUEST_MAX_NAME), guest != nullptr ? guest->guest_name : event.info.name);
+            }
             SDL_Log("Network: guest \"%s\" joined from %s", event.info.name, address);
             char status[128];
             std::snprintf(status, sizeof(status), piccolo_text(&app->strings, Str::status_guest_joined), event.info.name);
@@ -5881,11 +6097,17 @@ static void net_update_locked(App* app)
             }
             else if (event.channel == NetChannel::input && event.device >= 0)
             {
-                const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(event.device)];
-                input_net_set_hotkeys(&app->input_net, &app->input, event.peer,
-                                      (event.caps & NET_CAP_STREAM) != 0);
-                input_net_receive(&app->input_net, &app->input, event.peer, paired->key, paired->name.c_str(),
-                                  event.data, event.size);
+                // A paired device's pad needs GAMEPAD (net_access drops the rest too: this is the
+                // frontend's own guard), and the device must still be paired: a packet from one
+                // forgotten meanwhile is dropped, never plugged in under another device's key.
+                if (device_now >= 0 && (event.caps & NET_CAP_GAMEPAD) != 0)
+                {
+                    const NetTrustedDevice* paired = &app->net_service.access.trust.devices[static_cast<size_t>(device_now)];
+                    input_net_set_hotkeys(&app->input_net, &app->input, event.peer,
+                                          (event.caps & NET_CAP_STREAM) != 0);
+                    input_net_receive(&app->input_net, &app->input, event.peer, paired->key, paired->name.c_str(),
+                                      event.data, event.size);
+                }
             }
             else if (event.channel == NetChannel::control)
             {
@@ -5895,7 +6117,7 @@ static void net_update_locked(App* app)
                 }
                 if (event.size > 0 && event.data[0] == NET_SPEED_RESULT)
                 {
-                    net_speed_result(app, &event);
+                    net_speed_result(app, &event, device_now);
                 }
                 net_stream_message(app, &event, device);
                 net_games_message(app, &event, device);   // net_access let through only what its level covers
@@ -6306,8 +6528,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
         app->core_updater.cores_changed = false;
         core_catalog_scan(&app->catalog, game_running(app) ? app->session.host : nullptr);
     }
-    frame->running_file = running_core_file(app);
-    cores_window_update(&app->cores_window, &app->core_updater, &app->settings, frame->running_file.c_str());
+    cores_window_update(&app->cores_window, &app->core_updater, &app->settings, app->running_core_file);
     // SHARE: this side from our folders, the other from the connection.
     if (app->share_window.open)
     {
@@ -6339,7 +6560,7 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     }
     // The debug window's preview of a window ends when the real one opens.
     debug_preview_update(&app->debug_previews, app->pair_window.open, app->about_window.open, app->guest_window.open,
-                         app->quick_menu.open);
+                         app->quick_menu.open, app->settings_error_open, app->ports_widget.open, app->dvr.open);
     frame->input_now = SDL_GetTicks();
     input_window_update(&app->input_window, &app->input, frame->input_now);
     frame->map_now = SDL_GetTicks();
@@ -6406,7 +6627,7 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     app->dvr.core_aspect = game_aspect;
     dvr_widget_state(&view->dvr, &app->dvr, &app->strings, app->phone_ui, game_aspect);
     core_options_state(app, &view->manager);
-    cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, frame->running_file.c_str());
+    cores_window_state(&view->cores, &app->core_updater, &app->settings, &app->strings, app->running_core_file);
 
     view->share_shown = app->share_window.open;
     if (view->share_shown)
@@ -6455,6 +6676,12 @@ static void app_ui_view(App* app, AppUiFrame* frame, UiView* view)
     {
         safe_start_window_state(&view->safe_start, &app->strings, app->crashed_core.c_str(),
                                 app->crashed_after_options);
+    }
+    view->settings_error_shown = app->settings_error_open;
+    if (view->settings_error_shown)
+    {
+        settings_error_window_state(&view->settings_error, &app->strings);
+        view->settings_error.files = app->settings_error_files;   // built once at start
     }
     view->shader_check_shown = shader_check_asking(app);
     if (view->shader_check_shown)
@@ -6715,7 +6942,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     app->core_options_manager_was_open = app->core_options_manager;
     if (cores_window_apply(&app->cores_window, &actions->cores, &app->core_updater, &app->settings,
-                           frame->running_file.c_str()))
+                           app->running_core_file))
     {
         save_settings(app);   // a SHOW switch
     }
@@ -6758,6 +6985,18 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         {
             guest_end(app, access);
         }
+        if (access != nullptr && actions->guest.level_changed && access->guest_level == NetGuestLevel::watch)
+        {
+            // Now WATCH: net_access drops the guests' input, so no release would
+            // ever come; their pads are unplugged here.
+            for (uint32_t i = 0; i < NET_MAX_PEERS; i++)
+            {
+                if (access->peers[i].state == NetAccessPeerState::guest)
+                {
+                    input_net_peer_gone(&app->input_net, &app->input, i);
+                }
+            }
+        }
         if (access != nullptr)
         {
             net_service_unlock(&app->net_service);
@@ -6777,7 +7016,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         save_settings(app);   // SETTINGS tab
         if (app->input_window.dirty && !app->input_config_path.empty())
         {
-            input_config_save(&app->input, app->input_config_path.c_str());   // closed: keep what changed
+            save_input_config(app);   // closed: keep what changed
             app->input_window.dirty = false;
         }
     }
@@ -6802,11 +7041,12 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         if (answer.closed)
         {
             app->safe_start_open = false;
-            if (app->net_load_waiting && !app->has_pending_start)
-            {
-                net_answer_load(app, NetContentStatus::failed);   // not started after all
-            }
+            net_answer_load_refused(app);
         }
+    }
+    if (view->settings_error_shown && settings_error_window_apply(&actions->settings_error))
+    {
+        app->settings_error_open = false;   // only informs: nothing else waits for it
     }
     if (view->shader_check_shown && actions->shader_check != ShaderCheckChoice::none)
     {
@@ -6845,9 +7085,11 @@ static bool app_frame(App* app)
     if (app->pending_close_game)
     {
         app->pending_close_game = false;
+        shader_check_end_for_game(app);   // before the settings context changes
         save_core_options(app);
         save_state_on_exit(app);
         core_session_stop(&app->session, &app->shell);   // writes save RAM
+        app->running_core_file[0] = '\0';
         drop_undos(app);
         remove_running_marker(app);   // a proper end
         update_settings_context(app);
@@ -6864,6 +7106,11 @@ static bool app_frame(App* app)
         {
             net_answer_load(app, started ? NetContentStatus::ok : NetContentStatus::failed);
         }
+    }
+    if (app->net_load_refused)
+    {
+        app->net_load_refused = false;
+        net_answer_load_refused(app);
     }
     update_pause(app);
     if (app->quick_slot_stale)
@@ -6990,6 +7237,8 @@ static bool app_frame(App* app)
     }
     if (ran == CoreSessionFrame::shut_down)
     {
+        shader_check_end_for_game(app);   // before the settings context changes
+        app->running_core_file[0] = '\0';
         set_status(app, app->session.message);
         ui_game_stopped(&app->ui);
         ui_follow_changes(app);
@@ -7263,11 +7512,22 @@ int main(int argc, char** argv)
         bundled_files_install_cores(app->paths.cores.c_str());   // before the catalog first looks
         ui_toolkit_set_layout_file((app->paths.settings + "/imgui.ini").c_str());
         app->settings_path = app->paths.settings + "/piccolo.cfg";
-        settings_load(&app->settings, app->settings_path.c_str());
+        if (settings_load(&app->settings, app->settings_path.c_str()))
+        {
+            // Before anything reads the game folders (apply_folders, the share paths).
+            piccolo_settings_compact_game_folders(&app->settings);
+        }
+        else
+        {
+            app->settings_unreadable = true;
+            app->settings_error_open = true;
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s exists but could not be read: defaults for this run, nothing is saved over it",
+                         app->settings_path.c_str());
+        }
         apply_folders(app);
         load_last_used(app);
         app->recent_path = app->paths.settings + "/recent.cfg";
-        recent_games_load(&app->recent, app->recent_path.c_str());
+        app->recent_unreadable = !recent_games_load(&app->recent, app->recent_path.c_str());
         continue_panel_load(&app->continue_panel, (app->paths.settings + "/continue.cfg").c_str());
         app->audio_learned_path = app->paths.settings + "/audio_latency.cfg";
         settings_file_load(&app->audio_learned, app->audio_learned_path.c_str());
@@ -7275,7 +7535,7 @@ int main(int argc, char** argv)
         check_running_marker(app);
         app->option_store_path = app->paths.settings + "/core_options.cfg";
         app->option_cache_path = app->paths.settings + "/core_options_cache.cfg";
-        core_options_store_load(&app->option_store, app->option_store_path.c_str());
+        app->core_options_unreadable = !core_options_store_load(&app->option_store, app->option_store_path.c_str());
         core_options_cache_load(&app->option_cache, app->option_cache_path.c_str());
         app->session.option_store = &app->option_store;
         app->session.option_cache = &app->option_cache;
@@ -7357,13 +7617,24 @@ int main(int argc, char** argv)
         piccolo_themes_load_directory(&app->themes, (app->paths.root + "/themes").c_str());
     }
     // The interface's colors from the theme piccolo.cfg names (never its own colors).
+    // It applies the theme's colors with settings_set, which marks the settings dirty although
+    // those colors are never written (piccolo_settings_save strips them): that alone must not
+    // save at every start. Dirty stays only when it changed ui_theme itself (an old file's colors
+    // became a saved theme). The text is copied: the setting's pointer may move.
+    bool settings_dirty_before_theme = app->settings.dirty;
+    std::string ui_theme_before = settings_get_text(&app->settings, PICCOLO_UI_THEME);
     piccolo_settings_start_ui_theme(&app->settings, &app->themes,
                                     app->paths.root.empty() ? "" : (app->paths.root + "/themes").c_str());
+    if (ui_theme_before == settings_get_text(&app->settings, PICCOLO_UI_THEME))
+    {
+        app->settings.dirty = settings_dirty_before_theme;
+    }
     // settings/input.cfg first: controllers are made from its profiles as their devices appear.
     app->input_config_path = app->paths.settings.empty() ? "" : app->paths.settings + "/input.cfg";
     if (!app->input_config_path.empty())
     {
-        input_config_load(&app->input, app->input_config_path.c_str());
+        app->input_config_unreadable = !input_config_load(&app->input, app->input_config_path.c_str());
+        build_settings_error_files(app);
     }
     input_sdl_init(&app->input_sdl, &app->input, database_path.empty() ? nullptr : database_path.c_str());
     onscreen_pad_init(&app->onscreen_pad, app->paths.settings.c_str());
@@ -7438,7 +7709,7 @@ int main(int argc, char** argv)
     shader_library_unload(&app->shader_library);
     if (!app->input_config_path.empty())
     {
-        input_config_save(&app->input, app->input_config_path.c_str());
+        save_input_config(app);
     }
     input_sdl_shutdown(&app->input_sdl);
     onscreen_pad_shutdown(&app->onscreen_pad);

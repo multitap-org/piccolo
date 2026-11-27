@@ -226,6 +226,7 @@ set(PICCOLO_SOURCES
     src/state_undo.cpp
     src/pair_window.cpp
     src/safe_start_window.cpp
+    src/settings_error_window.cpp
     src/text_input_window.cpp
     src/quick_menu.cpp
     src/ui_picture.cpp
@@ -529,6 +530,9 @@ if(MULTITAP_BUILD_TESTS)
     multitap_set_project_flags(piccolo_theme_settings_test)
     add_test(NAME piccolo_theme_settings COMMAND piccolo_theme_settings_test
              "${CMAKE_CURRENT_BINARY_DIR}/theme_settings_scratch" "${CMAKE_CURRENT_SOURCE_DIR}/themes")
+    set_tests_properties(piccolo_theme_settings PROPERTIES
+        PASS_REGULAR_EXPRESSION "theme settings: all checks passed"
+        FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
     set_tests_properties(piccolo_settings_view PROPERTIES
         PASS_REGULAR_EXPRESSION "settings view: all checks passed"
         FAIL_REGULAR_EXPRESSION "FAIL|ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")

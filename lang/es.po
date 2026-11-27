@@ -1386,6 +1386,22 @@ msgctxt "safe_start_cancel"
 msgid "CANCEL"
 msgstr "CANCELAR"
 
+msgctxt "settings_error_title"
+msgid "SETTINGS COULD NOT BE READ"
+msgstr "NO SE PUDIERON LEER LOS AJUSTES"
+
+msgctxt "settings_error_text"
+msgid "These files are there but could not be read:"
+msgstr "Estos archivos están, pero no se pudieron leer:"
+
+msgctxt "settings_error_defaults"
+msgid "What they hold is at its defaults for now, and nothing is saved over them. Close piccolo, check the files, and start again."
+msgstr "Lo que contienen está en sus valores por defecto por ahora, y no se guarda nada encima. Cierra piccolo, revisa los archivos y vuelve a arrancar."
+
+msgctxt "settings_error_ok"
+msgid "OK"
+msgstr "ACEPTAR"
+
 msgctxt "text_input_title"
 msgid "ENTER TEXT"
 msgstr "ESCRIBIR TEXTO"
@@ -3437,8 +3453,8 @@ msgid "THE NETWORK COULDN'T START (SEE THE LOG)."
 msgstr "LA RED NO PUDO ARRANCAR (MIRA EL REGISTRO)."
 
 msgctxt "share_needs_owner"
-msgid "CONNECTED, BUT THAT PICCOLO DIDN'T GIVE US SHARE ACCESS. GIVE IT THERE: SETTINGS > NETWORK, THIS DEVICE, SHARE."
-msgstr "CONECTADO, PERO ESE PICCOLO NO NOS DIO ACCESO PARA COMPARTIR. DALO ALLÁ: AJUSTES > RED, ESTE DISPOSITIVO, COMPARTIR."
+msgid "CONNECTED, BUT THAT PICCOLO DIDN'T GIVE US FILE TRANSFER. IT CAN GRANT IT IN TOOLS > PAIR."
+msgstr "CONECTADO, PERO ESE PICCOLO NO NOS DIO TRANSFERIR ARCHIVOS. PUEDE CONCEDERLO EN HERRAMIENTAS > VINCULAR."
 
 msgctxt "share_disconnect"
 msgid "DISCONNECT"
@@ -3497,8 +3513,8 @@ msgid "A PICCOLO ON ANOTHER NETWORK (NOT PAIRED YET)"
 msgstr "UN PICCOLO EN OTRA RED (SIN VINCULAR)"
 
 msgctxt "share_pair_internet_help"
-msgid "CONNECT shows a code in TOOLS > PAIR...: type it on the other piccolo in PAIR WITH A CLIENT. Both need the same BEACON SERVER."
-msgstr "CONECTAR muestra un código en HERRAMIENTAS > VINCULAR...: escríbelo en el otro piccolo en VINCULAR CON UN CLIENTE. Los dos necesitan el mismo SERVIDOR BEACON."
+msgid "PAIR opens ENTER A CODE: type the code the other piccolo shows in TOOLS > PAIR > GENERATE PAIRING CODE. Both need the same BEACON SERVER."
+msgstr "VINCULAR abre ESCRIBIR UN CÓDIGO: escribe el código que muestra el otro piccolo en HERRAMIENTAS > VINCULAR > GENERAR CÓDIGO. Los dos necesitan el mismo SERVIDOR BEACON."
 
 msgctxt "share_refused_host_offline"
 msgid "IT ISN'T ONLINE (INTERNET ON THERE?)."

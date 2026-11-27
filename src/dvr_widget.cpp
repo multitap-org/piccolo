@@ -226,6 +226,17 @@ static void bump(DvrWidget* widget, int32_t direction, uint64_t now_ms, bool rep
     widget->bump_ms = now_ms == 0 ? 1 : now_ms;
 }
 
+// A jump or a click moved the cursor: seek and step stop the playback, but
+// while watching forward (1x) it goes on from the new place (as it does
+// backwards, stepped). Not from the newest frame: the end stops it and bounces.
+static void keep_watching(DvrWidget* widget, bool at_end)
+{
+    if (widget->play_direction > 0 && !widget->play_stepping && !at_end)
+    {
+        core_rewind_dvr_set_playing(&widget->rewind, true);
+    }
+}
+
 // L / R: 5 s (SCRUB), or a snapshot (SNAPSHOTS: the previews are the
 // snapshots). Past an end it lands on the end, and bounces.
 static void jump(DvrWidget* widget, int32_t direction, uint64_t now_ms)
@@ -259,6 +270,7 @@ static void jump(DvrWidget* widget, int32_t direction, uint64_t now_ms)
     {
         bump(widget, direction, now_ms, false);
     }
+    keep_watching(widget, edge);
     SDL_Log("DVR: %s, frame %llu -> %llu%s", direction < 0 ? "L" : "R", static_cast<unsigned long long>(from),
             static_cast<unsigned long long>(to), edge ? (direction < 0 ? " (the oldest)" : " (the newest)") : "");
 }
@@ -706,6 +718,17 @@ void dvr_widget_name_keys(DvrWidget* widget, const InputSystem* input, const Inp
     }
 }
 
+// One hint more; the array holds DVR_VIEW_MAX_HINTS and no more.
+static void add_hint(DvrView* view, uint32_t* count, DvrViewHint hint)
+{
+    if (*count >= DVR_VIEW_MAX_HINTS)
+    {
+        return;
+    }
+    view->hints[*count] = hint;
+    (*count)++;
+}
+
 void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool touch, uint64_t now_ms)
 {
     follow_history(widget);
@@ -776,7 +799,8 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
 
     format_back(widget->readout, sizeof(widget->readout), lane_end(&position) - position.cursor, fps, true);
     char span[16] = {};
-    format_back(span, sizeof(span), position.newest - position.oldest, fps, false);
+    uint64_t end = lane_end(&position);   // the cursor lane's own end, not the recorded lane's
+    format_back(span, sizeof(span), end > position.oldest ? end - position.oldest : 0, fps, false);
     std::snprintf(widget->kept, sizeof(widget->kept), "%s %s", piccolo_text(strings, Str::dvr_kept), span + 1);   // no "-"
     bool scrub = widget->rewind.state != CoreRewindState::snapshots;
     if (scrub)
@@ -793,34 +817,34 @@ void dvr_widget_prepare(DvrWidget* widget, const Localization* strings, bool tou
     uint32_t n = 0;
     if (touch)
     {
-        view->hints[n++] = {"", "\xE2\x97\x80", false, DvrViewAction::back};   // ◀
+        add_hint(view, &n, {"", "\xE2\x97\x80", false, DvrViewAction::back});   // ◀
     }
     else
     {
-        view->hints[n++] = {"\xE2\x97\x80\xE2\x96\xB6", piccolo_text(strings, scrub ? Str::dvr_hint_play : Str::dvr_hint_snapshot),
-                            false, DvrViewAction::none};
-        view->hints[n++] = {named(widget->key_pages, "L R", false),
+        add_hint(view, &n, {"\xE2\x97\x80\xE2\x96\xB6", piccolo_text(strings, scrub ? Str::dvr_hint_play : Str::dvr_hint_snapshot),
+                            false, DvrViewAction::none});
+        add_hint(view, &n, {named(widget->key_pages, "L R", false),
                             piccolo_text(strings, scrub ? Str::dvr_hint_jump : Str::dvr_hint_snapshot), false,
-                            DvrViewAction::none};
+                            DvrViewAction::none});
         if (position.lanes)
         {
-            view->hints[n++] = {"\xE2\x96\xB2\xE2\x96\xBC", piccolo_text(strings, Str::dvr_hint_lane), false,   // ▲▼
-                                DvrViewAction::other_lane};
+            add_hint(view, &n, {"\xE2\x96\xB2\xE2\x96\xBC", piccolo_text(strings, Str::dvr_hint_lane), false,   // ▲▼
+                                DvrViewAction::other_lane});
         }
     }
     // The controls' names (dvr_widget_name_keys); touch keeps the RetroPad's.
-    view->hints[n++] = {named(widget->key_accept, "B", touch), piccolo_text(strings, Str::dvr_play_here), touch,
-                        DvrViewAction::play_here};
-    view->hints[n++] = {named(widget->key_watch, "Y", touch), piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
-                        moving, DvrViewAction::watch};
-    view->hints[n++] = {named(widget->key_back, "A", touch), piccolo_text(strings, Str::dvr_back_to_now), false,
-                        DvrViewAction::back_to_now};
+    add_hint(view, &n, {named(widget->key_accept, "B", touch), piccolo_text(strings, Str::dvr_play_here), touch,
+                        DvrViewAction::play_here});
+    add_hint(view, &n, {named(widget->key_watch, "Y", touch), piccolo_text(strings, moving ? Str::dvr_pause : Str::dvr_watch),
+                        moving, DvrViewAction::watch});
+    add_hint(view, &n, {named(widget->key_back, "A", touch), piccolo_text(strings, Str::dvr_back_to_now), false,
+                        DvrViewAction::back_to_now});
     if (touch)
     {
-        view->hints[n++] = {"", "\xE2\x96\xB6", false, DvrViewAction::forward};   // ▶
+        add_hint(view, &n, {"", "\xE2\x96\xB6", false, DvrViewAction::forward});   // ▶
         if (position.lanes)
         {
-            view->hints[n++] = {"", piccolo_text(strings, Str::dvr_hint_lane), false, DvrViewAction::other_lane};
+            add_hint(view, &n, {"", piccolo_text(strings, Str::dvr_hint_lane), false, DvrViewAction::other_lane});
         }
     }
     view->hint_count = n;
@@ -1120,6 +1144,7 @@ void dvr_widget_apply(DvrWidget* widget, const DvrWidgetAction* action, uint64_t
         if (static_cast<uint32_t>(action->clicked) < count)
         {
             core_rewind_dvr_seek(&widget->rewind, widget->previews[first + static_cast<uint32_t>(action->clicked)]);
+            keep_watching(widget, cursor_of(widget) >= lane_end(&position));
         }
     }
     drag(widget, action, now_ms);

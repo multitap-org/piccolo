@@ -312,6 +312,8 @@ static void back_to_buttons(MapWindow* window, InputSystem* input, uint64_t now_
     input_sdl_mapper_cancel(&window->mapper);
     input->suspended = false;
     restore_mapping(window);
+    window->extras_mapped = 0;   // restore_mapping took STEP 4's inputs out too
+    window->shoulders_mapped = false;
     window->skip_buttons = false;
     go(window, now_ms, MapStage::intro_buttons);
 }
@@ -424,6 +426,16 @@ bool map_window_open_now(const MapWindow* window)
 void map_window_update(MapWindow* window, InputSystem* input, uint64_t now_ms)
 {
     window->pressed = false;
+    // The stages that hold the controller (the router is suspended in all of
+    // them, the intro page included): if it is unplugged nothing else could
+    // get the user out, a gamepad-only device has no Escape or mouse.
+    bool holds_controller = window->stage == MapStage::mapping || window->stage == MapStage::intro_interface ||
+                            window->stage == MapStage::extras_mapping;
+    if (holds_controller && (window->mapper.joystick == nullptr || !SDL_JoystickConnected(window->mapper.joystick)))
+    {
+        map_window_close(window, input);   // went away: as CANCEL
+        return;
+    }
     if (window->stage == MapStage::mapping)
     {
         // STEP 2's inputs, then STEP 3's.
@@ -1270,6 +1282,8 @@ void map_window_apply(MapWindow* window, const MapWindowAction* action, InputSys
             if (back == MapStage::intro_interface)
             {
                 window->roles_done = false;
+                window->extras_mapped = 0;   // STEP 4 is asked again: counted again
+                window->shoulders_mapped = false;
                 start_mapper(window, input, layouts, now_ms, false);   // STEP 3 again, on the mapping it has now
             }
             else

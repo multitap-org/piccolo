@@ -138,6 +138,20 @@ int main(int argc, char** argv)
     state_undo_cancel(state.c_str());
     check(!host_fs_exists(state.c_str()) && !state_undo_available(state.c_str()), "a failed save: empty again");
 
+    // The thumbnail can't be kept (a folder sits where its undo goes, so the
+    // move fails): the state goes back into the slot, not deleted with the undo.
+    host_fs_remove_file(undo.c_str());
+    host_fs_remove_file(png_undo.c_str());
+    write_text(&state, "E");
+    write_text(&png, "picture of E");
+    host_fs_make_directories(png_undo.c_str());
+    check(!state_undo_keep(state.c_str()), "keep fails when the thumbnail can't be moved");
+    check(read_text(&state) == "E" && read_text(&png) == "picture of E", "a failed keep: the slot as it was");
+    check(!state_undo_available(state.c_str()), "a failed keep leaves no undo");
+    host_fs_remove_file(png_undo.c_str());   // the folder: empty, so this removes it
+    host_fs_remove_file(state.c_str());
+    host_fs_remove_file(png.c_str());
+
     // FILE TRANSFER's filter.
     std::string names[] = {"Game.state3.undo", "Game.state3.png.undo", "Game.state3.undo.swap"};
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
