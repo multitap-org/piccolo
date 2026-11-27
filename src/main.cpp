@@ -2263,6 +2263,17 @@ static void open_game_dvr(App* app)
     app_open_widget(app, UiWidget::dvr);
 }
 
+// The burger menu's CONTROLLERS: the ports widget, as the DEVICES hotkey
+// opens it (Andrés, 2026-11-27: the widget, not INPUT). Only with a game and
+// ports to show.
+static void open_controllers(App* app)
+{
+    if (game_running(app) && app->ports_widget.port_count > 0)
+    {
+        app_open_widget(app, UiWidget::ports);
+    }
+}
+
 static void handle_menu_action(App* app, MenuAction action)
 {
     switch (action)
@@ -6505,10 +6516,11 @@ static void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     {
         open_game_dvr(app);
     }
-    // CONTROLLERS from anywhere: the page's pad shows in the menus too.
+    // CONTROLLERS from any mode, like the DEVICES hotkey (the page's pad
+    // shows in the menus too).
     if (web_pad_take_controllers())
     {
-        input_window_open(&app->input_window);   // (no CONTROLLERS window yet: INPUT, as the touch pad's)
+        open_controllers(app);
     }
     // SETTINGS > NETWORK's hosts list (our client side): SHARE's connection
     // knows it, started for it.
@@ -6842,10 +6854,7 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
     }
     if (actions->pad.controllers && game_has_keyboard(app))
     {
-        // CONTROLLERS: there is no window of that name yet; INPUT (where the
-        // controllers are set up) opens in its place, a MAIN MENU window
-        // like any opened by its module (ui_sync_windows enters MAIN MENU).
-        input_window_open(&app->input_window);
+        open_controllers(app);
     }
 
     if (view->menu_shown)
