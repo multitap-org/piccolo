@@ -6478,8 +6478,15 @@ static void continue_card_update(App* app, const UiView* view)
     card.aspect_height = record->aspect_height;
     float width = 0.0f;
     float height = 0.0f;
-    int32_t tile_scale = 0;   // the shelf's pictures: only on the desktop
+    float tile_width = 0.0f;   // the shelf's / the list's pictures: only on the desktop
+    float tile_height = 0.0f;
     bool as_list = false;
+    // RECENT as shown: the panel keeps the order of its games from it.
+    std::vector<RecentGame> shown;
+    for (size_t i = 0; i < app->recent_shown.size(); i++)
+    {
+        shown.push_back(app->recent.games[app->recent_shown[i]]);
+    }
     if (panel->preview == ContinuePreview::phone)
     {
         int32_t touch_scale = touch_ui_scale_for(view->screen_width, view->screen_height);
@@ -6513,19 +6520,20 @@ static void continue_card_update(App* app, const UiView* view)
     }
     else
     {
-        ContinueViewLayout layout = continue_view_panel_layout(view->screen_width, view->screen_height, app->ui_scale);
-        continue_view_panel_picture_size(&card, app->ui_scale, layout == ContinueViewLayout::stacked_shelf, &width,
-                                         &height);
-        as_list = layout == ContinueViewLayout::side_list;
-        tile_scale = as_list ? 0 : app->ui_scale;   // the list has no pictures
+        // The sizes the panel will be drawn at (ui.cpp, the same call). It
+        // shows only in MAIN MENU on the desktop, under the menu bar (the
+        // view's menu_shown is set later this frame).
+        float bar = retro_ui_menu_bar_height(app->ui_scale);
+        ContinueViewPanelGeometry geometry;
+        continue_view_panel_geometry(app->ui_scale, shown.size() > 1, bar, view->screen_width, view->screen_height,
+                                     &geometry);
+        continue_view_panel_picture_size(&card, &geometry, &width, &height);
+        as_list = geometry.layout == ContinueViewLayout::side_list;
+        tile_width = geometry.tile_width;
+        tile_height = geometry.tile_height;
     }
-    // RECENT as shown: the panel keeps the order of its games from it.
-    std::vector<RecentGame> shown;
-    for (size_t i = 0; i < app->recent_shown.size(); i++)
-    {
-        shown.push_back(app->recent.games[app->recent_shown[i]]);
-    }
-    continue_panel_update(panel, &shown, continue_card_wanted(app), width, height, tile_scale, as_list, SDL_GetTicks());
+    continue_panel_update(panel, &shown, continue_card_wanted(app), width, height, tile_width, tile_height, as_list,
+                          SDL_GetTicks());
 }
 
 // The desktop's panel, or the card on the phone's HOME (or a fake one).
@@ -7614,9 +7622,12 @@ int main(int argc, char** argv)
     // phone-shaped window with HOME, ☰ and the windows as pages (Android
     // always has them); --landscape turns it on its side (ROTATE does too).
     // --menu NAME runs a menu item at start, by its log name (menus.cpp:
-    // SOUND, LOAD_GAME); --phone-menu opens ☰. For trying screens out.
+    // SOUND, LOAD_GAME); --phone-menu opens ☰; --continue-preview CASE shows
+    // DEBUG's fake CONTINUE card (resume, no_states, newer_save, vertical).
+    // For trying screens out.
     bool landscape = false;
     const char* start_menu = nullptr;
+    const char* continue_preview = nullptr;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--mobile") == 0)
@@ -7635,6 +7646,11 @@ int main(int argc, char** argv)
         else if (std::strcmp(argv[i], "--menu") == 0 && i + 1 < argc)
         {
             start_menu = argv[i + 1];
+            i++;
+        }
+        else if (std::strcmp(argv[i], "--continue-preview") == 0 && i + 1 < argc)
+        {
+            continue_preview = argv[i + 1];
             i++;
         }
     }
@@ -7857,6 +7873,25 @@ int main(int argc, char** argv)
         if (!found)
         {
             SDL_Log("--menu %s: no such menu item", start_menu);
+        }
+    }
+    if (continue_preview != nullptr)
+    {
+        const char* names[] = {"resume", "no_states", "newer_save", "vertical"};
+        const ContinuePreview previews[] = {ContinuePreview::resume, ContinuePreview::no_states,
+                                            ContinuePreview::newer_save, ContinuePreview::vertical};
+        bool found = false;
+        for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+        {
+            if (SDL_strcasecmp(names[i], continue_preview) == 0)
+            {
+                continue_panel_preview(&app->continue_panel, previews[i]);
+                found = true;
+            }
+        }
+        if (!found)
+        {
+            SDL_Log("--continue-preview %s: no such card", continue_preview);
         }
     }
 

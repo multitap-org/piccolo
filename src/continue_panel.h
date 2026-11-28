@@ -100,13 +100,15 @@ void continue_panel_closed(ContinuePanel* panel, const ContinueRecord* record);
 // Every frame: `games` RECENT's games as shown (when they change, the order
 // goes back to RECENT's), `wanted` whether the card may show (no game, the
 // desktop UI), `picture_width` / `_height` the card's picture size on screen
-// (window pixels), `tile_scale` the UI scale for the shelf's pictures (0: no
-// pictures: the phone, or the other games are a text list, `as_list`). Reads the files about once a second while wanted, loads
+// (window pixels), `tile_width` x `tile_height` the box of a shelf tile's or
+// a list row's picture (window pixels; 0: no pictures, the phone), `as_list`
+// whether the other games are a list at the card's right. Reads the files
+// about once a second while wanted, loads
 // and scales the pictures of the card and of the shelf page shown, and only
 // those, when they change.
 void continue_panel_update(ContinuePanel* panel, const std::vector<RecentGame>* games, bool wanted,
-                           float picture_width, float picture_height, int32_t tile_scale, bool as_list,
-                           uint64_t now_ms);
+                           float picture_width, float picture_height, float tile_width, float tile_height,
+                           bool as_list, uint64_t now_ms);
 
 // Which card it shows now (the debug window's fake one first).
 ContinueChoice continue_panel_choice(const ContinuePanel* panel);

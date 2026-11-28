@@ -382,7 +382,7 @@ static uint32_t page_tile_count(const ContinuePanel* panel)
 
 // The files and pictures now: the card's choice and picture, and the
 // pictures of the shelf page shown (the other pages' are not kept).
-static void panel_refresh(ContinuePanel* panel, int32_t tile_scale, uint64_t now_ms)
+static void panel_refresh(ContinuePanel* panel, bool tile_pictures, uint64_t now_ms)
 {
     panel->recheck = false;
     panel->checked_ms = now_ms;
@@ -410,7 +410,7 @@ static void panel_refresh(ContinuePanel* panel, int32_t tile_scale, uint64_t now
         panel->choice = continue_card_pick(card, true, &files);
         picture_follow_file(&panel->card_picture, files.picture ? &card->picture_path : nullptr);
     }
-    uint32_t shown = tile_scale > 0 ? page_tile_count(panel) : 0;
+    uint32_t shown = tile_pictures ? page_tile_count(panel) : 0;
     for (uint32_t i = 0; i < CONTINUE_VIEW_TILES_MAX; i++)
     {
         ContinuePicture* picture = &panel->tile_pictures[i];
@@ -449,9 +449,10 @@ static bool games_same(const std::vector<RecentGame>* a, const std::vector<Recen
 }
 
 void continue_panel_update(ContinuePanel* panel, const std::vector<RecentGame>* games, bool wanted,
-                           float picture_width, float picture_height, int32_t tile_scale, bool as_list,
-                           uint64_t now_ms)
+                           float picture_width, float picture_height, float tile_width, float tile_height,
+                           bool as_list, uint64_t now_ms)
 {
+    bool tile_pictures = tile_width > 0.0f && tile_height > 0.0f;
     panel->as_list = as_list;
     if (panel->preview == ContinuePreview::none)
     {
@@ -472,7 +473,7 @@ void continue_panel_update(ContinuePanel* panel, const std::vector<RecentGame>* 
     }
     if (panel->recheck || (panel->preview == ContinuePreview::none && now_ms - panel->checked_ms >= CHECK_EVERY_MS))
     {
-        panel_refresh(panel, tile_scale, now_ms);
+        panel_refresh(panel, tile_pictures, now_ms);
     }
     picture_scale(&panel->card_picture, picture_width, picture_height);
     for (uint32_t i = 0; i < CONTINUE_VIEW_TILES_MAX; i++)
@@ -480,7 +481,7 @@ void continue_panel_update(ContinuePanel* panel, const std::vector<RecentGame>* 
         float width = 0.0f;
         float height = 0.0f;
         size_t position = 1 + static_cast<size_t>(panel->shelf_page) * CONTINUE_SHELF_TILES + i;
-        const ContinueRecord* record = tile_scale > 0 ? record_at(panel, position) : nullptr;
+        const ContinueRecord* record = tile_pictures ? record_at(panel, position) : nullptr;
         uint32_t aspect_width = record != nullptr ? record->aspect_width : 0;
         uint32_t aspect_height = record != nullptr ? record->aspect_height : 0;
         if (panel->preview != ContinuePreview::none && position < panel->order.size())
@@ -488,7 +489,10 @@ void continue_panel_update(ContinuePanel* panel, const std::vector<RecentGame>* 
             aspect_width = panel->fakes[panel->order[position]].aspect_width;
             aspect_height = panel->fakes[panel->order[position]].aspect_height;
         }
-        continue_view_tile_picture_size(aspect_width, aspect_height, tile_scale > 0 ? tile_scale : 1, &width, &height);
+        if (tile_pictures)
+        {
+            continue_view_picture_size(aspect_width, aspect_height, tile_width, tile_height, &width, &height);
+        }
         picture_scale(&panel->tile_pictures[i], width, height);
     }
 }

@@ -64,7 +64,7 @@ static ContinueViewAction draw_continue_panel(const UiView* view, RetroUiFont* p
     }
     float bar = view->menu_shown ? retro_ui_menu_bar_height(scale) : 0.0f;
     return continue_view_draw_panel(pixel_font, scale, &view->continue_card.card, bar, view->screen_width,
-                                    view->screen_height - bar);
+                                    view->screen_height);
 }
 
 // The debug window's preview of the phone's HOME card: a phone-wide card in
