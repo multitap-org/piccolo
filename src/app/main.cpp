@@ -306,6 +306,9 @@ static bool app_startup(App* app, int argc, char** argv)
         return false;
     }
     app_links_register("piccolo", "piccolo");   // Windows: this program opens piccolo:// links (per user)
+    // Android: the back button comes to piccolo (app_back_button) instead of
+    // leaving the app (SDLActivity reads this when it's pressed).
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 
     AppShellConfig config = {};
     config.name       = "piccolo";

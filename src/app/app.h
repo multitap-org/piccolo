@@ -3,6 +3,7 @@
 // piccolo's state: one App, owned by main and handed to every app_*.cpp.
 // Its members are grouped by the file that works on them.
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

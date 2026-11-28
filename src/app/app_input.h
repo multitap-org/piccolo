@@ -9,6 +9,7 @@
 // The controllers, once per loop
 bool gamepad_on_a_port(const App* app);
 const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* name);
+const InputLayout* auto_layout(const App* app);
 void app_update_input(App* app);
 
 // Events

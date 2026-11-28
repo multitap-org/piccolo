@@ -5,18 +5,23 @@
 #
 #   tools/build-linux.sh                  Release, installed
 #   tools/build-linux.sh --deps           first install the packages (apt, sudo)
-#   tools/build-linux.sh --debug          Debug with warnings as errors (build-debug/)
+#   tools/build-linux.sh --debug          Debug with warnings as errors (local-builds/debug/)
 #   tools/build-linux.sh --test           also run the tests (ctest)
 #   tools/build-linux.sh --no-librashader skip librashader (no Rust needed)
+#   tools/build-linux.sh --no-update      build what's here, without pulling first
+#
+# The branch checked out is pulled first (fast-forward only) and its
+# submodules follow it: what gets built is the current branch, up to date.
+# Submodules being worked on (local commits or changed files) stay as they are.
 #
 # Environment, all optional:
 #   PICCOLO_DIR  where to install (default $XDG_DATA_HOME/piccolo, that is
 #                ~/.local/share/piccolo: piccolo's own data folder)
-#   BUILD_DIR    CMake build folder (default build, or build-debug with --debug)
+#   BUILD_DIR    CMake build folder (default local-builds/release, or local-builds/debug with --debug)
 #
 # Submodules not checked out yet are fetched (the ones of compilation.md step
-# 2); the ones already there are left as they are. The build copies piccolo,
-# lang/, layouts/, themes/, shaders/ and cores/test_libretro.so to
+# 2). The build copies piccolo, lang/, layouts/, themes/, shaders/ and
+# cores/test_libretro.so to
 # PICCOLO_DIR (also from a git worktree: running this script is asking for
 # it). Saves, states, settings and cores already there are left alone.
 # librashader.so goes next to it. No menu entry: that's for the packages.
@@ -27,13 +32,15 @@ build_type=Release
 install_deps=0
 run_tests=0
 with_librashader=1
+update=1
 for arg in "$@"; do
     case "$arg" in
         --deps) install_deps=1 ;;
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --no-update) update=0 ;;
+        -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-linux.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -75,6 +82,29 @@ done
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
 
+# The branch checked out, brought up to date first: fast-forwarded to its
+# upstream, never merged or rebased. A detached HEAD or a branch with no
+# upstream is built as it is. When the pull moved the checkout the script
+# starts again, since the pull may have changed the script itself.
+if [ "$update" = 1 ] && [ -z "${MULTITAP_BUILD_UPDATED:-}" ]; then
+    branch=$(git symbolic-ref -q --short HEAD || true)
+    if [ -z "$branch" ]; then
+        echo "== no branch checked out (detached HEAD): built as it is"
+    elif ! git rev-parse -q --verify "@{upstream}" >/dev/null 2>&1; then
+        echo "== $branch has no upstream branch: built as it is"
+    else
+        echo "== updating $branch"
+        before=$(git rev-parse HEAD)
+        if ! git pull --ff-only; then
+            echo "build-linux.sh: couldn't fast-forward $branch (no network, local commits that diverged, or changed files in the way). Fix that, or --no-update to build what's here" >&2
+            exit 1
+        fi
+        if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            MULTITAP_BUILD_UPDATED=1 exec "$src_dir/tools/build-linux.sh" "$@"
+        fi
+    fi
+fi
+
 # The submodules of compilation.md step 2, only the ones not checked out yet
 # (no .git in their folder): one already there may be on a branch being
 # worked on, and `git submodule update` would move it back to the pinned
@@ -109,6 +139,41 @@ if [ ! -e deps/test-libretro/.git ]; then
         submodule update --init --recursive --checkout deps/test-libretro
 fi
 
+# The submodules already checked out follow the updated branch, fast-forward
+# only as well. One on a branch is pulled like the checkout above. One on a
+# detached HEAD moves to the commit the branch pins, when that commit is ahead
+# of it and no file in it is changed. Anything else (local commits, changed
+# files, a branch with no upstream) is being worked on and stays as it is.
+if [ "$update" = 1 ]; then
+    git submodule status | while read -r state path _; do
+        case "$state" in
+            -*) continue ;; # not checked out
+        esac
+        sub_branch=$(git -C "$path" symbolic-ref -q --short HEAD || true)
+        if [ -n "$sub_branch" ]; then
+            if git -C "$path" rev-parse -q --verify "@{upstream}" >/dev/null 2>&1; then
+                git -C "$path" pull -q --ff-only ||
+                    echo "   $path: couldn't fast-forward $sub_branch, left as it is"
+            fi
+            continue
+        fi
+        case "$state" in
+            +*) ;;
+            *) continue ;; # already at the pinned commit
+        esac
+        pinned=$(git rev-parse "HEAD:$path")
+        git -C "$path" cat-file -e "$pinned^{commit}" 2>/dev/null || git -C "$path" fetch -q || true
+        if git -C "$path" merge-base --is-ancestor HEAD "$pinned" 2>/dev/null &&
+            git -C "$path" diff --quiet HEAD; then
+            echo "== submodule: $path -> $(git -C "$path" rev-parse --short "$pinned")"
+            git -c url."https://github.com/".insteadOf="git@github.com:" \
+                submodule update --recursive -- "$path"
+        else
+            echo "   $path: not at the pinned commit and being worked on, left as it is"
+        fi
+    done
+fi
+
 if [ "$with_librashader" = 1 ]; then
     if ! command -v cargo >/dev/null 2>&1; then
         echo "build-linux.sh: cargo not found: tools/build-linux.sh --deps, or rustup (or --no-librashader)" >&2
@@ -123,10 +188,10 @@ case "$piccolo_dir" in
     *) piccolo_dir="$src_dir/$piccolo_dir" ;;
 esac
 if [ "$build_type" = Debug ]; then
-    build_dir=${BUILD_DIR:-build-debug}
+    build_dir=${BUILD_DIR:-local-builds/debug}
     warnings_as_errors=ON
 else
-    build_dir=${BUILD_DIR:-build}
+    build_dir=${BUILD_DIR:-local-builds/release}
     # GCC -O2 gives two harmless warnings.
     warnings_as_errors=OFF
 fi
@@ -146,14 +211,14 @@ fi
 
 if [ "$with_librashader" = 1 ]; then
     echo "== librashader (the first build takes a few minutes)"
-    if ! CARGO_TARGET_DIR="$src_dir/build-librashader" \
+    if ! CARGO_TARGET_DIR="$src_dir/local-builds/librashader" \
         cargo build --manifest-path deps/librashader/Cargo.toml -p librashader-capi \
         --release --locked --no-default-features --features runtime-vulkan; then
         echo "build-linux.sh: librashader didn't build; an old distribution's Rust can be too old:" >&2
         echo "  install a current one with rustup (https://rustup.rs), or use --no-librashader" >&2
         exit 1
     fi
-    install -m755 build-librashader/release/liblibrashader_capi.so "$piccolo_dir/librashader.so"
+    install -m755 local-builds/librashader/release/liblibrashader_capi.so "$piccolo_dir/librashader.so"
     install -m644 deps/librashader/LICENSE.md "$piccolo_dir/librashader-LICENSE.md"
 fi
 

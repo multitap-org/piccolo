@@ -330,3 +330,14 @@ void open_game_dvr(App* app)
 {
     app_open_widget(app, UiWidget::dvr);
 }
+
+// The burger menu's CONTROLLERS: the ports widget, as the DEVICES hotkey
+// opens it (Andrés, 2026-11-27: the widget, not INPUT). Only with a game and
+// ports to show.
+void open_controllers(App* app)
+{
+    if (game_running(app) && app->ports_widget.port_count > 0)
+    {
+        app_open_widget(app, UiWidget::ports);
+    }
+}

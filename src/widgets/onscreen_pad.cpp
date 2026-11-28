@@ -194,6 +194,17 @@ void onscreen_pad_set_style(OnscreenPad* pad, const InputLayout* layout, const c
     pad->style_name = name;
     pad->style = PadStyle{};
     pad->styled = layout != nullptr;
+    // MINIMAL: the layout file's touch arrangement (touch = two / snes), else
+    // the whole RetroPad's places (FULL).
+    pad->minimal = PadMinimal::none;
+    if (layout != nullptr && layout->touch == "two")
+    {
+        pad->minimal = PadMinimal::two;
+    }
+    else if (layout != nullptr && layout->touch == "snes")
+    {
+        pad->minimal = PadMinimal::snes;
+    }
     if (layout == nullptr)
     {
         return;
@@ -224,7 +235,7 @@ void onscreen_pad_place(OnscreenPad* pad, bool playing, float aspect, float widt
     // Landscape over the picture; upright under it if it fits, else over a
     // tall picture (retroui decides, the same as piccoletto's REMOTE PLAY).
     float block = static_cast<float>(touch_ui_scale_for(width, height));
-    pad->placement = pad_layouts_place(&pad->layouts, width / block, height / block, aspect, BELOW_GAP);
+    pad->placement = pad_layouts_place(&pad->layouts, width / block, height / block, aspect, BELOW_GAP, pad->minimal);
     pad->layout = pad->placement.id;
     pad->below = pad->shown && pad->placement.below;
     pad->picture_height = pad->below ? pad->placement.picture_height * block : height;
@@ -306,12 +317,13 @@ static void draw_empty_space(const TouchUi* ui, const OnscreenPadState* state, f
 // The burger menu's pop-up: centered over the picture (the screen without
 // one), the items stacked, in the pad_center colors at the look's opacities
 // (fill for the faces, labels for the text). A tap anywhere else closes it.
-static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState* state)
+// Where the pop-up's items go (retro pixels): the left, the top, the
+// height of the stack (MENU_ITEM_WIDTH wide).
+static void menu_box(const TouchUi* ui, const OnscreenPadState* state, float* x_out, float* y_out, float* total_out)
 {
     float width = touch_ui_width(ui);
     float height = touch_ui_height(ui);
     float scale = static_cast<float>(ui->scale);
-    OnscreenPadMenuPress press = OnscreenPadMenuPress::none;
     float area_x = 0.0f;
     float area_y = 0.0f;
     float area_width = width;
@@ -326,8 +338,22 @@ static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState*
     float total = static_cast<float>(MENU_ITEM_COUNT) * MENU_ITEM_HEIGHT + static_cast<float>(MENU_ITEM_COUNT - 1) * MENU_ITEM_GAP;
     float x = std::floor(area_x + (area_width - MENU_ITEM_WIDTH) * 0.5f);
     float y = std::floor(area_y + (area_height - total) * 0.5f);
-    x = std::fmax(0.0f, std::fmin(x, width - MENU_ITEM_WIDTH));
-    y = std::fmax(0.0f, std::fmin(y, height - total));
+    *x_out = std::fmax(0.0f, std::fmin(x, width - MENU_ITEM_WIDTH));
+    *y_out = std::fmax(0.0f, std::fmin(y, height - total));
+    *total_out = total;
+}
+
+// The pop-up: `outside_taps` = a tap on its backdrop (ImGui's) closes it
+// (the DEBUG preview; over the game the fingers do, menu_tapped_outside).
+static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState* state, bool outside_taps)
+{
+    float width = touch_ui_width(ui);
+    float height = touch_ui_height(ui);
+    OnscreenPadMenuPress press = OnscreenPadMenuPress::none;
+    float x = 0.0f;
+    float y = 0.0f;
+    float total = 0.0f;
+    menu_box(ui, state, &x, &y, &total);
     const char* labels[MENU_ITEM_COUNT] = {state->main_menu_label, state->quick_menu_label, state->game_dvr_label,
                                            state->controllers_label, state->edit_layout_label};
     const OnscreenPadMenuPress picks[MENU_ITEM_COUNT] = {
@@ -358,16 +384,52 @@ static OnscreenPadMenuPress draw_menu(const TouchUi* ui, const OnscreenPadState*
                       retro_ui_color_with_alpha(palette->pad_center_text, item_held ? 1.0f : state->look.labels),
                       TouchText::big);
     }
-    // The tap outside: submitted after the items. In ImGui the first item
-    // under the finger takes it (later ones overlapping it are not hovered),
-    // so with this one first every tap on an item closed the menu instead.
+    // The backdrop: submitted after the items. In ImGui the first item under
+    // the finger takes it (later ones overlapping it are not hovered), so
+    // with this one first every tap on an item closed the menu instead.
     bool outside_held = false;
     if (touch_ui_area(ui, "##pad_menu_outside", 0.0f, 0.0f, width, height, &outside_held, TouchNav::taps_only) &&
-        press == OnscreenPadMenuPress::none)
+        outside_taps && press == OnscreenPadMenuPress::none)
     {
         press = OnscreenPadMenuPress::close;
     }
     return press;
+}
+
+// Over the game: a finger that went down off the items since the pop-up
+// opened closes it when it lifts. Not ImGui's tap on the backdrop: SDL hands
+// ImGui a touch's move and press together and ImGui takes them a frame
+// apart, so the press of the finger still on the burger reached the
+// backdrop, and its release closed the pop-up (Andrés, 2026-11-27: on
+// Android it showed only while pressed).
+static bool menu_tapped_outside(OnscreenPad* pad, const TouchUi* ui, const OnscreenPadState* state)
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float total = 0.0f;
+    menu_box(ui, state, &x, &y, &total);
+    float scale = static_cast<float>(ui->scale);
+    for (int32_t i = 0; i < pad->fingers.count && i < TOUCH_MAX_FINGERS; i++)
+    {
+        const TouchFinger* finger = &pad->fingers.fingers[i];
+        if (!pad->menu_tap && finger->began)
+        {
+            float finger_x = finger->x / scale;
+            float finger_y = finger->y / scale;
+            bool on_items = finger_x >= x && finger_x < x + MENU_ITEM_WIDTH && finger_y >= y && finger_y < y + total;
+            if (!on_items)
+            {
+                pad->menu_tap = true;
+                pad->menu_tap_finger = finger->id;
+            }
+        }
+        if (pad->menu_tap && finger->id == pad->menu_tap_finger && finger->lifted)
+        {
+            pad->menu_tap = false;
+            return true;
+        }
+    }
+    return false;
 }
 
 OnscreenPadMenuPress onscreen_pad_menu_preview(const OnscreenPadState* state, RetroUiFont* pixel_font)
@@ -382,7 +444,7 @@ OnscreenPadMenuPress onscreen_pad_menu_preview(const OnscreenPadState* state, Re
     OnscreenPadState whole_screen = *state;
     whole_screen.picture = {};   // no game here: the screen's middle
     touch_ui_begin_overlay(&ui, "##pad_menu_preview");
-    OnscreenPadMenuPress press = draw_menu(&ui, &whole_screen);
+    OnscreenPadMenuPress press = draw_menu(&ui, &whole_screen, true);
     touch_ui_end_screen();
     return press;
 }
@@ -405,7 +467,8 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     ui.scale = touch_ui_scale_for(screen_width, screen_height);
     ui.palette = *retro_ui_palette();
     // While the burger menu is up it takes the taps: the pad's parts take no
-    // finger (and so the burger itself closes it, as a tap outside).
+    // finger (and so the burger itself closes it, as a tap outside, on its
+    // lift: the pad has it back once it's up).
     pad->menu_open = pad->menu_open && !pad->editor.active;
     ui.fingers = pad->menu_open ? nullptr : &pad->fingers;
     ui.pad = &pad->pad;
@@ -455,7 +518,11 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     }
     if (pad->menu_open)
     {
-        OnscreenPadMenuPress press = draw_menu(&ui, state);
+        OnscreenPadMenuPress press = draw_menu(&ui, state, false);
+        if (press == OnscreenPadMenuPress::none && menu_tapped_outside(pad, &ui, state))
+        {
+            press = OnscreenPadMenuPress::close;
+        }
         action->main_menu = press == OnscreenPadMenuPress::main_menu;
         action->quick_menu = press == OnscreenPadMenuPress::quick_menu;
         action->game_dvr = press == OnscreenPadMenuPress::game_dvr;
@@ -471,6 +538,7 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
     if (open_menu)
     {
         pad->menu_open = true;
+        pad->menu_tap = false;
     }
     touch_ui_end_screen();
 }

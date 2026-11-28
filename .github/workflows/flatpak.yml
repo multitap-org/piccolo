@@ -3,10 +3,9 @@
 #   flatpak install --user piccolo-<arch>.flatpak
 name: Flatpak
 
-# Tags: release.yml calls this workflow for v* tags (workflow_call).
+# main and v* tags: release.yml calls this workflow (workflow_call), to sign
+# what it builds (a snapshot or a release).
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -28,6 +27,16 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v4
+
+      # A build of main is a snapshot the releases server signs (release.yml):
+      # its version says so (tools/snapshot-suffix.sh, read by hosts-common's
+      # multitap_version).
+      - name: Snapshot version
+        if: github.workflow == 'Release' && github.ref_type == 'branch'
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$PWD"   # the Flatpak job's container
+          tools/snapshot-suffix.sh | tee .multitap-version-suffix
 
       # Only the submodules the build uses.
       # deps/librashader without --recursive: its own submodules are tests.

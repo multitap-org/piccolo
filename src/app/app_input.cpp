@@ -349,7 +349,7 @@ static void update_port_pings(App* app)
 }
 
 // A controller layout by its shown name (touch_pad_style keeps the name),
-// or nullptr ("" or a layout that's gone: the RetroPad).
+// or nullptr (RETROPAD, AUTO's "" or a layout that's gone: the RetroPad).
 const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* name)
 {
     for (size_t i = 0; name[0] != '\0' && i < layouts->layouts.size(); i++)
@@ -360,6 +360,31 @@ const InputLayout* find_layout_by_name(const InputLayouts* layouts, const char* 
         }
     }
     return nullptr;
+}
+
+// STYLE's AUTO ("", the default): the layout listing the running game's
+// extension (layouts/*.cfg extensions =; "Game.sfc", or the file inside an
+// archive, "snes.7z#USA/Game.sfc"), or nullptr (the RetroPad).
+const InputLayout* auto_layout(const App* app)
+{
+    if (!core_session_running(&app->session))
+    {
+        return nullptr;
+    }
+    std::string path = !app->marker_content_path.empty() ? app->marker_content_path : app->session.host->content_path;
+    size_t cut = path.find_last_of("/\\#");
+    std::string file = cut == std::string::npos ? path : path.substr(cut + 1);
+    size_t dot = file.find_last_of('.');
+    if (dot == std::string::npos)
+    {
+        return nullptr;
+    }
+    std::string extension = file.substr(dot + 1);
+    for (size_t i = 0; i < extension.size(); i++)
+    {
+        extension[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(extension[i])));
+    }
+    return input_layouts_for_extension(&app->layouts, extension.c_str());
 }
 
 // Once per loop, after the events: what the controllers say (ports,
@@ -597,6 +622,20 @@ void app_handle_events(App* app)
         {
             SDL_Log("Escape: input grab cancelled");
             cancel_grabs(app);
+            continue;
+        }
+        // Android's back button is the app's, before a core that has the keyboard.
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_AC_BACK)
+        {
+            if (!event.key.repeat)
+            {
+                SDL_Log("Back button");
+                app_back_button(app);
+            }
+            continue;
+        }
+        if (event.type == SDL_EVENT_KEY_UP && event.key.scancode == SDL_SCANCODE_AC_BACK)
+        {
             continue;
         }
         if (core_session_handle_event(&app->session, &app->shell, &event, game_has_keyboard(app)))

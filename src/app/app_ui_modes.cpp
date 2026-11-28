@@ -511,6 +511,35 @@ void ui_do_back(App* app)
     }
 }
 
+// Android's back button (SDL_SCANCODE_AC_BACK): in a game the QUICK MENU;
+// anywhere else back, as Escape (the grab, the pad's burger menu, an open
+// list, then the window or widget on top closes). Andrés, 2026-11-27.
+void app_back_button(App* app)
+{
+    if (grab_now(app) != UiGrab::none)
+    {
+        cancel_grabs(app);
+        return;
+    }
+    if (app->onscreen_pad.menu_open)
+    {
+        app->onscreen_pad.menu_open = false;
+        return;
+    }
+    if (ui_toolkit_has_popup())
+    {
+        ui_toolkit_nav_key(UiNavKey::back, true);   // the toolkit's own: it closes on Escape
+        ui_toolkit_nav_key(UiNavKey::back, false);
+        return;
+    }
+    if (app->ui.mode == UiMode::game && game_running(app) && !debug_preview_shown(&app->debug_previews))
+    {
+        app_open_quick_menu(app);
+        return;
+    }
+    ui_do_back(app);
+}
+
 // GAME > RESUME: back to the game whatever is up, every grab cancelled
 // (the way out when something holds the input).
 void resume_game(App* app)

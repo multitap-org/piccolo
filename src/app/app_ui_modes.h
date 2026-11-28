@@ -28,4 +28,5 @@ UiDerived app_derive(const App* app);
 bool game_has_keyboard(const App* app);
 bool ui_is_up(const App* app);
 void ui_do_back(App* app);
+void app_back_button(App* app);
 void resume_game(App* app);

@@ -47,12 +47,16 @@ void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     // the overlay); its burger menu opens the MAIN MENU, the QUICK MENU, the
     // GAME DVR, CONTROLLERS and EDIT LAYOUT (as the web page's pad: without a
     // keyboard they're the way to the menus).
-    // STYLE (per core / game): made again only when the setting changes.
+    // STYLE (per core / game): made again only when it changes. AUTO ("",
+    // the default) is the game's controller (auto_layout: NES / Game Boy,
+    // SUPER NINTENDO in their MINIMAL arrangement), else the RetroPad.
     {
         const char* style = settings_get_text(&app->settings, PICCOLO_TOUCH_PAD_STYLE);
-        if (app->onscreen_pad.style_name != style)
+        const InputLayout* layout = style[0] == '\0' ? auto_layout(app) : find_layout_by_name(&app->layouts, style);
+        std::string made_from = style[0] == '\0' ? "AUTO:" + (layout != nullptr ? layout->id : std::string()) : style;
+        if (app->onscreen_pad.style_name != made_from)
         {
-            onscreen_pad_set_style(&app->onscreen_pad, find_layout_by_name(&app->layouts, style), style);
+            onscreen_pad_set_style(&app->onscreen_pad, layout, made_from.c_str());
         }
     }
     // The page pad's burger menu (the browser, no keyboard needed): MAIN MENU
@@ -91,10 +95,11 @@ void app_ui_update(App* app, AppUiFrame* frame, UiView* view)
     {
         open_game_dvr(app);
     }
-    // CONTROLLERS from anywhere: the page's pad shows in the menus too.
+    // CONTROLLERS from any mode, like the DEVICES hotkey (the page's pad
+    // shows in the menus too).
     if (web_pad_take_controllers())
     {
-        input_window_open(&app->input_window);   // (no CONTROLLERS window yet: INPUT, as the touch pad's)
+        open_controllers(app);
     }
     // SETTINGS > NETWORK's hosts list (our client side): SHARE's connection
     // knows it, started for it.
@@ -399,10 +404,7 @@ void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, UiActio
     }
     if (actions->pad.controllers && game_has_keyboard(app))
     {
-        // CONTROLLERS: there is no window of that name yet; INPUT (where the
-        // controllers are set up) opens in its place, a MAIN MENU window
-        // like any opened by its module (ui_sync_windows enters MAIN MENU).
-        input_window_open(&app->input_window);
+        open_controllers(app);
     }
 
     if (view->menu_shown)

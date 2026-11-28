@@ -28,3 +28,4 @@ bool soft_reset(App* app);
 bool hard_reset(App* app);
 void close_game(App* app);
 void open_game_dvr(App* app);
+void open_controllers(App* app);

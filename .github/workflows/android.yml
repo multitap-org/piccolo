@@ -19,10 +19,9 @@
 # apksigner) come with the runner.
 name: Android
 
-# Tags: release.yml calls this workflow for v* tags (workflow_call).
+# main and v* tags: release.yml calls this workflow (workflow_call), to sign
+# what it builds (a snapshot or a release).
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -52,6 +51,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # versionCode is the commit count
+
+      # A build of main is a snapshot the releases server signs (release.yml):
+      # its version says so (tools/snapshot-suffix.sh, read by hosts-common's
+      # multitap_version).
+      - name: Snapshot version
+        if: github.workflow == 'Release' && github.ref_type == 'branch'
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$PWD"   # the Flatpak job's container
+          tools/snapshot-suffix.sh | tee .multitap-version-suffix
 
       # Only the submodules the build uses; Test libretro goes into the APK.
       # Some nested submodules (imguisw's third_party) have SSH URLs, which
