@@ -119,10 +119,12 @@ static void draw_continue_card(DebugWindowAction* action)
     press(action, retro_ui_button("NO SAVESTATES"), DebugWindowPress::continue_no_states);
     retro_ui_same_line();
     press(action, retro_ui_button("NEWER SAVE"), DebugWindowPress::continue_newer_save);
+    press(action, retro_ui_button("VERTICAL GAME"), DebugWindowPress::continue_vertical);
+    retro_ui_same_line();
     press(action, retro_ui_button("PHONE (HOME card)"), DebugWindowPress::continue_phone);
     retro_ui_same_line();
     press(action, retro_ui_button("REAL CARD"), DebugWindowPress::continue_real);
-    retro_ui_dim_text("Drawn behind the windows: close this one to see it active.", nullptr);
+    retro_ui_dim_text("Drawn behind the windows: close this one to see it active; its shelf has fake games (tiles swap into the card).", nullptr);
 }
 
 static void preview_button(DebugWindowAction* action, const char* label, DebugPreview what, bool same_line)

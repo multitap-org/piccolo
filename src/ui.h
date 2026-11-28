@@ -172,6 +172,8 @@ struct UiActions
     int32_t                  menu_picked = -1;   // the menu bar's item id (-1: none)
     MobileHomeAction         mobile_home = {};   // the phone's HOME and ☰ (their picks are the bar's ids)
     ContinueViewButton       continue_pressed = ContinueViewButton::none;   // the CONTINUE card's button
+    int32_t                  continue_tile = -1;   // ... the shelf's tile chosen (on the page shown)
+    int32_t                  continue_page = 0;    // ... the shelf's page arrows (-1 / +1)
     SettingsWindowAction     settings = {};
     FilePickerAction         picker = {};
     QuickMenuAction          quick = {};

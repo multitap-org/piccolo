@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "continue_card.h"
 #include "host_fs.h"
@@ -117,38 +118,97 @@ int main(int argc, char** argv)
     saved.aspect_height = 224;
     saved.closed = T;
     saved.saved = ContinueSaved::incomplete;
-    check(continue_record_save(&saved, path.c_str()), "the record is written");
-    ContinueRecord loaded = {};
-    check(continue_record_load(&loaded, path.c_str()), "the record is read back");
+    std::vector<ContinueRecord> list;
+    list.push_back(saved);
+    check(continue_records_save(&list, path.c_str()), "the record is written");
+    std::vector<ContinueRecord> back;
+    check(continue_records_load(&back, path.c_str()) && back.size() == 1, "the record is read back");
+    ContinueRecord loaded = back.empty() ? ContinueRecord{} : back[0];
     check(loaded.core_path == saved.core_path && loaded.content_path == saved.content_path, "same game");
     check(loaded.game_name == saved.game_name && loaded.core_name == saved.core_name, "same names");
     check(loaded.state_path == state && loaded.picture_path == picture && loaded.save_path.empty(), "same files");
     check(loaded.aspect_width == 292 && loaded.aspect_height == 224, "same aspect");
     check(loaded.closed == T && loaded.saved == ContinueSaved::incomplete, "same date and state");
     std::string missing = scratch + "/nothing.cfg";
-    check(!continue_record_load(&loaded, missing.c_str()) && loaded.core_path.empty(), "no file: no record");
+    check(!continue_records_load(&back, missing.c_str()) && back.empty(), "no file: no records");
     std::string broken = scratch + "/broken.cfg";
     write_text(&broken, "[continue]\ncore =\naspect_width = 99999999\n");
-    check(!continue_record_load(&loaded, broken.c_str()), "a record without a core is no record");
+    check(continue_records_load(&back, broken.c_str()) && back.empty(), "a record without a core is no record");
     write_text(&broken, "[continue]\ncore = /c.so\naspect_width = 99999999\naspect_height = 3\nsaved = what\n");
-    check(continue_record_load(&loaded, broken.c_str()) && loaded.aspect_width == 0 && loaded.aspect_height == 0 &&
-              loaded.saved == ContinueSaved::state,
+    check(continue_records_load(&back, broken.c_str()) && back.size() == 1 && back[0].aspect_width == 0 &&
+              back[0].aspect_height == 0 && back[0].saved == ContinueSaved::state,
           "a broken aspect is unknown, an unknown state is a state");
+    check(back.size() == 1 && back[0].core_path == "/c.so", "an old single [continue] section is the one record");
 
     // A name with blanks at its ends or a line break is saved cleaned: it is only shown.
     ContinueRecord odd = saved;
     odd.game_name = "  Odd Game \t";
     odd.core_name = "Snes\n9x ";
-    check(continue_record_save(&odd, path.c_str()), "names with outer blanks and a line break are written");
-    check(continue_record_load(&loaded, path.c_str()) && loaded.game_name == "Odd Game" &&
-              loaded.core_name == "Snes 9x",
+    list.clear();
+    list.push_back(odd);
+    check(continue_records_save(&list, path.c_str()), "names with outer blanks and a line break are written");
+    check(continue_records_load(&back, path.c_str()) && back.size() == 1 && back[0].game_name == "Odd Game" &&
+              back[0].core_name == "Snes 9x",
           "the names come back cleaned");
 
     // A date no clock has (it would overflow seconds * 1e9) means no date line.
     write_text(&broken, "[continue]\ncore = /c.so\nclosed = 18446744073709551615\n");
-    check(continue_record_load(&loaded, broken.c_str()) && loaded.closed == 0, "an absurd date is no date");
+    check(continue_records_load(&back, broken.c_str()) && back.size() == 1 && back[0].closed == 0,
+          "an absurd date is no date");
     write_text(&broken, "[continue]\ncore = /c.so\nclosed = 1795671814\n");
-    check(continue_record_load(&loaded, broken.c_str()) && loaded.closed == 1795671814, "a real date is kept");
+    check(continue_records_load(&back, broken.c_str()) && back.size() == 1 && back[0].closed == 1795671814,
+          "a real date is kept");
+
+    // --- Several records ------------------------------------------------------
+    std::vector<ContinueRecord> many;
+    for (uint32_t i = 0; i < RECENT_GAMES_MAX + 3; i++)
+    {
+        ContinueRecord game = saved;
+        game.content_path = "/roms/game" + std::to_string(i) + ".sfc";
+        game.game_name = "Game " + std::to_string(i);
+        continue_records_put(&many, &game);
+    }
+    check(many.size() == RECENT_GAMES_MAX, "at most RECENT_GAMES_MAX records");
+    check(many[0].game_name == "Game 12", "the last put is the first");
+    check(continue_records_find(&many, saved.core_path.c_str(), "/roms/game0.sfc") < 0, "the oldest was dropped");
+    check(continue_records_find(&many, saved.core_path.c_str(), "/roms/game5.sfc") == 7, "find: index of a game");
+    check(continue_records_find(&many, "/cores/other.so", "/roms/game5.sfc") < 0, "the same content on another core is another game");
+    ContinueRecord again = many[7];
+    again.closed = 42;
+    continue_records_put(&many, &again);
+    check(many.size() == RECENT_GAMES_MAX && many[0].closed == 42 && many[0].content_path == again.content_path,
+          "putting a game again replaces its record and moves it to the front");
+    check(continue_records_find(&many, saved.core_path.c_str(), "/roms/game5.sfc") == 0, "...and it is found at the front");
+    check(many[1].game_name == "Game 12" && many[7].game_name == "Game 6", "the others shifted down in order");
+    check(continue_records_save(&many, path.c_str()), "many records are written");
+    check(continue_records_load(&back, path.c_str()) && back.size() == many.size(), "many records are read back");
+    bool same_order = back.size() == many.size();
+    for (size_t i = 0; same_order && i < many.size(); i++)
+    {
+        same_order = back[i].content_path == many[i].content_path && back[i].closed == many[i].closed;
+    }
+    check(same_order, "in the same order");
+    std::string text_file = scratch + "/two.cfg";
+    write_text(&text_file, "[1]\ncore = /c.so\ncontent = /a\n[2]\ncore = /c.so\ncontent = /a\n[3]\ncore = /c.so\ncontent = /b\n");
+    check(continue_records_load(&back, text_file.c_str()) && back.size() == 2, "a game twice in a file counts once");
+
+    // --- The shelf's order ----------------------------------------------------
+    std::vector<uint32_t> order;
+    continue_order_reset(&order, 6);
+    check(order.size() == 6 && order[0] == 0 && order[5] == 5, "the order starts as RECENT's");
+    continue_order_select(&order, 3);
+    check(order[0] == 3 && order[1] == 0 && order[2] == 1 && order[3] == 2 && order[4] == 4 && order[5] == 5,
+          "choosing a tile: it goes to the card, the card's game is the shelf's first");
+    continue_order_select(&order, 0);
+    check(order[0] == 3 && order[1] == 0, "choosing the card changes nothing");
+    continue_order_select(&order, 9);
+    check(order.size() == 6, "choosing past the end changes nothing");
+    continue_order_select(&order, 1);
+    check(order[0] == 0 && order[1] == 3, "choosing the first tile swaps it with the card");
+    check(continue_shelf_pages(0) == 0 && continue_shelf_pages(1) == 0, "no shelf without other games");
+    check(continue_shelf_pages(2) == 1 && continue_shelf_pages(5) == 1 && continue_shelf_pages(6) == 2 &&
+              continue_shelf_pages(9) == 2 && continue_shelf_pages(10) == 3,
+          "four tiles to a page");
 
     // --- The files ----------------------------------------------------------
     // (A run before this one left them.)

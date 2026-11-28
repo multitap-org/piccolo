@@ -678,6 +678,7 @@ constexpr int32_t MENU_ID_RECENT = 1000;
 static bool game_running(const App* app);   // (Game control, further down)
 static bool continue_card_active(const App* app);   // (The CONTINUE card, further down)
 static void continue_card_press(App* app, ContinueViewButton button);
+static void continue_card_choose(App* app, uint32_t tile);
 
 static bool menu_item_listed(int32_t menu, int32_t item, bool running)
 {
@@ -3467,13 +3468,40 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     {
         app->open_first_menu = true;
     }
-    // The CONTINUE card's first button (A / Enter), while nothing covers it.
-    if (bar_alone && !app->phone_ui && frame->joined_port == INPUT_NO_PORT &&
-        frame->pressed[static_cast<uint32_t>(InputAction::ui_accept)] && continue_card_active(app) &&
-        app->continue_panel.preview != ContinuePreview::phone)
+    // The CONTINUE card, while nothing covers it: the directions move its
+    // focus (buttons, the shelf's tiles or the list's rows), A / Enter presses
+    // the button or chooses the tile that has it.
+    if (bar_alone && !app->phone_ui && frame->joined_port == INPUT_NO_PORT && !ui_toolkit_wants_text() &&
+        continue_card_active(app) && app->continue_panel.preview != ContinuePreview::phone)
     {
-        ContinueKind kind = continue_panel_choice(&app->continue_panel).kind;
-        continue_card_press(app, kind == ContinueKind::resume ? ContinueViewButton::resume : ContinueViewButton::start);
+        ContinuePanel* panel = &app->continue_panel;
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_up)])
+        {
+            continue_panel_key(panel, ContinueKey::up);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_down)])
+        {
+            continue_panel_key(panel, ContinueKey::down);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_left)])
+        {
+            continue_panel_key(panel, ContinueKey::left);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_right)])
+        {
+            continue_panel_key(panel, ContinueKey::right);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_accept)])
+        {
+            if (panel->focus_tile >= 0)
+            {
+                continue_card_choose(app, static_cast<uint32_t>(panel->focus_tile));
+            }
+            else
+            {
+                continue_card_press(app, continue_panel_focused_button(panel));
+            }
+        }
     }
 }
 
@@ -4794,6 +4822,9 @@ static void debug_window_apply(App* app, const DebugWindowAction* action)
         break;
     case DebugWindowPress::continue_newer_save:
         continue_panel_preview(&app->continue_panel, ContinuePreview::newer_save);
+        break;
+    case DebugWindowPress::continue_vertical:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::vertical);
         break;
     case DebugWindowPress::continue_phone:
         continue_panel_preview(&app->continue_panel, ContinuePreview::phone);
@@ -6373,15 +6404,6 @@ static void snow_fill(App* app, UiView* view)
 // press its first button only while nothing is open over it.
 // ---------------------------------------------------------------------------
 
-static const RecentGame* recent_top(const App* app)
-{
-    if (app->recent_shown.empty())
-    {
-        return nullptr;
-    }
-    return &app->recent.games[app->recent_shown[0]];
-}
-
 static bool continue_card_wanted(const App* app)
 {
     return !game_running(app) && app->ui.mode == UiMode::main_menu && !app->onscreen_pad.editor.active;
@@ -6411,9 +6433,10 @@ static bool continue_card_active(const App* app)
     return continue_card_shown(app) && nothing_open;
 }
 
-// What the card's button does: RESUME starts the top of RECENT with its core
-// (SAVE STATE ON EXIT loads the AUTO state); START starts it without that.
-// A fake card's buttons only end the preview.
+// What the card's button does: RESUME starts the game in the card (not
+// necessarily RECENT's top) with its core (SAVE STATE ON EXIT loads the AUTO
+// state); START / RESTART starts it without that. A fake card's buttons only
+// end the preview.
 static void continue_card_press(App* app, ContinueViewButton button)
 {
     if (button == ContinueViewButton::none)
@@ -6425,17 +6448,24 @@ static void continue_card_press(App* app, ContinueViewButton button)
         continue_panel_preview(&app->continue_panel, ContinuePreview::none);
         return;
     }
-    const RecentGame* top = recent_top(app);
-    if (top == nullptr || game_running(app))
+    const RecentGame* game = continue_panel_card_game(&app->continue_panel);
+    if (game == nullptr || game_running(app))
     {
         return;
     }
     app->pending_start = FilePickerChoice{};
-    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s", top->core_path.c_str());
+    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s", game->core_path.c_str());
     std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
-                  top->content_path.c_str());
+                  game->content_path.c_str());
     app->has_pending_start = true;   // started at the top of the next loop, like RECENT
     app->resume_skip = button == ContinueViewButton::start;
+}
+
+// A tile / row of the shelf chosen (a click, or A / Enter on it): its game
+// goes into the card. Nothing starts: that is RESUME or RESTART.
+static void continue_card_choose(App* app, uint32_t tile)
+{
+    continue_panel_choose(&app->continue_panel, tile);
 }
 
 // Before the view: the files and the picture, scaled for its size on screen.
@@ -6448,6 +6478,8 @@ static void continue_card_update(App* app, const UiView* view)
     card.aspect_height = record->aspect_height;
     float width = 0.0f;
     float height = 0.0f;
+    int32_t tile_scale = 0;   // the shelf's pictures: only on the desktop
+    bool as_list = false;
     if (panel->preview == ContinuePreview::phone)
     {
         int32_t touch_scale = touch_ui_scale_for(view->screen_width, view->screen_height);
@@ -6481,9 +6513,19 @@ static void continue_card_update(App* app, const UiView* view)
     }
     else
     {
-        continue_view_panel_picture_size(&card, app->ui_scale, &width, &height);
+        ContinueViewLayout layout = continue_view_panel_layout(view->screen_width, view->screen_height, app->ui_scale);
+        continue_view_panel_picture_size(&card, app->ui_scale, layout == ContinueViewLayout::stacked_shelf, &width,
+                                         &height);
+        as_list = layout == ContinueViewLayout::side_list;
+        tile_scale = as_list ? 0 : app->ui_scale;   // the list has no pictures
     }
-    continue_panel_update(panel, recent_top(app), continue_card_wanted(app), width, height, SDL_GetTicks());
+    // RECENT as shown: the panel keeps the order of its games from it.
+    std::vector<RecentGame> shown;
+    for (size_t i = 0; i < app->recent_shown.size(); i++)
+    {
+        shown.push_back(app->recent.games[app->recent_shown[i]]);
+    }
+    continue_panel_update(panel, &shown, continue_card_wanted(app), width, height, tile_scale, as_list, SDL_GetTicks());
 }
 
 // The desktop's panel, or the card on the phone's HOME (or a fake one).
@@ -6507,8 +6549,11 @@ static void continue_card_view(const App* app, UiView* view)
     now.weekday = date.day_of_week;
     now.hour = date.hour;
     now.minute = date.minute;
-    continue_panel_state(&view->continue_card, &app->continue_panel, &app->strings, &now, continue_card_active(app));
-    if (real && app->phone_ui && view->mobile_home.home_shown)
+    continue_panel_state(&view->continue_card, &app->continue_panel, &app->strings, &now, continue_card_active(app),
+                         app->phone_ui);
+    // The phone's HOME shows a card only for a game with a record (a game
+    // without one is just in its list).
+    if (real && app->phone_ui && view->mobile_home.home_shown && continue_panel_card_has_record(&app->continue_panel))
     {
         view->continue_card.card.hint = "";   // the phone shows no keys
         view->mobile_home.card = &view->continue_card.card;
@@ -6911,6 +6956,11 @@ static void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, 
         onscreen_pad_edit(&app->onscreen_pad);   // the burger menu's EDIT LAYOUT
     }
     continue_card_press(app, actions->continue_pressed);
+    if (actions->continue_tile >= 0)
+    {
+        continue_card_choose(app, static_cast<uint32_t>(actions->continue_tile));
+    }
+    continue_panel_page(&app->continue_panel, actions->continue_page);
     // The burger menu's other picks (the pad shows in GAME mode, with a
     // game, or in EDIT LAYOUT: there they have no use).
     if (actions->pad.main_menu && game_has_keyboard(app))

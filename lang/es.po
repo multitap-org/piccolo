@@ -178,9 +178,49 @@ msgctxt "continue_start"
 msgid "START"
 msgstr "EMPEZAR"
 
-msgctxt "continue_hint"
-msgid "A / ENTER: RESUME · OTHER GAMES: ☰"
-msgstr "A / ENTER: CONTINUAR · OTROS JUEGOS: ☰"
+msgctxt "continue_restart"
+msgid "RESTART"
+msgstr "REINICIAR"
+
+msgctxt "continue_recent"
+msgid "RECENT"
+msgstr "RECIENTES"
+
+msgctxt "continue_short_today"
+msgid "TODAY"
+msgstr "HOY"
+
+msgctxt "continue_short_yesterday"
+msgid "YESTERDAY"
+msgstr "AYER"
+
+msgctxt "continue_hint_enter"
+msgid "A / ENTER:"
+msgstr "A / ENTER:"
+
+msgctxt "continue_hint_games"
+msgid "▼: OTHER GAMES"
+msgstr "▼: OTROS JUEGOS"
+
+msgctxt "continue_hint_show"
+msgid "SHOW"
+msgstr "MOSTRAR"
+
+msgctxt "continue_hint_here"
+msgid "HERE"
+msgstr "AQUÍ"
+
+msgctxt "continue_hint_back"
+msgid "▲: BACK"
+msgstr "▲: VOLVER"
+
+msgctxt "continue_hint_games_list"
+msgid "▶: OTHER GAMES"
+msgstr "▶: OTROS JUEGOS"
+
+msgctxt "continue_hint_back_list"
+msgid "◀: BACK"
+msgstr "◀: VOLVER"
 
 msgctxt "continue_played_today"
 msgid "PLAYED TODAY AT"

@@ -55,15 +55,16 @@ static int32_t draw_menu_bar(const UiView* view, RetroUiFont* pixel_font, int32_
 
 // The CONTINUE card on the empty screen: a panel behind every window and
 // menu (drawn back before the backdrop, which goes further back), under the
-// menu bar. Returns its button pressed.
-static ContinueViewButton draw_continue_panel(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
+// menu bar. Returns what was pressed, chosen or paged.
+static ContinueViewAction draw_continue_panel(const UiView* view, RetroUiFont* pixel_font, int32_t scale)
 {
     if (!view->continue_card.shown || view->continue_card.phone)
     {
-        return ContinueViewButton::none;
+        return ContinueViewAction{};
     }
     float bar = view->menu_shown ? retro_ui_menu_bar_height(scale) : 0.0f;
-    return continue_view_draw_panel(pixel_font, scale, &view->continue_card.card, bar);
+    return continue_view_draw_panel(pixel_font, scale, &view->continue_card.card, bar, view->screen_width,
+                                    view->screen_height - bar);
 }
 
 // The debug window's preview of the phone's HOME card: a phone-wide card in
@@ -110,7 +111,10 @@ void ui_draw(const UiView* view, UiWindows* windows, RetroUiFont* pixel_font, in
     // The ports' tabs, behind every window (they peek while the menu is up).
     ports_widget_draw_tabs(windows->ports, &view->ports_tabs, pixel_font, scale);
     draw_hud(view, pixel_font, scale);
-    actions->continue_pressed = draw_continue_panel(view, pixel_font, scale);
+    ContinueViewAction continue_action = draw_continue_panel(view, pixel_font, scale);
+    actions->continue_pressed = continue_action.pressed;
+    actions->continue_tile = continue_action.tile_chosen;
+    actions->continue_page = continue_action.page_delta;
     draw_menu_backdrop(view, pixel_font, scale);   // (after the tabs and the card: behind them and every window)
     actions->menu_picked = draw_menu_bar(view, pixel_font, scale);
     // The phone: HOME behind every window (a page covers it), the ☰ sidebar

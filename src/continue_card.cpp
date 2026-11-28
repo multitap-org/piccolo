@@ -7,8 +7,6 @@
 #include "host_fs.h"
 #include "settings_file.h"
 
-static const char* const SECTION = "continue";
-
 // The card's date is seconds * SDL_NS_PER_SECOND in an int64 (continue_panel):
 // anything above this (year 2255) is a broken file, not a time.
 constexpr uint64_t CLOSED_MAX_SECONDS = 9000000000;
@@ -46,15 +44,15 @@ static ContinueSaved saved_from_name(const char* name)
     return ContinueSaved::state;
 }
 
-static std::string text_or_empty(const SettingsFile* file, const char* key)
+static std::string text_or_empty(const SettingsFile* file, const char* section, const char* key)
 {
-    const char* value = settings_file_get(file, SECTION, key);
+    const char* value = settings_file_get(file, section, key);
     return value != nullptr ? std::string(value) : std::string();
 }
 
-static uint64_t number_or_zero(const SettingsFile* file, const char* key)
+static uint64_t number_or_zero(const SettingsFile* file, const char* section, const char* key)
 {
-    const char* value = settings_file_get(file, SECTION, key);
+    const char* value = settings_file_get(file, section, key);
     if (value == nullptr || value[0] == '\0')
     {
         return 0;
@@ -62,40 +60,61 @@ static uint64_t number_or_zero(const SettingsFile* file, const char* key)
     return std::strtoull(value, nullptr, 10);
 }
 
-bool continue_record_load(ContinueRecord* record, const char* path)
+// One section as a record. False (record empty) without a core: not a record.
+static bool record_read(ContinueRecord* record, const SettingsFile* file, const char* section)
 {
     *record = ContinueRecord{};
-    SettingsFile file = {};
-    if (!host_fs_exists(path) || !settings_file_load(&file, path))
-    {
-        return false;
-    }
-    record->core_path = text_or_empty(&file, "core");
+    record->core_path = text_or_empty(file, section, "core");
     if (record->core_path.empty())
     {
-        *record = ContinueRecord{};
         return false;
     }
-    record->content_path = text_or_empty(&file, "content");
-    record->game_name = text_or_empty(&file, "game");
-    record->core_name = text_or_empty(&file, "core_name");
-    record->state_path = text_or_empty(&file, "state");
-    record->picture_path = text_or_empty(&file, "picture");
-    record->save_path = text_or_empty(&file, "save");
-    uint64_t width = number_or_zero(&file, "aspect_width");
-    uint64_t height = number_or_zero(&file, "aspect_height");
+    record->content_path = text_or_empty(file, section, "content");
+    record->game_name = text_or_empty(file, section, "game");
+    record->core_name = text_or_empty(file, section, "core_name");
+    record->state_path = text_or_empty(file, section, "state");
+    record->picture_path = text_or_empty(file, section, "picture");
+    record->save_path = text_or_empty(file, section, "save");
+    uint64_t width = number_or_zero(file, section, "aspect_width");
+    uint64_t height = number_or_zero(file, section, "aspect_height");
     // A picture is never this big; anything else is a broken file.
     if (width > 0 && height > 0 && width <= 65536 && height <= 65536)
     {
         record->aspect_width = static_cast<uint32_t>(width);
         record->aspect_height = static_cast<uint32_t>(height);
     }
-    record->closed = number_or_zero(&file, "closed");
+    record->closed = number_or_zero(file, section, "closed");
     if (record->closed > CLOSED_MAX_SECONDS)
     {
         record->closed = 0;   // no date line
     }
-    record->saved = saved_from_name(text_or_empty(&file, "saved").c_str());
+    record->saved = saved_from_name(text_or_empty(file, section, "saved").c_str());
+    return true;
+}
+
+bool continue_records_load(std::vector<ContinueRecord>* records, const char* path)
+{
+    records->clear();
+    SettingsFile file = {};
+    if (!host_fs_exists(path) || !settings_file_load(&file, path))
+    {
+        return false;
+    }
+    // Every section is a record, whatever it is called: "1", "2", ... most
+    // recent first, or the single "[continue]" the first version wrote.
+    for (size_t i = 0; i < file.sections.size() && records->size() < RECENT_GAMES_MAX; i++)
+    {
+        const char* section = file.sections[i].name.c_str();
+        if (section[0] == '\0')
+        {
+            continue;   // the global section: nothing of ours there
+        }
+        ContinueRecord record = {};
+        if (record_read(&record, &file, section))
+        {
+            continue_records_put_last(records, &record);
+        }
+    }
     return true;
 }
 
@@ -121,9 +140,10 @@ static std::string shown_name(const std::string* name)
     return clean.substr(first, last - first + 1);
 }
 
-bool continue_record_save(const ContinueRecord* record, const char* path)
+// One record into section `section`. False when a value can't be stored
+// (e.g. a path with a line break).
+static bool record_write(SettingsFile* file, const char* section, const ContinueRecord* record)
 {
-    SettingsFile file = {};
     char width[16] = {};
     char height[16] = {};
     char closed[32] = {};
@@ -132,22 +152,107 @@ bool continue_record_save(const ContinueRecord* record, const char* path)
     std::snprintf(closed, sizeof(closed), "%llu", static_cast<unsigned long long>(record->closed));
     std::string game_name = shown_name(&record->game_name);
     std::string core_name = shown_name(&record->core_name);
-    bool ok = settings_file_set(&file, SECTION, "core", record->core_path.c_str()) &&
-              settings_file_set(&file, SECTION, "content", record->content_path.c_str()) &&
-              settings_file_set(&file, SECTION, "game", game_name.c_str()) &&
-              settings_file_set(&file, SECTION, "core_name", core_name.c_str()) &&
-              settings_file_set(&file, SECTION, "state", record->state_path.c_str()) &&
-              settings_file_set(&file, SECTION, "picture", record->picture_path.c_str()) &&
-              settings_file_set(&file, SECTION, "save", record->save_path.c_str()) &&
-              settings_file_set(&file, SECTION, "aspect_width", width) &&
-              settings_file_set(&file, SECTION, "aspect_height", height) &&
-              settings_file_set(&file, SECTION, "closed", closed) &&
-              settings_file_set(&file, SECTION, "saved", saved_name(record->saved));
-    if (!ok)
+    return settings_file_set(file, section, "core", record->core_path.c_str()) &&
+           settings_file_set(file, section, "content", record->content_path.c_str()) &&
+           settings_file_set(file, section, "game", game_name.c_str()) &&
+           settings_file_set(file, section, "core_name", core_name.c_str()) &&
+           settings_file_set(file, section, "state", record->state_path.c_str()) &&
+           settings_file_set(file, section, "picture", record->picture_path.c_str()) &&
+           settings_file_set(file, section, "save", record->save_path.c_str()) &&
+           settings_file_set(file, section, "aspect_width", width) &&
+           settings_file_set(file, section, "aspect_height", height) &&
+           settings_file_set(file, section, "closed", closed) &&
+           settings_file_set(file, section, "saved", saved_name(record->saved));
+}
+
+bool continue_records_save(const std::vector<ContinueRecord>* records, const char* path)
+{
+    SettingsFile file = {};
+    uint32_t written = 0;
+    for (size_t i = 0; i < records->size() && written < RECENT_GAMES_MAX; i++)
     {
-        return false;   // logged (e.g. a path with a line break)
+        // Tried on a scratch file first, like recent.cfg: one record that
+        // can't be stored must not stop the others nor leave half a section.
+        SettingsFile probe = {};
+        if (!record_write(&probe, "1", &(*records)[i]))
+        {
+            continue;   // logged by settings_file_set
+        }
+        written++;
+        char section[16] = {};
+        std::snprintf(section, sizeof(section), "%u", written);
+        record_write(&file, section, &(*records)[i]);
     }
-    return settings_file_save(&file, path, "piccolo: the last game closed, for the CONTINUE card");
+    return settings_file_save(&file, path, "piccolo: the games closed last, for the CONTINUE card (most recent first)");
+}
+
+void continue_records_put(std::vector<ContinueRecord>* records, const ContinueRecord* record)
+{
+    int32_t found = continue_records_find(records, record->core_path.c_str(), record->content_path.c_str());
+    if (found >= 0)
+    {
+        records->erase(records->begin() + found);
+    }
+    records->insert(records->begin(), *record);
+    while (records->size() > RECENT_GAMES_MAX)
+    {
+        records->pop_back();
+    }
+}
+
+void continue_records_put_last(std::vector<ContinueRecord>* records, const ContinueRecord* record)
+{
+    int32_t found = continue_records_find(records, record->core_path.c_str(), record->content_path.c_str());
+    if (found < 0 && records->size() < RECENT_GAMES_MAX)
+    {
+        records->push_back(*record);   // (a game twice in a file: its first, the most recent, stays)
+    }
+}
+
+int32_t continue_records_find(const std::vector<ContinueRecord>* records, const char* core_path,
+                              const char* content_path)
+{
+    for (size_t i = 0; i < records->size(); i++)
+    {
+        const ContinueRecord* record = &(*records)[i];
+        if (record->core_path == core_path && record->content_path == content_path)
+        {
+            return static_cast<int32_t>(i);
+        }
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
+// The shelf's order
+
+void continue_order_reset(std::vector<uint32_t>* order, size_t count)
+{
+    order->clear();
+    for (size_t i = 0; i < count; i++)
+    {
+        order->push_back(static_cast<uint32_t>(i));
+    }
+}
+
+void continue_order_select(std::vector<uint32_t>* order, size_t position)
+{
+    if (position == 0 || position >= order->size())
+    {
+        return;
+    }
+    uint32_t chosen = (*order)[position];
+    order->erase(order->begin() + static_cast<std::ptrdiff_t>(position));
+    order->insert(order->begin(), chosen);
+}
+
+uint32_t continue_shelf_pages(size_t order_size)
+{
+    if (order_size <= 1)
+    {
+        return 0;
+    }
+    return static_cast<uint32_t>((order_size - 1 + CONTINUE_SHELF_TILES - 1) / CONTINUE_SHELF_TILES);
 }
 
 bool continue_record_matches(const ContinueRecord* record, const RecentGame* top)
