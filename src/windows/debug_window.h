@@ -134,8 +134,9 @@ enum class DebugWindowPress
     sleigh_now,           // the December 25 sleigh crosses now (the snow must be falling)
     snow_restart,         // the snow starts again from the sky
     continue_resume,      // the CONTINUE card, fake: RESUME
-    continue_no_states,   // ... START, the core can't save states
-    continue_newer_save,  // ... START / RESUME, the save file is newer
+    continue_no_states,   // ... START, the core can't save states (a card and a fake shelf of games)
+    continue_newer_save,  // ... RESTART / RESUME, the save file is newer
+    continue_vertical,    // ... a vertical (3:4) game in the card
     continue_phone,       // ... the phone's HOME card
     continue_real,        // the real card again (or none)
 };

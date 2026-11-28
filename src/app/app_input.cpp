@@ -161,13 +161,40 @@ static void drive_ui_with_gamepads(App* app, const InputFrame* source_frame, boo
     {
         app->open_first_menu = true;
     }
-    // The CONTINUE card's first button (A / Enter), while nothing covers it.
-    if (bar_alone && !app->phone_ui && frame->joined_port == INPUT_NO_PORT &&
-        frame->pressed[static_cast<uint32_t>(InputAction::ui_accept)] && continue_card_active(app) &&
-        app->continue_panel.preview != ContinuePreview::phone)
+    // The CONTINUE card, while nothing covers it: the directions move its
+    // focus (buttons, the shelf's tiles or the list's rows), A / Enter presses
+    // the button or chooses the tile that has it.
+    if (bar_alone && !app->phone_ui && frame->joined_port == INPUT_NO_PORT && !ui_toolkit_wants_text() &&
+        continue_card_active(app) && app->continue_panel.preview != ContinuePreview::phone)
     {
-        ContinueKind kind = continue_panel_choice(&app->continue_panel).kind;
-        continue_card_press(app, kind == ContinueKind::resume ? ContinueViewButton::resume : ContinueViewButton::start);
+        ContinuePanel* panel = &app->continue_panel;
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_up)])
+        {
+            continue_panel_key(panel, ContinueKey::up);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_down)])
+        {
+            continue_panel_key(panel, ContinueKey::down);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_left)])
+        {
+            continue_panel_key(panel, ContinueKey::left);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_right)])
+        {
+            continue_panel_key(panel, ContinueKey::right);
+        }
+        if (frame->pressed[static_cast<uint32_t>(InputAction::ui_accept)])
+        {
+            if (panel->focus_tile >= 0)
+            {
+                continue_card_choose(app, static_cast<uint32_t>(panel->focus_tile));
+            }
+            else
+            {
+                continue_card_press(app, continue_panel_focused_button(panel));
+            }
+        }
     }
 }
 

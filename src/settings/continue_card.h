@@ -27,14 +27,17 @@
 //   closed = 1795671814             (seconds since 1970)
 //   saved = state                   (state / no_states / incomplete / off)
 //
-// One record: the card only ever shows the top of RECENT, and only when the
-// record is that game's (removing the game from RECENT, or CLEAR ALL, takes
-// the card away; a crash leaves the previous game's record, which no longer
-// matches the top).
+// One record per game, like recent.cfg: sections "1", "2", ... most recent
+// first, at most RECENT_GAMES_MAX, each with the keys above. Closing a game
+// replaces its record (same core and content) and moves it to the front. The
+// first version wrote a single "[continue]": it reads as the one record.
+// A game of RECENT without a record still gets a card (RESTART alone, no
+// picture); a record whose game left RECENT is just never looked up.
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "recent_games.h"
 
@@ -62,9 +65,30 @@ struct ContinueRecord
     ContinueSaved saved = ContinueSaved::state;
 };
 
-// A missing or unreadable file: false, `record` empty.
-bool continue_record_load(ContinueRecord* record, const char* path);
-bool continue_record_save(const ContinueRecord* record, const char* path);
+// A missing or unreadable file: false, `records` empty. Sections without a
+// core are skipped.
+bool continue_records_load(std::vector<ContinueRecord>* records, const char* path);
+bool continue_records_save(const std::vector<ContinueRecord>* records, const char* path);
+// This game's record replaces the one of the same game (core + content) and
+// goes to the front; the oldest beyond RECENT_GAMES_MAX go.
+void continue_records_put(std::vector<ContinueRecord>* records, const ContinueRecord* record);
+// Appended at the end unless that game is there already (loading a file).
+void continue_records_put_last(std::vector<ContinueRecord>* records, const ContinueRecord* record);
+// The record of this game: its index, -1 when it has none.
+int32_t continue_records_find(const std::vector<ContinueRecord>* records, const char* core_path,
+                              const char* content_path);
+
+// The desktop panel shows the game in its card and a shelf of the others
+// (Andrés, 2026-11-27). The order is only what's on screen, in memory:
+// RECENT's indices, [0] in the card, [1...] on the shelf, 4 to a page.
+// Choosing a shelf game moves it to the front, the card's game becomes the
+// shelf's first. Reset to RECENT's order when RECENT changes.
+constexpr uint32_t CONTINUE_SHELF_TILES = 4;
+void continue_order_reset(std::vector<uint32_t>* order, size_t count);
+void continue_order_select(std::vector<uint32_t>* order, size_t position);
+// How many shelf pages `order_size` games make (the card's game isn't on the
+// shelf): 0 when there is nothing but the card.
+uint32_t continue_shelf_pages(size_t order_size);
 
 // The record is the game at the top of RECENT (nullptr: RECENT is empty).
 bool continue_record_matches(const ContinueRecord* record, const RecentGame* top);
@@ -89,11 +113,11 @@ enum class ContinueKind
 {
     none,              // no card
     resume,            // RESUME
-    start,             // START only (nothing to resume)
-    start_or_resume,   // START first, RESUME second (the save file is newer)
+    start,             // RESTART only (nothing to resume)
+    start_or_resume,   // RESTART first, RESUME second (the save file is newer)
 };
 
-// Why it says START (the card's line).
+// Why it says RESTART alone (the card's line).
 enum class ContinueReason
 {
     none,

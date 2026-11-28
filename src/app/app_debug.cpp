@@ -195,6 +195,9 @@ void debug_window_apply(App* app, const DebugWindowAction* action)
     case DebugWindowPress::continue_newer_save:
         continue_panel_preview(&app->continue_panel, ContinuePreview::newer_save);
         break;
+    case DebugWindowPress::continue_vertical:
+        continue_panel_preview(&app->continue_panel, ContinuePreview::vertical);
+        break;
     case DebugWindowPress::continue_phone:
         continue_panel_preview(&app->continue_panel, ContinuePreview::phone);
         break;

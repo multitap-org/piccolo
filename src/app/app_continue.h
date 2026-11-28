@@ -6,5 +6,6 @@
 
 bool continue_card_active(const App* app);
 void continue_card_press(App* app, ContinueViewButton button);
+void continue_card_choose(App* app, uint32_t tile);
 void continue_card_update(App* app, const UiView* view);
 void continue_card_view(const App* app, UiView* view);

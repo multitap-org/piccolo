@@ -39,9 +39,10 @@ bool continue_card_active(const App* app)
     return continue_card_shown(app) && nothing_open;
 }
 
-// What the card's button does: RESUME starts the top of RECENT with its core
-// (SAVE STATE ON EXIT loads the AUTO state); START starts it without that.
-// A fake card's buttons only end the preview.
+// What the card's button does: RESUME starts the game in the card (not
+// necessarily RECENT's top) with its core (SAVE STATE ON EXIT loads the AUTO
+// state); START / RESTART starts it without that. A fake card's buttons only
+// end the preview.
 void continue_card_press(App* app, ContinueViewButton button)
 {
     if (button == ContinueViewButton::none)
@@ -53,17 +54,24 @@ void continue_card_press(App* app, ContinueViewButton button)
         continue_panel_preview(&app->continue_panel, ContinuePreview::none);
         return;
     }
-    const RecentGame* top = recent_top(app);
-    if (top == nullptr || game_running(app))
+    const RecentGame* game = continue_panel_card_game(&app->continue_panel);
+    if (game == nullptr || game_running(app))
     {
         return;
     }
     app->pending_start = FilePickerChoice{};
-    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s", top->core_path.c_str());
+    std::snprintf(app->pending_start.core_path, sizeof(app->pending_start.core_path), "%s", game->core_path.c_str());
     std::snprintf(app->pending_start.content_path, sizeof(app->pending_start.content_path), "%s",
-                  top->content_path.c_str());
+                  game->content_path.c_str());
     app->has_pending_start = true;   // started at the top of the next loop, like RECENT
     app->resume_skip = button == ContinueViewButton::start;
+}
+
+// A tile / row of the shelf chosen (a click, or A / Enter on it): its game
+// goes into the card. Nothing starts: that is RESUME or RESTART.
+void continue_card_choose(App* app, uint32_t tile)
+{
+    continue_panel_choose(&app->continue_panel, tile);
 }
 
 // Before the view: the files and the picture, scaled for its size on screen.
@@ -76,6 +84,15 @@ void continue_card_update(App* app, const UiView* view)
     card.aspect_height = record->aspect_height;
     float width = 0.0f;
     float height = 0.0f;
+    float tile_width = 0.0f;   // the shelf's / the list's pictures: only on the desktop
+    float tile_height = 0.0f;
+    bool as_list = false;
+    // RECENT as shown: the panel keeps the order of its games from it.
+    std::vector<RecentGame> shown;
+    for (size_t i = 0; i < app->recent_shown.size(); i++)
+    {
+        shown.push_back(app->recent.games[app->recent_shown[i]]);
+    }
     if (panel->preview == ContinuePreview::phone)
     {
         int32_t touch_scale = touch_ui_scale_for(view->screen_width, view->screen_height);
@@ -109,9 +126,20 @@ void continue_card_update(App* app, const UiView* view)
     }
     else
     {
-        continue_view_panel_picture_size(&card, app->ui_scale, &width, &height);
+        // The sizes the panel will be drawn at (ui.cpp, the same call). It
+        // shows only in MAIN MENU on the desktop, under the menu bar (the
+        // view's menu_shown is set later this frame).
+        float bar = retro_ui_menu_bar_height(app->ui_scale);
+        ContinueViewPanelGeometry geometry;
+        continue_view_panel_geometry(app->ui_scale, shown.size() > 1, bar, view->screen_width, view->screen_height,
+                                     &geometry);
+        continue_view_panel_picture_size(&card, &geometry, &width, &height);
+        as_list = geometry.layout == ContinueViewLayout::side_list;
+        tile_width = geometry.tile_width;
+        tile_height = geometry.tile_height;
     }
-    continue_panel_update(panel, recent_top(app), continue_card_wanted(app), width, height, SDL_GetTicks());
+    continue_panel_update(panel, &shown, continue_card_wanted(app), width, height, tile_width, tile_height, as_list,
+                          SDL_GetTicks());
 }
 
 // The desktop's panel, or the card on the phone's HOME (or a fake one).
@@ -135,8 +163,11 @@ void continue_card_view(const App* app, UiView* view)
     now.weekday = date.day_of_week;
     now.hour = date.hour;
     now.minute = date.minute;
-    continue_panel_state(&view->continue_card, &app->continue_panel, &app->strings, &now, continue_card_active(app));
-    if (real && app->phone_ui && view->mobile_home.home_shown)
+    continue_panel_state(&view->continue_card, &app->continue_panel, &app->strings, &now, continue_card_active(app),
+                         app->phone_ui);
+    // The phone's HOME shows a card only for a game with a record (a game
+    // without one is just in its list).
+    if (real && app->phone_ui && view->mobile_home.home_shown && continue_panel_card_has_record(&app->continue_panel))
     {
         view->continue_card.card.hint = "";   // the phone shows no keys
         view->mobile_home.card = &view->continue_card.card;

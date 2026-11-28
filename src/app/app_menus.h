@@ -10,7 +10,6 @@
 void build_menus(App* app);
 void refresh_recent_labels(App* app);
 void remember_recent(App* app, const char* core_path, const char* content_path);
-const RecentGame* recent_top(const App* app);
 
 // What a pick does
 void handle_menu_action(App* app, MenuAction action);

@@ -388,6 +388,11 @@ void app_apply_ui(App* app, const UiView* view, const AppUiFrame* frame, UiActio
         onscreen_pad_edit(&app->onscreen_pad);   // the burger menu's EDIT LAYOUT
     }
     continue_card_press(app, actions->continue_pressed);
+    if (actions->continue_tile >= 0)
+    {
+        continue_card_choose(app, static_cast<uint32_t>(actions->continue_tile));
+    }
+    continue_panel_page(&app->continue_panel, actions->continue_page);
     // The burger menu's other picks (the pad shows in GAME mode, with a
     // game, or in EDIT LAYOUT: there they have no use).
     if (actions->pad.main_menu && game_has_keyboard(app))

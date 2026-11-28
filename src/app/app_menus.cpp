@@ -158,15 +158,6 @@ void remember_recent(App* app, const char* core_path, const char* content_path)
     refresh_recent_labels(app);
 }
 
-const RecentGame* recent_top(const App* app)
-{
-    if (app->recent_shown.empty())
-    {
-        return nullptr;
-    }
-    return &app->recent.games[app->recent_shown[0]];
-}
-
 // --- What a pick does -------------------------------------------------------
 
 void handle_menu_action(App* app, MenuAction action)
