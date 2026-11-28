@@ -9,9 +9,14 @@
 #   tools/build-windows.sh --debug          Debug with warnings as errors (local-builds/debug/)
 #   tools/build-windows.sh --test           also run the tests (ctest)
 #   tools/build-windows.sh --no-librashader skip librashader (no Rust needed)
+#   tools/build-windows.sh --no-update      build what's here, without pulling first
+#
+# The branch checked out is pulled first (fast-forward only) and its
+# submodules follow it: what gets built is the current branch, up to date.
+# Submodules being worked on (local commits or changed files) stay as they are.
 #
 # Submodules not checked out yet are fetched (the ones of compilation.md step
-# 2); the ones already there are left as they are.
+# 2).
 #
 # Environment, all optional:
 #   PICCOLO_DIR  where to deploy (default $USERPROFILE/piccolo)
@@ -32,13 +37,15 @@ build_type=Release
 install_deps=0
 run_tests=0
 with_librashader=1
+update=1
 for arg in "$@"; do
     case "$arg" in
         --deps) install_deps=1 ;;
         --debug) build_type=Debug ;;
         --test) run_tests=1 ;;
         --no-librashader) with_librashader=0 ;;
-        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --no-update) update=0 ;;
+        -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "build-windows.sh: unknown option $arg (--help)" >&2; exit 1 ;;
     esac
 done
@@ -83,6 +90,29 @@ done
 
 cd "$(dirname "$0")/.."
 src_dir=$(pwd)
+
+# The branch checked out, brought up to date first: fast-forwarded to its
+# upstream, never merged or rebased. A detached HEAD or a branch with no
+# upstream is built as it is. When the pull moved the checkout the script
+# starts again, since the pull may have changed the script itself.
+if [ "$update" = 1 ] && [ -z "${MULTITAP_BUILD_UPDATED:-}" ]; then
+    branch=$(git symbolic-ref -q --short HEAD || true)
+    if [ -z "$branch" ]; then
+        echo "== no branch checked out (detached HEAD): built as it is"
+    elif ! git rev-parse -q --verify "@{upstream}" >/dev/null 2>&1; then
+        echo "== $branch has no upstream branch: built as it is"
+    else
+        echo "== updating $branch"
+        before=$(git rev-parse HEAD)
+        if ! git pull --ff-only; then
+            echo "build-windows.sh: couldn't fast-forward $branch (no network, local commits that diverged, or changed files in the way). Fix that, or --no-update to build what's here" >&2
+            exit 1
+        fi
+        if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            MULTITAP_BUILD_UPDATED=1 exec "$src_dir/tools/build-windows.sh" "$@"
+        fi
+    fi
+fi
 
 # The URLs the submodules are fetched from, back from .gitmodules: a checkout
 # whose .git/config points them at local folders can't fetch the missing
@@ -131,6 +161,41 @@ if [ ! -e deps/test-libretro/.git ]; then
     echo "== submodule: deps/test-libretro"
     git -c url."https://github.com/".insteadOf="git@github.com:" \
         submodule update --init --recursive --checkout deps/test-libretro
+fi
+
+# The submodules already checked out follow the updated branch, fast-forward
+# only as well. One on a branch is pulled like the checkout above. One on a
+# detached HEAD moves to the commit the branch pins, when that commit is ahead
+# of it and no file in it is changed. Anything else (local commits, changed
+# files, a branch with no upstream) is being worked on and stays as it is.
+if [ "$update" = 1 ]; then
+    git submodule status | while read -r state path _; do
+        case "$state" in
+            -*) continue ;; # not checked out
+        esac
+        sub_branch=$(git -C "$path" symbolic-ref -q --short HEAD || true)
+        if [ -n "$sub_branch" ]; then
+            if git -C "$path" rev-parse -q --verify "@{upstream}" >/dev/null 2>&1; then
+                git -C "$path" pull -q --ff-only ||
+                    echo "   $path: couldn't fast-forward $sub_branch, left as it is"
+            fi
+            continue
+        fi
+        case "$state" in
+            +*) ;;
+            *) continue ;; # already at the pinned commit
+        esac
+        pinned=$(git rev-parse "HEAD:$path")
+        git -C "$path" cat-file -e "$pinned^{commit}" 2>/dev/null || git -C "$path" fetch -q || true
+        if git -C "$path" merge-base --is-ancestor HEAD "$pinned" 2>/dev/null &&
+            git -C "$path" diff --quiet HEAD; then
+            echo "== submodule: $path -> $(git -C "$path" rev-parse --short "$pinned")"
+            git -c url."https://github.com/".insteadOf="git@github.com:" \
+                submodule update --recursive -- "$path"
+        else
+            echo "   $path: not at the pinned commit and being worked on, left as it is"
+        fi
+    done
 fi
 
 if [ "$with_librashader" = 1 ]; then
