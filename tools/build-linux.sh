@@ -5,14 +5,14 @@
 #
 #   tools/build-linux.sh                  Release, installed
 #   tools/build-linux.sh --deps           first install the packages (apt, sudo)
-#   tools/build-linux.sh --debug          Debug with warnings as errors (build-debug/)
+#   tools/build-linux.sh --debug          Debug with warnings as errors (local-builds/debug/)
 #   tools/build-linux.sh --test           also run the tests (ctest)
 #   tools/build-linux.sh --no-librashader skip librashader (no Rust needed)
 #
 # Environment, all optional:
 #   PICCOLO_DIR  where to install (default $XDG_DATA_HOME/piccolo, that is
 #                ~/.local/share/piccolo: piccolo's own data folder)
-#   BUILD_DIR    CMake build folder (default build, or build-debug with --debug)
+#   BUILD_DIR    CMake build folder (default local-builds/release, or local-builds/debug with --debug)
 #
 # Submodules not checked out yet are fetched (the ones of compilation.md step
 # 2); the ones already there are left as they are. The build copies piccolo,
@@ -123,10 +123,10 @@ case "$piccolo_dir" in
     *) piccolo_dir="$src_dir/$piccolo_dir" ;;
 esac
 if [ "$build_type" = Debug ]; then
-    build_dir=${BUILD_DIR:-build-debug}
+    build_dir=${BUILD_DIR:-local-builds/debug}
     warnings_as_errors=ON
 else
-    build_dir=${BUILD_DIR:-build}
+    build_dir=${BUILD_DIR:-local-builds/release}
     # GCC -O2 gives two harmless warnings.
     warnings_as_errors=OFF
 fi
@@ -146,14 +146,14 @@ fi
 
 if [ "$with_librashader" = 1 ]; then
     echo "== librashader (the first build takes a few minutes)"
-    if ! CARGO_TARGET_DIR="$src_dir/build-librashader" \
+    if ! CARGO_TARGET_DIR="$src_dir/local-builds/librashader" \
         cargo build --manifest-path deps/librashader/Cargo.toml -p librashader-capi \
         --release --locked --no-default-features --features runtime-vulkan; then
         echo "build-linux.sh: librashader didn't build; an old distribution's Rust can be too old:" >&2
         echo "  install a current one with rustup (https://rustup.rs), or use --no-librashader" >&2
         exit 1
     fi
-    install -m755 build-librashader/release/liblibrashader_capi.so "$piccolo_dir/librashader.so"
+    install -m755 local-builds/librashader/release/liblibrashader_capi.so "$piccolo_dir/librashader.so"
     install -m644 deps/librashader/LICENSE.md "$piccolo_dir/librashader-LICENSE.md"
 fi
 
