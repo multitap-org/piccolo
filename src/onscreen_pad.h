@@ -93,6 +93,12 @@ struct OnscreenPad
     PadMinimal   minimal = PadMinimal::none;   // the style's MINIMAL arrangement (its layout's touch =)
     PadLook      look;             // this frame's opacities (the theme's, the settings, or EDIT LAYOUT's sliders)
     bool         menu_open = false;   // the burger menu's pop-up is up (drawn from the frame after the press)
+    // A finger that went down off the pop-up's items while it's up: its lift
+    // closes it. The finger that pressed the burger went down before, so
+    // lifting it leaves the pop-up open (on Android its release came to
+    // ImGui as a tap on the backdrop and closed it at once).
+    bool         menu_tap = false;
+    uint64_t     menu_tap_finger = 0;
 };
 
 // STYLE: look like `layout` (a controller layout from layouts/: only its
