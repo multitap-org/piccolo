@@ -23,7 +23,7 @@
 // in the other side's shared folder of its kind (MIRROR FOLDER STRUCTURE, on
 // by default: `mirror_folders`), or into the folder open on the other side
 // (share_paths.h has the rule). MIRROR FOLDER STRUCTURE is a checkbox above
-// the bottom line; it's a global setting (share_mirror_folders) that main.cpp
+// the bottom line; it's a global setting (share_mirror_folders) that app_ui.cpp
 // hands in and writes back (`mirror_folders_set`). This side is this piccolo's own shared folders
 // (net_share_folders.h, read here directly); the other side is what its
 // list_results say, asked for and handed in by the caller
@@ -46,7 +46,7 @@
 // what was pressed (CONNECT, PAIR, DISCONNECT, CANCEL, the copies, a file
 // picked), and share_window_apply acts on it (no GUI): it looks up a picked
 // game's saves and states, and connects, copies or cancels on SHARE's
-// connection. PAIR is main.cpp's: it opens TOOLS > PAIR.
+// connection. PAIR is app_share.cpp's: it opens TOOLS > PAIR.
 
 #include <cstdint>
 #include <string>
@@ -165,10 +165,10 @@ struct ShareWindowAction
     bool                   picked_remote = false;   // the same on the other side
     std::vector<ShareCopy> copies;                  // asked for (the arrows, REPLACE)
     bool                   mirror_folders_set = false;   // MIRROR FOLDER STRUCTURE clicked: the setting
-    bool                   mirror_folders = true;        // becomes this (main.cpp writes it, global)
+    bool                   mirror_folders = true;        // becomes this (app_ui.cpp writes it, global)
 };
 
-// What main.cpp does itself after share_window_apply.
+// What app_ui.cpp does itself after share_window_apply.
 enum class ShareWindowRequest
 {
     none,

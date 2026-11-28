@@ -222,7 +222,7 @@ static void draw_general(SettingsWindow* window, const SettingsUiContext* ui, co
         const char* keys[SETTINGS_FOLDER_COUNT] = {PICCOLO_PATH_CORES, PICCOLO_PATH_SYSTEM, PICCOLO_PATH_SAVES,
                                                    PICCOLO_PATH_STATES, PICCOLO_PATH_SCREENSHOTS};
         // Android: no CORES row. Cores load only from the app's private
-        // storage (shared storage is noexec); main.cpp ignores the setting.
+        // storage (shared storage is noexec); app_files.cpp ignores the setting.
         // The browser: no CORES or SYSTEM rows either (the core is linked in).
 #if defined(SDL_PLATFORM_ANDROID)
         uint32_t first = 1;
@@ -344,7 +344,7 @@ static void draw_sync(const SettingsUiContext* ui, const SettingsWindowState* st
     settings_ui_row(ui, PICCOLO_LATENCY_WAIT_FOR_PRESENT, nullptr);
 
     // Frame delay only helps after waiting for present (see frame_delay() in
-    // main.cpp): greyed out without it, the stored value kept.
+    // app_picture.cpp): greyed out without it, the stored value kept.
     bool usable = state->frame_delay_usable;
     // AUTO ignores the manual value: greyed out then (kept for turning AUTO off).
     bool is_automatic = state->frame_delay_auto;

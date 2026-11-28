@@ -36,7 +36,7 @@
 // Split like every window: onscreen_pad_state fills what it shows (no GUI),
 // onscreen_pad_draw draws it and records what was pressed, and
 // onscreen_pad_apply acts on it (no GUI): EDIT LAYOUT's save and sliders, the
-// buzz. The menus the burger menu names are main.cpp's. The
+// buzz. The menus the burger menu names are app_ui.cpp's. The
 // fingers' RetroPad stays the pad's own state (the router reads it next
 // frame, in onscreen_pad_update).
 
@@ -151,17 +151,17 @@ struct OnscreenPadState
     const char* edit_layout_label = "";
     PadLook     look;                      // FILL / BORDER / LABEL / BACKGROUND OPACITY, 0..1
     bool        vibrate = false;           // a buzz on each press
-    OnscreenPadPicture picture;            // set by main.cpp (the pad doesn't place the picture)
+    OnscreenPadPicture picture;            // set by app_ui.cpp (the pad doesn't place the picture)
 };
 
 struct OnscreenPadAction
 {
-    // The burger menu's picks (main.cpp opens them).
+    // The burger menu's picks (app_ui.cpp opens them).
     bool main_menu = false;
     bool quick_menu = false;
     bool game_dvr = false;
     bool controllers = false;
-    bool edit_layout = false;    // EDIT LAYOUT (main.cpp starts it: onscreen_pad_edit)
+    bool edit_layout = false;    // EDIT LAYOUT (app_ui.cpp starts it: onscreen_pad_edit)
     bool edit_done = false;      // EDIT LAYOUT's DONE
     bool look_changed = false;   // EDIT LAYOUT's sliders moved: `look` goes to the settings
     PadLook look;
@@ -193,7 +193,7 @@ void onscreen_pad_draw(OnscreenPad* pad, const OnscreenPadState* state, RetroUiF
 // EDIT LAYOUT's DONE (saved), its sliders (into `settings`, global, and
 // touch_pad_look_set), the buzz; while the look is the theme's, the settings
 // rows are kept showing the theme's values. The burger menu's picks are
-// main.cpp's.
+// app_ui.cpp's.
 void onscreen_pad_apply(OnscreenPad* pad, const OnscreenPadAction* action, Settings* settings);
 
 // After the frame: the fingers' frame ends.

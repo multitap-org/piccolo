@@ -18,7 +18,7 @@
 //                 FILTER, with their scope (GLOBAL / THIS CORE / THIS GAME)
 //
 // PAGE LEFT / RIGHT switch tabs. Core options and remaps are saved when it
-// closes (main.cpp), so an option that crashes the core at once isn't kept.
+// closes (app_files.cpp), so an option that crashes the core at once isn't kept.
 //
 // Split like every window: core_config_window_update runs a SET / BIND ALL
 // or a macro recording in progress and picks SHADER's scope (no GUI),
@@ -187,7 +187,7 @@ struct CoreConfigWindowAction
     std::string         combo;               // the combo's or macro's id
 };
 
-// What main.cpp does itself after core_config_window_apply.
+// What app_ui.cpp does itself after core_config_window_apply.
 enum class CoreConfigRequest
 {
     none,

@@ -27,13 +27,13 @@
 // host is never one of them).
 //
 // Closing the window keeps the link; STOP REMOTE PLAY, closing the game,
-// loading another one, or quitting ends the session (main.cpp): a guest
+// loading another one, or quitting ends the session (app_guest.cpp): a guest
 // can't control what's shown, so the host can't swap games under it. HARD
 // RESET (the same game and core again) keeps it (Andrés, 2026-11-25).
 //
 // guest_window_apply acts on the running NetAccess (under the network lock):
 // guests, role and KICK at once. CREATE LINK, REFRESH LINK and STOP REMOTE
-// PLAY need the frame and the card upload: apply hands them back to main.cpp.
+// PLAY need the frame and the card upload: apply hands them back to app_ui.cpp.
 //
 // Split like every window: guest_window_state fills what the window shows
 // from the NetAccess (no GUI), guest_window_draw draws it and records what
@@ -52,7 +52,7 @@
 
 #include "retro_ui_font.h"
 
-// What main.cpp does itself (it needs the frame and the card upload).
+// What app_ui.cpp does itself (it needs the frame and the card upload).
 enum class GuestWindowPress
 {
     none,
@@ -140,7 +140,7 @@ void guest_window_draw(GuestWindow* window, const GuestWindowState* state, Retro
                        GuestWindowAction* action);
 // Under the network lock (`access` nullptr: the network is off): guests,
 // role, KICK, and the link copied when its field was clicked (the card says
-// so from `now_ms`). Returns what main.cpp does itself.
+// so from `now_ms`). Returns what app_ui.cpp does itself.
 GuestWindowPress guest_window_apply(GuestWindow* window, const GuestWindowAction* action, NetAccess* access,
                                     uint64_t now_ms);
 

@@ -69,7 +69,7 @@ static ContinueViewAction draw_continue_panel(const UiView* view, RetroUiFont* p
 
 // The debug window's preview of the phone's HOME card: a phone-wide card in
 // the touch look, over everything, with the screen dimmed behind it. Any
-// button ends the preview (main.cpp).
+// button ends the preview (app_continue.cpp).
 static ContinueViewButton draw_continue_phone(const UiView* view, RetroUiFont* pixel_font)
 {
     if (!view->continue_card.shown || !view->continue_card.phone)

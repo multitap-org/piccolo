@@ -11,7 +11,7 @@
 //   +-----------------------------------+
 //
 // The field brings up the on-screen keyboard like any of piccolo's text fields
-// (INPUT > ON-SCREEN KEYBOARD; text_input in frontends-common); main.cpp asks
+// (INPUT > ON-SCREEN KEYBOARD; text_input in frontends-common); app_ui.cpp asks
 // for the number keypad when the core wants a NUMBER.
 //
 // Split like every window: text_input_window_state / _update read the request

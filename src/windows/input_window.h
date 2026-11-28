@@ -128,7 +128,7 @@ struct InputWindowAction
     char             label[INPUT_WINDOW_LABEL_MAX] = {};
 };
 
-// What main.cpp does itself after input_window_apply.
+// What app_ui.cpp does itself after input_window_apply.
 enum class InputWindowRequest
 {
     none,

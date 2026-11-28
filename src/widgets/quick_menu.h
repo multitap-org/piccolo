@@ -31,13 +31,13 @@
 // or overwritten by accident. PAUSE IN MENU pauses the game while it's
 // open. F1 or Esc closes it. UNDO SAVE swaps the selected slot with what
 // its last save overwrote; UNDO LOAD puts the game back as before the last
-// state load (main.cpp, state_undo.h; Andrés, 2026-11-26).
+// state load (app_states.cpp, state_undo.h; Andrés, 2026-11-26).
 //
 // Split like every window: quick_menu_update reads the slots and
 // quick_menu_state fills what the window shows (no GUI), quick_menu_draw
 // draws it and records what was pressed, and quick_menu_apply acts on it (no
 // GUI): the session's slot, the pictures to load. What a press does to the
-// game is main.cpp's (the actions it shares with the GAME menu).
+// game is app_ui.cpp's (the actions it shares with the GAME menu).
 
 #include <cstdint>
 #include <vector>
@@ -59,7 +59,7 @@ constexpr uint32_t QUICK_SLOT = 0;
 enum class QuickMenuPress
 {
     none,
-    pause,        // PAUSE / RESUME: the player's own pause (main.cpp toggles it)
+    pause,        // PAUSE / RESUME: the player's own pause (app_ui.cpp toggles it)
     quick_save,   // the quick slot
     quick_load,
     screenshot,
@@ -135,7 +135,7 @@ void quick_menu_draw(QuickMenu* menu, const QuickMenuState* state, RetroUiFont* 
                      QuickMenuAction* action);
 // Closes it (its X), makes the picked slot the session's (F2 / F4 follow it)
 // and loads the slots' thumbnails and the big picture. What `press` asks is
-// main.cpp's.
+// app_ui.cpp's.
 void quick_menu_apply(QuickMenu* menu, const QuickMenuAction* action, CoreSession* session);
 
 // Uploads newly loaded pictures. Call after app_shell_acquire, outside

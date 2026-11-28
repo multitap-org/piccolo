@@ -18,10 +18,10 @@ static const MenuItem GAME_ITEMS[] = {
     { Str::menu_load_game,   MenuAction::load_game,   MenuShown::always },
     { Str::menu_close_game,  MenuAction::close_game,  MenuShown::greyed_no_game },
     { Str::menu_game,        MenuAction::separator,   MenuShown::with_game },
-    { Str::menu_pause,       MenuAction::pause,       MenuShown::with_game },   // reads RESUME while the player paused (main.cpp)
+    { Str::menu_pause,       MenuAction::pause,       MenuShown::with_game },   // reads RESUME while the player paused (app_menus)
     { Str::menu_quick_save,  MenuAction::quick_save,  MenuShown::with_game },
     { Str::menu_quick_load,  MenuAction::quick_load,  MenuShown::with_game },
-    { Str::menu_undo_save_state, MenuAction::undo_save_state, MenuShown::with_game },   // greyed with nothing to undo (main.cpp)
+    { Str::menu_undo_save_state, MenuAction::undo_save_state, MenuShown::with_game },   // greyed with nothing to undo (app_menus)
     { Str::menu_undo_load_state, MenuAction::undo_load_state, MenuShown::with_game },
     { Str::menu_screenshot,  MenuAction::screenshot,  MenuShown::with_game },
     { Str::menu_reset,       MenuAction::reset,       MenuShown::with_game },

@@ -3,7 +3,7 @@
 // The CONTINUE card's model (Andrés, 2026-11-26, mockup v2: docs/mockups/
 // continue/ in piccolo-agents): with no game running, the last game played,
 // its picture and RESUME. No GUI here (tools/continue_card_test.cpp); the
-// card is drawn by retroui's continue_view, main.cpp wires it.
+// card is drawn by retroui's continue_view, app_continue.cpp wires it.
 //
 // Closing a game (CLOSE GAME, another game, QUIT, Android to the background:
 // where SAVE STATE ON EXIT saves "<game>.state.auto") also writes:

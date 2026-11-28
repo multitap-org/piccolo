@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 
 // The tray's entries call back on the main thread (while SDL pumps events):
-// they only ask, main.cpp leaves headless at the top of its next loop.
+// they only ask, app_net.cpp leaves headless at the top of the next loop.
 static void SDLCALL on_back(void* userdata, SDL_TrayEntry* entry)
 {
     (void)entry;

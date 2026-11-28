@@ -11,7 +11,7 @@
 //            The last game closed, when it's RECENT's first: the CONTINUE
 //            card above the others (beside them sideways), RESUME its button.
 //   ☰        a sidebar from the right with the menu bar's menus (the same
-//            RetroUiMenu data main.cpp builds for the bar, so items show,
+//            RetroUiMenu data app_menus.cpp builds for the bar, so items show,
 //            grey and hide by the same rules), RECENT left out: it is HOME.
 //            First the menus' names (GAME, SETTINGS, TOOLS, MISC); tapping
 //            one shows its items, with ◀ back to the names.
@@ -20,11 +20,11 @@
 //
 // The windows the items open are the desktop's own, drawn as full-screen
 // pages (retroui's page mode). A pick returns the menu bar's own item id, so
-// main.cpp applies it exactly as a pick on the bar.
+// app_ui.cpp applies it exactly as a pick on the bar.
 //
-// Split like every window: main.cpp fills MobileHomeState (no GUI),
+// Split like every window: app_ui.cpp fills MobileHomeState (no GUI),
 // mobile_home_draw draws and records what was tapped, mobile_home_apply
-// follows it (no GUI); main.cpp acts on the pick.
+// follows it (no GUI); app_ui.cpp acts on the pick.
 
 #include <cstdint>
 

@@ -7,7 +7,7 @@
 // don't know, and nothing reaches the network, the settings or the game.
 //
 // One window preview at a time (DebugPreview). What's pressed in it is
-// ignored, except closing it (its X, CLOSE, NO / YES, Escape: main.cpp's
+// ignored, except closing it (its X, CLOSE, NO / YES, Escape: app_ui_modes.cpp's
 // back), which ends it. The real window opening (a real pairing request,
 // say) ends its preview too: both would be the toolkit's same window.
 //

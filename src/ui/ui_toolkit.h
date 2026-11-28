@@ -3,7 +3,7 @@
 #include <cstdint>
 
 // What the frame loop asks and tells the GUI toolkit, without knowing which
-// one it is. The loop (main.cpp) routes input with these answers; only
+// one it is. The loop (src/app/) routes input with these answers; only
 // ui_toolkit_imgui.cpp knows they come from ImGui. A second toolkit would
 // write its own ui_toolkit_*.cpp with the same functions.
 

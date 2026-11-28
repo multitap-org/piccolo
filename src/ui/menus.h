@@ -15,7 +15,7 @@
 //                     OPTIONS MANAGER, ---, the network tools
 //   MISC              DEBUG, ABOUT
 //
-// RECENT (main.cpp builds it: the games, then CLEAR ALL) comes first.
+// RECENT (app_menus.cpp builds it: the games, then CLEAR ALL) comes first.
 
 #include <cstdint>
 

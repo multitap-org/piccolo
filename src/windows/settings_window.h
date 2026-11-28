@@ -65,7 +65,7 @@ struct SettingsWindow
     FolderSection folder_section = FolderSection::none;   // both closed at first (testing round 2)
 };
 
-// What piccolo says about itself this frame, as text for the tabs (main.cpp
+// What piccolo says about itself this frame, as text for the tabs (app_settings.cpp
 // builds it: the window, the GPU, the audio, AUTO's verdicts).
 struct SettingsWindowNotes
 {
@@ -114,7 +114,7 @@ struct SettingsWindowState
     const NetWindowState* network = nullptr;     // the NETWORK tab; nullptr: no tab
 };
 
-// What the user did this frame. main.cpp acts on the requests itself
+// What the user did this frame. app_settings.cpp acts on the requests itself
 // (CHOOSE FOLDER, SEARCH AGAIN, MEASURE AGAIN, SAVE THEME); settings_window_apply
 // does the rest, net_window_apply the NETWORK tab's.
 struct SettingsWindowAction

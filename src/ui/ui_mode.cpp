@@ -1,7 +1,7 @@
 #include "ui_mode.h"
 
 // Every mode change goes through here: it closes what the old mode had,
-// counts the change (main.cpp lets go of held keys and cancels grabs) and
+// counts the change (app_ui_modes.cpp lets go of held keys and cancels grabs) and
 // forgets the grab (its owner is gone).
 static bool change_mode(UiState* state, UiMode mode, UiWidget widget)
 {

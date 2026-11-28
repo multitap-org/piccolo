@@ -5,7 +5,7 @@
 // saved, a screenshot taken, a device paired, a core's own message) shows
 // as a notification card in the HUD's bottom right stack for a few seconds,
 // then fades out. A message already showing is kept (shown longer), not
-// repeated. Which messages there are is main.cpp's (set_status), chosen by
+// repeated. Which messages there are is the app's (set_status), chosen by
 // Andrés one by one: failures always, successes only where nothing else
 // shows them (a hotkey's SAVE STATE, not the menu's).
 

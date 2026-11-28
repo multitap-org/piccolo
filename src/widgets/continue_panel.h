@@ -8,7 +8,7 @@
 //
 // Split like every window: continue_panel_update reads the files and the
 // picture (no GUI), continue_panel_state fills the card's words,
-// continue_view draws it (ui.cpp), main.cpp acts on what was pressed.
+// continue_view draws it (ui.cpp), app_continue.cpp acts on what was pressed.
 
 #include <cstdint>
 #include <string>

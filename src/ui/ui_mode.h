@@ -3,7 +3,7 @@
 // What has piccolo's screen and input: one mode at a time (docs/design-notes.md,
 // "UI modes" and "What pauses a core", decided 2026-11-21). No ImGui and no
 // SDL here, so the rules can be tested alone (tools/ui_mode_test.cpp);
-// main.cpp opens and closes the windows themselves.
+// app_ui_modes.cpp opens and closes the windows themselves.
 //
 //   GAME        the game has the input (the on-screen pad too).
 //   WIDGET      one window widget during play: QUICK MENU (the actions on the
@@ -20,7 +20,7 @@
 // window).
 //
 // The mode changes only through the ui_enter_* functions. Each change counts
-// in UiState::changes: main.cpp then lets go of every held key and cancels
+// in UiState::changes: app_ui_modes.cpp then lets go of every held key and cancels
 // any input grab (SET, MAP CONTROLLER, the macro recorder).
 //
 // Everything that depends on the mode comes from ui_derive(), in one place:
@@ -46,7 +46,7 @@ enum class UiWidget
     dvr,            // the DVR's GUI (piccolo-rewind)
 };
 
-// MAIN MENU's windows. Each is drawn by its own module; main.cpp keeps the
+// MAIN MENU's windows. Each is drawn by its own module; app_ui_modes.cpp keeps the
 // modules' open flags and this stack in step (a window closing itself with
 // its X leaves the stack).
 enum class UiWindow
@@ -115,7 +115,7 @@ bool     ui_window_open(const UiState* state, UiWindow window);
 UiWindow ui_top_window(const UiState* state);
 
 // A grab starts (owned by the mode and MAIN MENU's top window now) or ends.
-// Orphaned: its owner is gone; main.cpp cancels it (the lockout guard).
+// Orphaned: its owner is gone; app_ui_modes.cpp cancels it (the lockout guard).
 void ui_grab_begin(UiState* state, UiGrab grab);
 void ui_grab_end(UiState* state);
 bool ui_grab_orphaned(const UiState* state);

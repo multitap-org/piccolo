@@ -15,7 +15,7 @@
 //   +----------------------------------------------------------+
 //
 // It only informs: no game start waits for it, and nothing is saved while
-// the files are unreadable (main.cpp's save functions), answered or not.
+// the files are unreadable (app_files.cpp's save functions), answered or not.
 // The list of file names is built once at start (App::settings_error_files).
 // It is drawn in the theme's red twin, like the UNSIGNED BUILD question.
 //

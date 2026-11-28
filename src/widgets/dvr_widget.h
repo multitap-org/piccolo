@@ -47,7 +47,7 @@
 // dvr_widget_apply acts on it (no GUI): the history's seek, play, watch,
 // lane, BACK TO NOW.
 //
-// Kept behind these calls on purpose: main.cpp's UI state is being reworked
+// Kept behind these calls on purpose: the app's UI state is being reworked
 // (ui-state) and rewires them without touching this file.
 
 #include <cstdint>

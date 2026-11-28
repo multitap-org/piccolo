@@ -12,8 +12,8 @@
 //
 // Actions: what a device may trigger while a game runs. With REMOTE PLAY
 // (STREAM): SAVE STATE, LOAD STATE, NEXT / PREVIOUS SLOT, FAST FORWARD
-// (held), PAUSE (toggle). With SETTINGS: RESET, CLOSE GAME. main.cpp carries
-// them out with the same functions as the hotkeys and the quick menu.
+// (held), PAUSE (toggle). With SETTINGS: RESET, CLOSE GAME. app_net_remote.cpp
+// carries them out with the same functions as the hotkeys and the quick menu.
 
 #include <cstddef>
 #include <cstdint>

@@ -6,9 +6,9 @@
 // it back. Where there's no tray (GNOME without the AppIndicator extension,
 // for one) the window is minimized instead, so the taskbar brings it back.
 //
-// Only the window and the tray here. main.cpp does the rest while `on`: the
-// loop runs off the Exact timer and doesn't present (a hidden window gets no
-// frame callbacks on Wayland: presenting would stall the game and the
+// Only the window and the tray here. The app (src/app/) does the rest while
+// `on`: the loop runs off the Exact timer and doesn't present (a hidden window
+// gets no frame callbacks on Wayland: presenting would stall the game and the
 // stream), local audio is muted, menus don't pause the game; and it comes
 // back when the device asks, leaves, stops streaming or loses STREAM access
 // (then the game pauses), or from the tray.

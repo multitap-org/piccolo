@@ -32,7 +32,7 @@ enum class StateIcon
 
 constexpr uint32_t STATE_ICON_COUNT = static_cast<uint32_t>(StateIcon::count);
 
-// What is true this frame (main.cpp fills it).
+// What is true this frame (app_picture.cpp fills it).
 struct StateFacts
 {
     bool     paused = false;

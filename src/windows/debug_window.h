@@ -10,9 +10,9 @@
 // here, live, without the situation that brings it up: a HUD card with fake
 // text, or a preview of the window with fake state (debug_preview.h).
 //
-// The pattern of every window: main.cpp fills a DebugWindowState (plain
+// The pattern of every window: the app (src/app/) fills a DebugWindowState (plain
 // data, no GUI), debug_window_draw draws it with retroui and returns what was
-// pressed as a DebugWindowAction, and main.cpp applies it.
+// pressed as a DebugWindowAction, and the app applies it.
 
 #include <cstdint>
 

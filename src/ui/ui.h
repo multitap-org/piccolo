@@ -1,9 +1,9 @@
 #pragma once
 
-// The whole frame's drawing, in one call. main.cpp fills a UiView (what the
-// frame shows, as plain data, no GUI calls), ui_draw draws it with retroui
-// and the windows' draw functions and reports what the user did as
-// UiActions, and main.cpp applies them afterwards (no GUI calls either).
+// The whole frame's drawing, in one call. The app (src/app/) fills a UiView
+// (what the frame shows, as plain data, no GUI calls), ui_draw draws it with
+// retroui and the windows' draw functions and reports what the user did as
+// UiActions, and the app applies them afterwards (no GUI calls either).
 // Another GUI toolkit would rewrite this file and the windows' drawing;
 // main.cpp's loop would stay as it is (Andrés: "no gui code in the main
 // loop").
@@ -58,7 +58,7 @@ struct UiSettingsText
     char run_ahead[UI_NOTE_MAX] = {};
 };
 
-// Everything the frame shows, in drawing order. Filled by main.cpp
+// Everything the frame shows, in drawing order. Filled by app_ui.cpp
 // (app_ui_view) after the frame's updates; read only by ui_draw.
 struct UiView
 {

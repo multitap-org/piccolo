@@ -99,6 +99,6 @@ void cores_window_state(CoresWindowState* state, CoreUpdater* updater, const Set
 void cores_window_draw(CoresWindow* window, const CoresWindowState* state, RetroUiFont* pixel_font, int32_t scale,
                        CoresWindowAction* action);
 // Starts the job pressed and stores changed SHOW switches. True when the
-// settings changed (main.cpp saves them).
+// settings changed (app_ui.cpp saves them).
 bool cores_window_apply(CoresWindow* window, const CoresWindowAction* action, CoreUpdater* updater, Settings* settings,
                         const char* running_file);

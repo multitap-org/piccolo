@@ -19,7 +19,7 @@
 //   |   (a card each)        (a card each: both directions)         |
 //   +--------------------------------------------------------------+
 //
-// The settings rows edit piccolo's global settings; main.cpp restarts the
+// The settings rows edit piccolo's global settings; app_net.cpp restarts the
 // listener when ENABLE NETWORKING or PORT change. Pairing isn't here
 // (Andrés, 2026-11-22: SETTINGS holds configuration, not actions): TOOLS >
 // PAIR... (pair_window.h) does it.
@@ -36,7 +36,7 @@
 // Split like every window: *_state fills what it shows (no GUI), *_draw
 // draws it and records what was done in an action, and *_apply acts on it
 // (no GUI). The tab is drawn inside SETTINGS' tab (settings_window.cpp);
-// main.cpp fills its state and applies its action around SETTINGS' drawing.
+// app_settings.cpp fills its state and applies its action around SETTINGS' drawing.
 
 #include <cstdint>
 #include <string>
@@ -123,7 +123,7 @@ struct NetWindowAction
     bool           set_grants = false;   // GRANTED HERE: `grants` for the device with `key`
     NetCaps        grants = 0;
     bool           forget = false;       // FORGET the device with `key`
-    bool           connect = false;      // CONNECT to the device with `key` (main.cpp: FILE TRANSFER)
+    bool           connect = false;      // CONNECT to the device with `key` (app_settings.cpp: FILE TRANSFER)
     uint8_t        key[NET_KEY_SIZE] = {};
     bool           disconnect = false;   // DISCONNECT connection `disconnect_peer`, if it's still the
     uint32_t       disconnect_peer = 0;  // device with `disconnect_key`
@@ -147,7 +147,7 @@ void net_window_draw_tab(NetWindow* window, const NetWindowState* state, float l
 // (under the network lock) while networking is on, else through FILE
 // TRANSFER's connection `link` (its status `link_status`; either may be
 // nullptr). True when the settings changed (SETTINGS saves when it closes).
-// CONNECT is main.cpp's (it opens FILE TRANSFER).
+// CONNECT is app_settings.cpp's (it opens FILE TRANSFER).
 bool net_window_apply(const NetWindowAction* action, Settings* settings, NetAccess* access, NetShareLink* link,
                       const NetShareLinkStatus* link_status);
 

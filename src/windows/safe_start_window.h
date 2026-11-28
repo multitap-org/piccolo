@@ -15,7 +15,7 @@
 //
 // How a session that didn't end is noticed: piccolo writes
 // settings/running.cfg before loading a game and removes it when the game
-// ends properly (see main.cpp).
+// ends properly (see app_game.cpp).
 //
 // Split like every window: safe_start_window_state fills what it shows (no
 // GUI), safe_start_window_draw draws it and records the answer, and
@@ -51,7 +51,7 @@ struct SafeStartWindowAction
     SafeStartChoice choice = SafeStartChoice::none;
 };
 
-// What main.cpp still does after safe_start_window_apply.
+// What app_ui.cpp still does after safe_start_window_apply.
 struct SafeStartResult
 {
     bool closed = false;                     // answered: the window goes away
