@@ -3282,6 +3282,35 @@ static void ui_do_back(App* app)
     }
 }
 
+// Android's back button (SDL_SCANCODE_AC_BACK): in a game the QUICK MENU;
+// anywhere else back, as Escape (the grab, the pad's burger menu, an open
+// list, then the window or widget on top closes). Andrés, 2026-11-27.
+static void app_back_button(App* app)
+{
+    if (grab_now(app) != UiGrab::none)
+    {
+        cancel_grabs(app);
+        return;
+    }
+    if (app->onscreen_pad.menu_open)
+    {
+        app->onscreen_pad.menu_open = false;
+        return;
+    }
+    if (ui_toolkit_has_popup())
+    {
+        ui_toolkit_nav_key(UiNavKey::back, true);   // the toolkit's own: it closes on Escape
+        ui_toolkit_nav_key(UiNavKey::back, false);
+        return;
+    }
+    if (app->ui.mode == UiMode::game && game_running(app) && !debug_preview_shown(&app->debug_previews))
+    {
+        app_open_quick_menu(app);
+        return;
+    }
+    ui_do_back(app);
+}
+
 // GAME > RESUME: back to the game whatever is up, every grab cancelled
 // (the way out when something holds the input).
 static void resume_game(App* app)
@@ -3829,6 +3858,20 @@ static void app_handle_events(App* app)
         {
             SDL_Log("Escape: input grab cancelled");
             cancel_grabs(app);
+            continue;
+        }
+        // Android's back button is the app's, before a core that has the keyboard.
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_AC_BACK)
+        {
+            if (!event.key.repeat)
+            {
+                SDL_Log("Back button");
+                app_back_button(app);
+            }
+            continue;
+        }
+        if (event.type == SDL_EVENT_KEY_UP && event.key.scancode == SDL_SCANCODE_AC_BACK)
+        {
             continue;
         }
         if (core_session_handle_event(&app->session, &app->shell, &event, game_has_keyboard(app)))
@@ -7507,6 +7550,9 @@ int main(int argc, char** argv)
         return 0;
     }
     app_links_register("piccolo", "piccolo");   // Windows: this program opens piccolo:// links (per user)
+    // Android: the back button comes to piccolo (app_back_button) instead of
+    // leaving the app (SDLActivity reads this when it's pressed).
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 
     AppShellConfig config = {};
     config.name       = "piccolo";
